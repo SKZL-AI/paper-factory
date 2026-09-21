@@ -1,0 +1,193 @@
+{
+  "collected_at": "2026-09-21T21:09:34Z",
+  "harnesses": {
+    "claude": {
+      "doctor": {
+        "harness": "claude",
+        "kind": "claude",
+        "executable": "/home/sai/.local/bin/claude",
+        "present": true,
+        "version": "2.1.278",
+        "capabilities": [
+          "custom_model",
+          "custom_provider",
+          "json_events",
+          "non_interactive",
+          "read_only_mode",
+          "schema_constrained_output",
+          "sdk_or_rpc",
+          "session_resume",
+          "skills",
+          "slash_commands",
+          "structured_output",
+          "tool_use",
+          "workspace_write_mode"
+        ],
+        "verdict": "PASS"
+      },
+      "version": "2.1.278",
+      "capabilities": [
+        "custom_model",
+        "custom_provider",
+        "json_events",
+        "non_interactive",
+        "read_only_mode",
+        "schema_constrained_output",
+        "sdk_or_rpc",
+        "session_resume",
+        "skills",
+        "slash_commands",
+        "structured_output",
+        "tool_use",
+        "workspace_write_mode"
+      ]
+    },
+    "codex": {
+      "doctor": {
+        "harness": "codex",
+        "kind": "codex",
+        "executable": "/home/sai/.npm-global/bin/codex",
+        "present": true,
+        "version": "0.153.4",
+        "capabilities": [
+          "custom_base_url",
+          "custom_model",
+          "custom_provider",
+          "json_events",
+          "non_interactive",
+          "read_only_mode",
+          "sandbox",
+          "schema_constrained_output",
+          "sdk_or_rpc",
+          "server_mode",
+          "session_resume",
+          "structured_output",
+          "tool_use",
+          "web_search",
+          "workspace_write_mode"
+        ],
+        "verdict": "PASS"
+      },
+      "version": "0.153.4",
+      "capabilities": [
+        "custom_base_url",
+        "custom_model",
+        "custom_provider",
+        "json_events",
+        "non_interactive",
+        "read_only_mode",
+        "sandbox",
+        "schema_constrained_output",
+        "sdk_or_rpc",
+        "server_mode",
+        "session_resume",
+        "structured_output",
+        "tool_use",
+        "web_search",
+        "workspace_write_mode"
+      ]
+    },
+    "kimi": {
+      "doctor": {
+        "harness": "kimi",
+        "kind": "kimi",
+        "executable": "/home/sai/.kimi-code/bin/kimi",
+        "present": true,
+        "version": "2.0.2",
+        "capabilities": [
+          "custom_model",
+          "custom_provider",
+          "json_events",
+          "non_interactive",
+          "read_only_mode",
+          "sdk_or_rpc",
+          "server_mode",
+          "session_resume",
+          "skills",
+          "structured_output"
+        ],
+        "verdict": "PASS"
+      },
+      "version": "2.0.2",
+      "capabilities": [
+        "custom_model",
+        "custom_provider",
+        "json_events",
+        "non_interactive",
+        "read_only_mode",
+        "sdk_or_rpc",
+        "server_mode",
+        "session_resume",
+        "skills",
+        "structured_output"
+      ]
+    },
+    "pi": {
+      "doctor": {
+        "harness": "pi",
+        "kind": "pi",
+        "executable": "/home/sai/.npm-global/bin/pi",
+        "present": true,
+        "version": "0.85.1",
+        "capabilities": [
+          "custom_base_url",
+          "custom_model",
+          "custom_provider",
+          "non_interactive",
+          "read_only_mode",
+          "sdk_or_rpc",
+          "session_resume",
+          "skills",
+          "structured_output",
+          "tool_use",
+          "workspace_write_mode"
+        ],
+        "verdict": "PASS"
+      },
+      "version": "0.85.1",
+      "capabilities": [
+        "custom_base_url",
+        "custom_model",
+        "custom_provider",
+        "non_interactive",
+        "read_only_mode",
+        "sdk_or_rpc",
+        "session_resume",
+        "skills",
+        "structured_output",
+        "tool_use",
+        "workspace_write_mode"
+      ]
+    },
+    "litellm": {
+      "doctor": {
+        "harness": "litellm",
+        "kind": "litellm",
+        "executable": null,
+        "base_url_env": null,
+        "api_key_env": null,
+        "present": false,
+        "version": null,
+        "capabilities": [],
+        "verdict": "UNAVAILABLE",
+        "note": "env var None not set; endpoint not probed"
+      },
+      "version": null,
+      "capabilities": []
+    },
+    "opencode": {
+      "doctor": {
+        "harness": "opencode",
+        "kind": "opencode",
+        "executable": null,
+        "present": false,
+        "version": null,
+        "capabilities": [],
+        "verdict": "UNAVAILABLE",
+        "note": "executable not found or --help probe failed"
+      },
+      "version": null,
+      "capabilities": []
+    }
+  }
+}

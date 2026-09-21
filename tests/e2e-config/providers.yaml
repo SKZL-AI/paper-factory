@@ -1,0 +1,46 @@
+version: 1
+routing:
+  independence_required_for: [methods_review, statistics_review, adversarial_review, semantic_diff]
+  native_cli_first: true
+  gateway_second: true
+  allow_degraded_independence: true
+providers:
+  claude_native:
+    adapter: claude
+    enabled: auto
+    family: anthropic
+    executable: claude
+    config: {output_format: json}
+  codex_native:
+    adapter: codex
+    enabled: auto
+    family: openai
+    executable: codex
+    config: {use_exec: true, use_json: true}
+  kimi_native:
+    adapter: kimi
+    enabled: auto
+    family: moonshot
+    executable: kimi
+    config: {discover_flags: true}
+  pi_native:
+    adapter: pi
+    enabled: auto
+    family: unknown
+    executable: pi
+    config: {discover_flags: true}
+  paper_gateway:
+    adapter: litellm
+    enabled: auto
+    family: multi
+    base_url_env: PAPER_FACTORY_LITELLM_BASE_URL
+    api_key_env: PAPER_FACTORY_LITELLM_API_KEY
+    config: {smoke_test_before_use: true}
+role_preferences:
+  orchestrator: {preferred: [claude_native, paper_gateway]}
+  writer: {preferred: [kimi_native, codex_native, paper_gateway]}
+  methods_review: {preferred: [codex_native, kimi_native, paper_gateway]}
+  statistics_review: {preferred: [codex_native, kimi_native, paper_gateway]}
+  novelty_review: {preferred: [kimi_native, codex_native, paper_gateway]}
+  adversarial_review: {preferred: [claude_native, codex_native]}
+  semantic_diff: {preferred: [codex_native, kimi_native, paper_gateway]}

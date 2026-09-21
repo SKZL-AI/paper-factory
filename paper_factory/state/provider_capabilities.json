@@ -1,0 +1,209 @@
+{
+  "collected_at": "2026-09-21T21:09:32Z",
+  "providers": {
+    "claude_native": {
+      "doctor": {
+        "harness": "claude_native",
+        "kind": "claude",
+        "executable": "/home/sai/.local/bin/claude",
+        "present": true,
+        "version": "2.1.278",
+        "capabilities": [
+          "custom_model",
+          "custom_provider",
+          "json_events",
+          "non_interactive",
+          "read_only_mode",
+          "schema_constrained_output",
+          "sdk_or_rpc",
+          "session_resume",
+          "skills",
+          "slash_commands",
+          "structured_output",
+          "tool_use",
+          "workspace_write_mode"
+        ],
+        "verdict": "PASS"
+      },
+      "backend": {
+        "provider_family": "anthropic",
+        "model_family": "unknown",
+        "endpoint_alias": null,
+        "basis": "providers.yaml family"
+      },
+      "capabilities": [
+        "custom_model",
+        "custom_provider",
+        "json_events",
+        "non_interactive",
+        "read_only_mode",
+        "schema_constrained_output",
+        "sdk_or_rpc",
+        "session_resume",
+        "skills",
+        "slash_commands",
+        "structured_output",
+        "tool_use",
+        "workspace_write_mode"
+      ],
+      "marking_status": "unknown"
+    },
+    "codex_native": {
+      "doctor": {
+        "harness": "codex_native",
+        "kind": "codex",
+        "executable": "/home/sai/.npm-global/bin/codex",
+        "present": true,
+        "version": "0.153.4",
+        "capabilities": [
+          "custom_base_url",
+          "custom_model",
+          "custom_provider",
+          "json_events",
+          "non_interactive",
+          "read_only_mode",
+          "sandbox",
+          "schema_constrained_output",
+          "sdk_or_rpc",
+          "server_mode",
+          "session_resume",
+          "structured_output",
+          "tool_use",
+          "web_search",
+          "workspace_write_mode"
+        ],
+        "verdict": "PASS"
+      },
+      "backend": {
+        "provider_family": "openai",
+        "model_family": "unknown",
+        "endpoint_alias": null,
+        "basis": "providers.yaml family"
+      },
+      "capabilities": [
+        "custom_base_url",
+        "custom_model",
+        "custom_provider",
+        "json_events",
+        "non_interactive",
+        "read_only_mode",
+        "sandbox",
+        "schema_constrained_output",
+        "sdk_or_rpc",
+        "server_mode",
+        "session_resume",
+        "structured_output",
+        "tool_use",
+        "web_search",
+        "workspace_write_mode"
+      ],
+      "marking_status": "unknown"
+    },
+    "kimi_native": {
+      "doctor": {
+        "harness": "kimi_native",
+        "kind": "kimi",
+        "executable": "/home/sai/.kimi-code/bin/kimi",
+        "present": true,
+        "version": "2.0.2",
+        "capabilities": [
+          "custom_model",
+          "custom_provider",
+          "json_events",
+          "non_interactive",
+          "read_only_mode",
+          "sdk_or_rpc",
+          "server_mode",
+          "session_resume",
+          "skills",
+          "structured_output"
+        ],
+        "verdict": "PASS"
+      },
+      "backend": {
+        "provider_family": "moonshot",
+        "model_family": "unknown",
+        "endpoint_alias": null,
+        "basis": "providers.yaml family"
+      },
+      "capabilities": [
+        "custom_model",
+        "custom_provider",
+        "json_events",
+        "non_interactive",
+        "read_only_mode",
+        "sdk_or_rpc",
+        "server_mode",
+        "session_resume",
+        "skills",
+        "structured_output"
+      ],
+      "marking_status": "unknown"
+    },
+    "pi_native": {
+      "doctor": {
+        "harness": "pi_native",
+        "kind": "pi",
+        "executable": "/home/sai/.npm-global/bin/pi",
+        "present": true,
+        "version": "0.85.1",
+        "capabilities": [
+          "custom_base_url",
+          "custom_model",
+          "custom_provider",
+          "non_interactive",
+          "read_only_mode",
+          "sdk_or_rpc",
+          "session_resume",
+          "skills",
+          "structured_output",
+          "tool_use",
+          "workspace_write_mode"
+        ],
+        "verdict": "PASS"
+      },
+      "backend": {
+        "provider_family": "unknown",
+        "model_family": "unknown",
+        "endpoint_alias": null,
+        "basis": "none"
+      },
+      "capabilities": [
+        "custom_base_url",
+        "custom_model",
+        "custom_provider",
+        "non_interactive",
+        "read_only_mode",
+        "sdk_or_rpc",
+        "session_resume",
+        "skills",
+        "structured_output",
+        "tool_use",
+        "workspace_write_mode"
+      ],
+      "marking_status": "unknown"
+    },
+    "paper_gateway": {
+      "doctor": {
+        "harness": "paper_gateway",
+        "kind": "litellm",
+        "executable": null,
+        "base_url_env": "PAPER_FACTORY_LITELLM_BASE_URL",
+        "api_key_env": "PAPER_FACTORY_LITELLM_API_KEY",
+        "present": false,
+        "version": null,
+        "capabilities": [],
+        "verdict": "UNAVAILABLE",
+        "note": "env var 'PAPER_FACTORY_LITELLM_BASE_URL' not set; endpoint not probed"
+      },
+      "backend": {
+        "provider_family": "multi",
+        "model_family": "unknown",
+        "endpoint_alias": null,
+        "basis": "providers.yaml family"
+      },
+      "capabilities": [],
+      "marking_status": "unknown"
+    }
+  }
+}

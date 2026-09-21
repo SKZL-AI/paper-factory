@@ -1,22 +1,22 @@
 {
-  "started_at": "2026-09-21T20:54:55Z",
+  "started_at": "2026-09-21T20:44:29Z",
   "doctor": {
     "executable": "/home/sai/paper-factory/.venv/bin/hoh",
     "present": true,
     "herdr": true,
     "bwrap": true
   },
-  "run_id": "PF-e05758a3-P05",
+  "run_id": "PF-P05-20260921T204429Z",
   "verdict": "FAIL",
   "receipts": [],
   "note": "",
   "accepted": false,
   "blocked_kind": null,
-  "stage": "DEVELOPING",
+  "stage": "PLANNING",
   "detail": {
     "run_rc": 1,
-    "stage": "DEVELOPING",
+    "stage": "PLANNING",
     "condition": "BLOCKED"
   },
-  "finished_at": "2026-09-21T20:56:16Z"
+  "finished_at": "2026-09-21T20:44:30Z"
 }

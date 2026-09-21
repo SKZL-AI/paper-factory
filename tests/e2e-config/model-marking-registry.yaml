@@ -1,0 +1,47 @@
+version: 1
+policy_note: This registry reports only documented status. Unknown does not mean unmarked.
+entries:
+  - provider_family: anthropic
+    model_family: claude
+    status: documented_marking
+    scope: generated_text
+    verified_at: "2026-09-17"
+    source_type: official_provider_documentation
+    source: "Anthropic: How Claude's text watermark works"
+    notes: Excluded from final-prose writing when strict provenance policy is enabled.
+  - provider_family: openai
+    model_family: "*"
+    status: unknown
+    scope: generated_text
+    verified_at: "2026-09-17"
+    source_type: not_asserted
+  - provider_family: moonshot
+    model_family: kimi
+    status: unknown
+    scope: generated_text
+    verified_at: "2026-09-17"
+    source_type: not_asserted
+  - provider_family: zai
+    model_family: glm
+    status: unknown
+    scope: generated_text
+    verified_at: "2026-09-17"
+    source_type: not_asserted
+  - provider_family: deepseek
+    model_family: deepseek
+    status: unknown
+    scope: generated_text
+    verified_at: "2026-09-17"
+    source_type: not_asserted
+  - provider_family: paper-factory
+    model_family: deterministic
+    status: not_applicable
+    scope: generated_text
+    verified_at: "2026-09-21"
+    source_type: local_provenance
+  - provider_family: human
+    model_family: human
+    status: human
+    scope: authored_text
+    verified_at: "2026-09-17"
+    source_type: local_provenance

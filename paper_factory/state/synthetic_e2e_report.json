@@ -1,0 +1,11 @@
+{
+  "collected_at": "2026-09-21T21:10:25Z",
+  "exit_code": 1,
+  "summary_line": "1 failed, 60 passed in 42.75s",
+  "stdout_tail": [
+    "........................................F....................            [100%]",
+    "=========================== short test summary info ============================",
+    "FAILED tests/test_e2e_synthetic.py::test_17_hoh_receipts_exist - AssertionErr...",
+    "1 failed, 60 passed in 42.75s"
+  ]
+}

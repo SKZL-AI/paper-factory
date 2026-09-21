@@ -1,0 +1,45 @@
+version: 1
+paper:
+  id: auto
+  title: null
+  target: preprint
+  canonical_format: latex
+  draft_is_authoritative: false
+inputs:
+  mode: auto
+  paths: []
+  chats:
+    enabled: true
+    local_discovery: true
+    extra_paths: []
+    hidden_chain_of_thought: forbidden
+evidence:
+  authority_order: [T0, T1, T2, T3, T4]
+  require_claim_ids: true
+  require_number_provenance: true
+literature:
+  paperqa2: true
+  crossref: true
+  openalex: true
+  semantic_scholar: true
+  zotero: auto
+  scite: auto
+  unpaywall: auto
+verification:
+  veriharness: required_for_acceptance
+  herdr: preferred
+  model_diversity: preferred
+  block_on_unresolved_major: true
+  global_closure: true
+  hoh_nodes: []
+paperpal:
+  mode: auto
+  api_if_supported: true
+  manual_bridge_if_needed: true
+  semantic_diff_after_edit: true
+release:
+  clean_build: true
+  secret_scan: true
+  include_chat_logs: false
+  include_internal_reviews: false
+  require_human_final_signoff: true

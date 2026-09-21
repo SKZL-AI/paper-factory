@@ -20,7 +20,8 @@ import yaml
 
 REPO = Path(__file__).resolve().parents[1]
 FIXTURE = REPO / "fixtures" / "synthetic_project"
-CONFIG = Path("/home/sai/.config/paper-factory")
+# E2E runs must never spend quota: this config disables HoH (hoh_nodes: []).
+CONFIG = Path(__file__).resolve().parent / "e2e-config"
 CLI = [str(REPO / ".venv/bin/paper-factory")]
 
 

@@ -1,0 +1,38 @@
+version: 1
+frontends:
+  preferred_interactive: opencode
+  allowed: [shell, opencode, pi, kimi, claude, codex]
+provenance:
+  disallow_anthropic_generated_final_prose: true
+  unknown_backend_final_prose: deny
+  enforce_path_guard: true
+  do_not_claim_watermark_free_without_evidence: true
+protected_final_prose_paths:
+  - paper/main.tex
+  - paper/sections/**/*.tex
+  - paper/appendix/**/*.tex
+  - paper/generated/captions*.tex
+  - paper/cover_letter.*
+  - paper/response_to_reviewers.*
+role_policy:
+  manuscript_writer:
+    writes_final_prose: true
+    forbidden_model_families: [claude]
+    unknown_backend: deny
+    preferred_harnesses: [opencode, pi, kimi]
+  abstract_writer:
+    writes_final_prose: true
+    forbidden_model_families: [claude]
+    unknown_backend: deny
+  adversarial_reviewer:
+    writes_final_prose: false
+    sandbox: read-only
+    preferred_different_family_from: manuscript_writer
+  methods_reviewer: {writes_final_prose: false, sandbox: read-only}
+  statistics_reviewer: {writes_final_prose: false, sandbox: read-only}
+  code_auditor: {writes_final_prose: false}
+  research_planner: {writes_final_prose: false}
+paperpal:
+  apply_mode: report_only_or_reviewed
+  direct_rewrite_is_external_origin: true
+  semantic_diff_required: true

@@ -1,0 +1,90 @@
+{
+  "collected_at": "2026-09-21T21:09:36Z",
+  "policy": {
+    "disallow_anthropic_generated_final_prose": true,
+    "unknown_backend_final_prose": "deny",
+    "enforce_path_guard": true,
+    "do_not_claim_watermark_free_without_evidence": true
+  },
+  "protected_paths": [
+    "paper/main.tex",
+    "paper/sections/**/*.tex",
+    "paper/appendix/**/*.tex",
+    "paper/generated/captions*.tex",
+    "paper/cover_letter.*",
+    "paper/response_to_reviewers.*"
+  ],
+  "marking_registry": [
+    {
+      "provider_family": "anthropic",
+      "model_family": "claude",
+      "status": "documented_marking",
+      "scope": "generated_text",
+      "verified_at": "2026-09-17",
+      "source_type": "official_provider_documentation",
+      "source": "Anthropic: How Claude's text watermark works",
+      "notes": "Excluded from final-prose writing when strict provenance policy is enabled."
+    },
+    {
+      "provider_family": "openai",
+      "model_family": "*",
+      "status": "unknown",
+      "scope": "generated_text",
+      "verified_at": "2026-09-17",
+      "source_type": "not_asserted",
+      "source": null,
+      "notes": null
+    },
+    {
+      "provider_family": "moonshot",
+      "model_family": "kimi",
+      "status": "unknown",
+      "scope": "generated_text",
+      "verified_at": "2026-09-17",
+      "source_type": "not_asserted",
+      "source": null,
+      "notes": null
+    },
+    {
+      "provider_family": "zai",
+      "model_family": "glm",
+      "status": "unknown",
+      "scope": "generated_text",
+      "verified_at": "2026-09-17",
+      "source_type": "not_asserted",
+      "source": null,
+      "notes": null
+    },
+    {
+      "provider_family": "deepseek",
+      "model_family": "deepseek",
+      "status": "unknown",
+      "scope": "generated_text",
+      "verified_at": "2026-09-17",
+      "source_type": "not_asserted",
+      "source": null,
+      "notes": null
+    },
+    {
+      "provider_family": "paper-factory",
+      "model_family": "deterministic",
+      "status": "not_applicable",
+      "scope": "generated_text",
+      "verified_at": "2026-09-21",
+      "source_type": "local_provenance",
+      "source": null,
+      "notes": null
+    },
+    {
+      "provider_family": "human",
+      "model_family": "human",
+      "status": "human",
+      "scope": "authored_text",
+      "verified_at": "2026-09-17",
+      "source_type": "local_provenance",
+      "source": null,
+      "notes": null
+    }
+  ],
+  "honesty_note": "Report language is 'Claude-origin final prose excluded' when the policy holds — never 'watermark-free'."
+}

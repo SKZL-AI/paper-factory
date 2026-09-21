@@ -126,8 +126,15 @@ class VeriharnessAdapter:
                             planner: str = "claude", developer: str = "kimi",
                             qa: str = "codex", iterations: int = 1,
                             dry_run: bool = False) -> HohResult:
-        """Map one PF node to one HoH run. Serialized per workspace."""
-        run_id = f"{RUN_PREFIX}{node_id}-{utcnow().replace(':', '').replace('-', '')}"
+        """Map one PF node to one HoH run. Serialized per workspace.
+
+        run_id scheme: PF-<rand8>-<node> — the random part sits BEFORE the
+        truncation point of herdr's agent-name derivation (observed truncation
+        ~24 chars: 'hoh-pf-p05-20260-planner'), so names stay unique per run.
+        """
+        import uuid
+
+        run_id = f"{RUN_PREFIX}{uuid.uuid4().hex[:8]}-{node_id}"
         if dry_run:
             return HohResult(run_id=run_id, verdict=Verdict.NOT_RUN, accepted=None,
                              blocked_kind=None, stage=None,
@@ -163,6 +170,7 @@ class VeriharnessAdapter:
 
         state = self._read_state(run_id)
         receipts = self._collect_receipts(run_id)
+        self._cleanup_panes(run_id, state)
         blocked_kind = state.get("blocked_kind")  # read directly, not the launcher verdict
         accepted = bool(state.get("last_accepted_candidate"))
         if blocked_kind:
@@ -181,6 +189,23 @@ class VeriharnessAdapter:
         if p.exists():
             return json.loads(p.read_text(encoding="utf-8"))
         return {}
+
+    def _cleanup_panes(self, run_id: str, state: dict[str, Any]) -> None:
+        """Close Herdr tabs THIS run spawned (they are listed in the run's
+        active_tasks). Foreign panes are never touched. Failure to clean is
+        recorded, not fatal."""
+        tabs = {t.get("herdr_tab_id") for t in state.get("active_tasks", [])
+                if t.get("herdr_tab_id")}
+        if not tabs or not shutil.which("herdr"):
+            return
+        closed, failed = [], []
+        for tab_id in sorted(tabs):
+            proc = subprocess.run(["herdr", "tab", "close", tab_id],
+                                  capture_output=True, text=True, timeout=30)
+            (closed if proc.returncode == 0 else failed).append(tab_id)
+        if closed or failed:
+            write_json(self.runs_root / f"{run_id}.pane_cleanup.json",
+                       {"at": utcnow(), "closed": closed, "failed": failed})
 
     def _collect_receipts(self, run_id: str) -> list[dict[str, Any]]:
         out = []
