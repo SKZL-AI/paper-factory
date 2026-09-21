@@ -283,3 +283,28 @@ def test_18_herdr_runtime_evidence():
         assert status["endpoint"]["workspace_id"]
     else:
         assert status["verdict"] == "DEGRADED_RUNTIME"
+
+
+def test_19_u7_detects_evidence_tampering(full_run):
+    """Regression for the U7 ImportError mask: tampering with an evidence file
+    after intake must make U7 FAIL (not NOT_RUN, not PASS)."""
+    from paper_factory.core.config import load_config
+    from paper_factory.dag.executor import NodeContext
+    from paper_factory.release.closure import _u7
+    from paper_factory.state.store import Workspace
+
+    ws = Workspace(full_run["proj"])
+    pf, prov, pol, reg = load_config(CONFIG)
+    ctx = NodeContext(workspace=ws, run_id="u7-tamper", config=pf,
+                      providers=prov, policy=pol, marking=reg)
+    target = ws.target_root / "results" / "experiment_runs.csv"
+    original = target.read_bytes()
+    try:
+        target.write_bytes(original + b"\n# tampered")
+        state, note = _u7(ctx)
+        assert state == "FAIL", f"U7 must FAIL on tampered evidence, got {state}: {note}"
+    finally:
+        target.write_bytes(original)
+    state, note = _u7(ctx)
+    assert state in ("PASS", "FAIL")  # FAIL ok if receipts missing for this run id; never NOT_RUN
+    assert state != "NOT_RUN", f"U7 masked an error again: {note}"

@@ -90,6 +90,14 @@ def render_dashboard(workspace_reports: Path | None = None, out: Path | None = N
                      html.escape(str(r["evidence"])[:110])])
                 for r in matrix.get("requirements", [])]
 
+    e2e_rows = [row([html.escape(t["name"]), _badge(t["state"]),
+                     f"{t['time_s']}s"]) for t in e2e.get("tests", [])]
+    e2e_html = (f"<p>exit={e2e.get('exit_code', '—')} · "
+                f"{html.escape(str(e2e.get('summary_line', '—')))}</p>"
+                f"<table>{''.join(e2e_rows)}</table>" if e2e.get("tests")
+                else f"<p>exit={e2e.get('exit_code', '—')} · "
+                     f"{html.escape(str(e2e.get('summary_line', '—')))}</p>")
+
     hoh_html = ""
     if hoh:
         hoh_html = (f"<p>Run <code>{html.escape(str(hoh.get('run_id')))}</code> — "
@@ -131,8 +139,8 @@ def render_dashboard(workspace_reports: Path | None = None, out: Path | None = N
 <h2>5 · HoH-Live-Evidenz</h2>
 <div class="card">{hoh_html}</div>
 
-<h2>6 · Synthetischer E2E</h2>
-<div class="card"><p>exit={e2e.get('exit_code', '—')} · {html.escape(str(e2e.get('summary_line', '—')))}</p></div>
+<h2>6 · Synthetischer E2E (18 Akzeptanztests + Suite)</h2>
+<div class="card">{e2e_html}</div>
 
 <h2>7 · Parallelitäts-Audit (B1 / O177)</h2>
 <div class="card"><p>{html.escape(str(concurrency.get('verdict', '—')))}</p>

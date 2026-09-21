@@ -6,7 +6,7 @@ __pycache__/
 build/
 dist/
 state/runs.sqlite*
-release/
+/release/
 paper/build/
 *.pyc
 .archiv/

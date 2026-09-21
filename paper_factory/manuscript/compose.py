@@ -131,11 +131,9 @@ def run_finalize_main(ctx: NodeContext) -> NodeOutcome:
     main = ws.paper_dir / "main.tex"
     if not main.exists():
         return NodeOutcome(Verdict.FAIL, {"reason": "main.tex missing (P15 must run first)"})
-    decision = decide_write("paper/main.tex", role="manuscript_writer",
-                            backend=DETERMINISTIC_BACKEND, policy=ctx.policy,
-                            marking=ctx.marking)
-    if not decision.allowed:
-        return NodeOutcome(Verdict.FAIL, {"reason": decision.reason})
+    decide_write("paper/main.tex", role="manuscript_writer",
+                 backend=DETERMINISTIC_BACKEND, policy=ctx.policy,
+                 marking=ctx.marking)  # raises on denial
     text = main.read_text(encoding="utf-8")
     title = ctx.config.paper.title or ws.target_root.name.replace("_", " ").title()
     text = (text.replace("<<PF:title>>", title)

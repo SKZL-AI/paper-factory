@@ -179,7 +179,7 @@ def run_integrity_audit(ctx: NodeContext) -> NodeOutcome:
         for m in num_pat.finditer(text):
             if any(sp[0] - 12 <= m.start() <= sp[1] + 2 for sp in sig_spans):
                 continue  # part of a p-value expression, not a result number
-            val = float(m.group(0))
+            val = float(m.group(0).rstrip("%"))
             if not true_values:
                 continue
             decimals = len(m.group(0).split(".")[1]) if "." in m.group(0) else 0

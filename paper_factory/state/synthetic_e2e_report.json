@@ -1,9 +1,377 @@
 {
-  "collected_at": "2026-09-21T21:18:23Z",
+  "collected_at": "2026-09-21T22:47:33Z",
   "exit_code": 0,
-  "summary_line": "61 passed in 39.93s",
+  "summary_line": "61 passed in 40.25s",
+  "tests": [
+    {
+      "name": "test_doctor_runs_without_error[claude]",
+      "class": "tests.test_adapters",
+      "state": "PASS",
+      "time_s": 0.12
+    },
+    {
+      "name": "test_doctor_runs_without_error[codex]",
+      "class": "tests.test_adapters",
+      "state": "PASS",
+      "time_s": 0.11
+    },
+    {
+      "name": "test_doctor_runs_without_error[kimi]",
+      "class": "tests.test_adapters",
+      "state": "PASS",
+      "time_s": 1.31
+    },
+    {
+      "name": "test_doctor_runs_without_error[pi]",
+      "class": "tests.test_adapters",
+      "state": "PASS",
+      "time_s": 0.4
+    },
+    {
+      "name": "test_doctor_runs_without_error[litellm]",
+      "class": "tests.test_adapters",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_doctor_runs_without_error[opencode]",
+      "class": "tests.test_adapters",
+      "state": "PASS",
+      "time_s": 0.07
+    },
+    {
+      "name": "test_installed_harnesses_are_present[claude]",
+      "class": "tests.test_adapters",
+      "state": "PASS",
+      "time_s": 0.1
+    },
+    {
+      "name": "test_installed_harnesses_are_present[codex]",
+      "class": "tests.test_adapters",
+      "state": "PASS",
+      "time_s": 0.12
+    },
+    {
+      "name": "test_installed_harnesses_are_present[kimi]",
+      "class": "tests.test_adapters",
+      "state": "PASS",
+      "time_s": 1.24
+    },
+    {
+      "name": "test_installed_harnesses_are_present[pi]",
+      "class": "tests.test_adapters",
+      "state": "PASS",
+      "time_s": 0.41
+    },
+    {
+      "name": "test_opencode_unavailable_not_error",
+      "class": "tests.test_adapters",
+      "state": "PASS",
+      "time_s": 0.07
+    },
+    {
+      "name": "test_litellm_unavailable_without_base_url",
+      "class": "tests.test_adapters",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_capabilities_from_cached_help",
+      "class": "tests.test_adapters",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_capabilities_empty_help_yields_nothing",
+      "class": "tests.test_adapters",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_rules_only_use_known_capability_strings",
+      "class": "tests.test_adapters",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_real_capabilities_match_probe",
+      "class": "tests.test_adapters",
+      "state": "PASS",
+      "time_s": 0.17
+    },
+    {
+      "name": "test_invoke_mocked_receipt_hashes",
+      "class": "tests.test_adapters",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_build_argv_noninteractive[claude---print]",
+      "class": "tests.test_adapters",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_build_argv_noninteractive[codex-exec+--skip-git-repo-check]",
+      "class": "tests.test_adapters",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_build_argv_noninteractive[kimi---prompt]",
+      "class": "tests.test_adapters",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_build_argv_noninteractive[pi---print]",
+      "class": "tests.test_adapters",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_invoke_raises_when_unavailable",
+      "class": "tests.test_adapters",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_litellm_invoke_mocked",
+      "class": "tests.test_adapters",
+      "state": "PASS",
+      "time_s": 0.06
+    },
+    {
+      "name": "test_receipt_to_jsonl",
+      "class": "tests.test_adapters",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_01_code_only",
+      "class": "tests.test_e2e_synthetic",
+      "state": "PASS",
+      "time_s": 4.89
+    },
+    {
+      "name": "test_02_data_only",
+      "class": "tests.test_e2e_synthetic",
+      "state": "PASS",
+      "time_s": 3.91
+    },
+    {
+      "name": "test_03_draft_assisted",
+      "class": "tests.test_e2e_synthetic",
+      "state": "PASS",
+      "time_s": 2.45
+    },
+    {
+      "name": "test_04_mixed_evidence",
+      "class": "tests.test_e2e_synthetic",
+      "state": "PASS",
+      "time_s": 13.09
+    },
+    {
+      "name": "test_05_chat_ingestion",
+      "class": "tests.test_e2e_synthetic",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_06_false_citation_caught",
+      "class": "tests.test_e2e_synthetic",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_07_unsupported_claim_caught",
+      "class": "tests.test_e2e_synthetic",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_08_altered_number_caught",
+      "class": "tests.test_e2e_synthetic",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_09_major_finding_blocks_closure",
+      "class": "tests.test_e2e_synthetic",
+      "state": "PASS",
+      "time_s": 0.01
+    },
+    {
+      "name": "test_10_provider_failure_classified",
+      "class": "tests.test_e2e_synthetic",
+      "state": "PASS",
+      "time_s": 0.07
+    },
+    {
+      "name": "test_11_alternative_provider_resume",
+      "class": "tests.test_e2e_synthetic",
+      "state": "PASS",
+      "time_s": 1.88
+    },
+    {
+      "name": "test_12_same_family_review_marked_degraded",
+      "class": "tests.test_e2e_synthetic",
+      "state": "PASS",
+      "time_s": 2.47
+    },
+    {
+      "name": "test_13_forbidden_final_prose_origin_blocked",
+      "class": "tests.test_e2e_synthetic",
+      "state": "PASS",
+      "time_s": 0.01
+    },
+    {
+      "name": "test_14_paperpal_absence_human_required",
+      "class": "tests.test_e2e_synthetic",
+      "state": "PASS",
+      "time_s": 4.6
+    },
+    {
+      "name": "test_15_clean_bundle_rebuild",
+      "class": "tests.test_e2e_synthetic",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_16_secret_leak_fails_closed",
+      "class": "tests.test_e2e_synthetic",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_17_hoh_receipts_exist",
+      "class": "tests.test_e2e_synthetic",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_18_herdr_runtime_evidence",
+      "class": "tests.test_e2e_synthetic",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_statistics_module_importable",
+      "class": "tests.test_figures_tables_manuscript",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_figure_plan",
+      "class": "tests.test_figures_tables_manuscript",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_figure_generation",
+      "class": "tests.test_figures_tables_manuscript",
+      "state": "PASS",
+      "time_s": 0.67
+    },
+    {
+      "name": "test_table_plan_and_generation",
+      "class": "tests.test_figures_tables_manuscript",
+      "state": "PASS",
+      "time_s": 0.01
+    },
+    {
+      "name": "test_manuscript_architecture_and_idempotency",
+      "class": "tests.test_figures_tables_manuscript",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_section_check",
+      "class": "tests.test_figures_tables_manuscript",
+      "state": "PASS",
+      "time_s": 0.01
+    },
+    {
+      "name": "test_selects_first_preferred",
+      "class": "tests.test_router",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_forbidden_model_family_is_blocked",
+      "class": "tests.test_router",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_forbidden_family_no_fallback_raises",
+      "class": "tests.test_router",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_unknown_backend_deny",
+      "class": "tests.test_router",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_unknown_backend_allow_selects",
+      "class": "tests.test_router",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_independence_picks_different_family",
+      "class": "tests.test_router",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_independence_degraded_is_explicit",
+      "class": "tests.test_router",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_independence_not_allowed_raises",
+      "class": "tests.test_router",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_writes_final_prose_hard_block",
+      "class": "tests.test_router",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_marking_documented_blocks_final_prose",
+      "class": "tests.test_router",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_anthropic_final_prose_disallowed",
+      "class": "tests.test_router",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_invoke_success_writes_receipt",
+      "class": "tests.test_router",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_invoke_blocked_writes_no_receipt",
+      "class": "tests.test_router",
+      "state": "PASS",
+      "time_s": 0.0
+    }
+  ],
   "stdout_tail": [
     ".............................................................            [100%]",
-    "61 passed in 39.93s"
+    "61 passed in 40.25s"
   ]
 }

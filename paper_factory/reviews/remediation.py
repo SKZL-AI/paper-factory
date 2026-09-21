@@ -30,14 +30,17 @@ def run_remediation(ctx: NodeContext) -> NodeOutcome:
                 # significance/unsupported claims: retire them from the claim graph
                 retired = []
                 for c in graph.claims:
-                    if c.status in (ClaimStatus.UNSUPPORTED, ClaimStatus.PROPOSED):
+                    if c.status in (ClaimStatus.UNSUPPORTED, ClaimStatus.PROPOSED,
+                                    ClaimStatus.CONTRADICTED):
                         c.status = ClaimStatus.RETIRED
                         retired.append(c.claim_id)
                 entry.update(action="retire_unsupported_claims", retired=retired)
-                # verification-based disposition: the finding is resolved iff the
-                # post-condition demonstrably holds, not because we acted.
+                # verification-based disposition: resolved iff the post-condition
+                # demonstrably holds AFTER the pass — CONTRADICTED claims must not
+                # slip through with a vacuous "resolved".
                 outstanding = [c.claim_id for c in graph.claims
-                               if c.status in (ClaimStatus.UNSUPPORTED, ClaimStatus.PROPOSED)]
+                               if c.status in (ClaimStatus.UNSUPPORTED, ClaimStatus.PROPOSED,
+                                               ClaimStatus.CONTRADICTED)]
                 if not outstanding:
                     f.disposition = Disposition.RESOLVED
                     f.disposition_reason = ("post-condition verified: no unsupported or proposed "

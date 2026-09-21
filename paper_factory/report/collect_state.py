@@ -75,13 +75,27 @@ def collect_provenance_policy_report(config_dir: Path | None = None) -> dict:
 
 def collect_e2e_report() -> dict:
     import subprocess
+    import xml.etree.ElementTree as ET
 
+    junit = STATE_DIR / "e2e_junit.xml"
     proc = subprocess.run(
         [str(STATE_DIR.parents[1] / ".venv/bin/python"), "-m", "pytest", "tests/", "-q",
-         "--tb=no", "-p", "no:cacheprovider"],
+         "--tb=no", "-p", "no:cacheprovider", f"--junitxml={junit}"],
         cwd=STATE_DIR.parents[1], capture_output=True, text=True, timeout=1200)
+    tests = []
+    if junit.exists():
+        tree = ET.parse(junit)
+        for tc in tree.iter("testcase"):
+            state = "PASS"
+            if tc.find("failure") is not None:
+                state = "FAIL"
+            elif tc.find("skipped") is not None:
+                state = "NOT_RUN"
+            tests.append({"name": tc.get("name"), "class": tc.get("classname"),
+                          "state": state, "time_s": round(float(tc.get("time", 0)), 2)})
     out = {"collected_at": utcnow(), "exit_code": proc.returncode,
            "summary_line": proc.stdout.strip().splitlines()[-1] if proc.stdout else "",
+           "tests": tests,
            "stdout_tail": proc.stdout.strip().splitlines()[-30:]}
     write_json(STATE_DIR / "synthetic_e2e_report.json", out)
     return out
