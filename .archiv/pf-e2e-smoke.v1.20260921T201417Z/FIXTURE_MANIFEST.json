@@ -1,0 +1,34 @@
+{
+  "fixture_version": "1.0",
+  "topic": "Bloom-Filter vs. Cuckoo-Filter: False-Positive-Rate unter wachsender Last",
+  "reproduce": {
+    "experiment": "python3 code/run_experiment.py",
+    "analysis": "python3 code/analyze.py"
+  },
+  "defects": {
+    "false_citation": {
+      "bib_key": "schmidt2024adaptive",
+      "doi": "10.9999/fake.bloom.2024",
+      "cited_in": "draft/paper_draft.md",
+      "note": "Erfundener Eintrag (Autoren, Titel, Journal, DOI sind fingiert); wird im Draft als [4] in Abstract, Introduction und Discussion zitiert."
+    },
+    "unsupported_claim": {
+      "text": "Cuckoo-Filter ist bei 95% Last um 40% schneller bei Lookups (\"40% faster for lookups at that load level\")",
+      "location": "draft/paper_draft.md",
+      "why_unsupported": "lookup time never measured"
+    },
+    "altered_number": {
+      "location": "draft/paper_draft.md",
+      "draft_value": 0.021,
+      "true_value_source": "results/summary.json",
+      "true_value": 0.014633333333333333,
+      "note": "Draft (Results, Prosa) nennt Bloom-FPR 0.021 bei 90% Last; summary.json sagt mean_fpr=0.014633333333333333 (n=3, std=0.00245017006212494). Die Tabelle im selben Draft zeigt korrekt 0.0146."
+    },
+    "major_review_issue": {
+      "text": "significance claimed without test",
+      "location": "draft/paper_draft.md",
+      "note": "Draft behauptet \"statistically significant (p < 0.01)\", aber n=3 Seeds, es wurde kein statistischer Test gerechnet und keiner im Methods-Teil beschrieben. Muss ein Reviewer als MAJOR finden."
+    }
+  },
+  "expected_input_mode": "MIXED_EVIDENCE"
+}

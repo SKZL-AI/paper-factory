@@ -1,0 +1,54 @@
+version: 1
+claims:
+- claim_id: C001
+  type: empirical
+  statement: '[3] improves on the Bloom filter by supporting
+
+    deletion and by bounding the FPR through fingerprint-based partial-key
+
+    cuckoo hashing.'
+  status: EVIDENCE_FOUND
+  evidence:
+  - evidence_ledger
+  external_support: []
+  contradictions: []
+  risk:
+    overclaim: low
+- claim_id: C002
+  type: empirical
+  statement: 'Above that point the Bloom
+
+    filter''s false-positive rate climbs steeply, reaching 0.'
+  status: EVIDENCE_FOUND
+  evidence:
+  - evidence_ledger
+  external_support: []
+  contradictions: []
+  risk:
+    overclaim: low
+- claim_id: C003
+  type: empirical
+  statement: 'The difference between the two
+
+    structures at high load is statistically significant (p < 0.'
+  status: RETIRED
+  evidence: []
+  external_support: []
+  contradictions: []
+  risk:
+    overclaim: high
+- claim_id: C004
+  type: empirical
+  statement: 'In our runs the Cuckoo filter was roughly
+
+    an order of magnitude better at 95% load, and at that load level it was
+
+    also 40% faster for lookups, which makes it attractive for latency-sensitive
+
+    read paths.'
+  status: RETIRED
+  evidence: []
+  external_support: []
+  contradictions: []
+  risk:
+    overclaim: high

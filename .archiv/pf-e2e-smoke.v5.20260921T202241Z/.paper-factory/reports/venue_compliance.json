@@ -1,0 +1,39 @@
+{
+  "checked_at": "2026-09-21T20:21:46Z",
+  "venue": "preprint",
+  "checks": {
+    "main_tex_exists": {
+      "pass": true
+    },
+    "bib_exists": {
+      "pass": true
+    },
+    "compiles": {
+      "pass": false,
+      "engine": "/usr/bin/pdflatex",
+      "exit_code": 1,
+      "pdf_exists": true,
+      "hard_errors": [
+        "! Missing $ inserted.",
+        "! Missing $ inserted.",
+        "! Missing $ inserted.",
+        "! Missing $ inserted."
+      ],
+      "log_tail": [
+        "nts/type1/public/amsfonts/cm/cmbx12.pfb></usr/share/texlive/texmf-dist/fonts/ty",
+        "pe1/public/amsfonts/cm/cmmi10.pfb></usr/share/texlive/texmf-dist/fonts/type1/pu",
+        "blic/amsfonts/cm/cmmi8.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/am",
+        "sfonts/cm/cmr10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/",
+        "cm/cmr12.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr1",
+        "7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb>",
+        "",
+        "Output written on /tmp/pf-e2e-smoke/.paper-factory/paper/build/main.pdf (2 page",
+        "s, 100145 bytes).",
+        "Transcript written on /tmp/pf-e2e-smoke/.paper-factory/paper/build/main.log."
+      ]
+    }
+  },
+  "failed": [
+    "compiles"
+  ]
+}

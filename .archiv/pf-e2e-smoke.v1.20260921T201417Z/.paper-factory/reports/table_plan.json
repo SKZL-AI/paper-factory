@@ -1,0 +1,25 @@
+{
+  "planned_at": "2026-09-21T20:13:05Z",
+  "metrics_sha256": "21230ac85412d27640a43005d1c0f5610c7257bf59c3dfad4ec4cd7cabdf1d23",
+  "tables": [
+    {
+      "table_id": "tab_experiment_runs",
+      "label": "tab:experiment_runs",
+      "source": "results/experiment_runs.csv",
+      "metric_keys": [
+        "experiment_runs__false_positives",
+        "experiment_runs__fpr",
+        "experiment_runs__n_insert_failed",
+        "experiment_runs__n_inserted",
+        "experiment_runs__n_queries"
+      ],
+      "columns": [
+        "n",
+        "mean",
+        "std",
+        "ci95_halfwidth"
+      ],
+      "caption": "<<PF:caption:tab_experiment_runs>>"
+    }
+  ]
+}

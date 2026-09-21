@@ -1,0 +1,33 @@
+{
+  "generated_at": "2026-09-21T20:14:35Z",
+  "source_script": "paper_factory/tables/build.py",
+  "input_data_hashes": {
+    "reports/paper_metrics.json": "7c9e3f797adff0378c9e3100e8bcf5317adf0ff5cb2515021dbbbbd2c6402564"
+  },
+  "tables": [
+    {
+      "table_id": "tab_experiment_runs",
+      "label": "tab:experiment_runs",
+      "source": "results/experiment_runs.csv",
+      "metric_keys": [
+        "experiment_runs__false_positives",
+        "experiment_runs__fpr",
+        "experiment_runs__n_insert_failed",
+        "experiment_runs__n_inserted",
+        "experiment_runs__n_queries"
+      ],
+      "columns": [
+        "n",
+        "mean",
+        "std",
+        "ci95_halfwidth"
+      ],
+      "caption": "<<PF:caption:tab_experiment_runs>>"
+    }
+  ],
+  "output": {
+    "path": "paper/generated/tables.tex",
+    "sha256": "beb7e3756221b088969df21df0f50a6d616c9fda9dec82bab82048919b5c16b6",
+    "bytes": 599
+  }
+}

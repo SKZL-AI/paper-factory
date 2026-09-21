@@ -1,0 +1,10 @@
+{"evidence_id":"E001","recorded_at":"2026-09-21T20:14:27Z","tier":"T0","kind":"code","path":"code/analyze.py","sha256":"3c3ad482e008eafdf698ba3e10351497d481e1eedd3c25bf2e7071a875a33228","bytes":1645}
+{"evidence_id":"E002","recorded_at":"2026-09-21T20:14:27Z","tier":"T0","kind":"code","path":"code/filters.py","sha256":"86291011c00ba309aa249adaef2805e68c91375aa9da0c3a4db2106560d7fb49","bytes":3316}
+{"evidence_id":"E003","recorded_at":"2026-09-21T20:14:27Z","tier":"T0","kind":"code","path":"code/run_experiment.py","sha256":"91f1de01ba37549cc5cf0c551f712aded4a32935d60768328e1936b64a1fdb57","bytes":3108}
+{"evidence_id":"E004","recorded_at":"2026-09-21T20:14:27Z","tier":"T0","kind":"data","path":"FIXTURE_MANIFEST.json","sha256":"78be06187997031c667004ef7d2f932dd521caa96c371b50a19713033c5c616d","bytes":1594}
+{"evidence_id":"E005","recorded_at":"2026-09-21T20:14:27Z","tier":"T0","kind":"data","path":"results/experiment_runs.csv","sha256":"bcad836d8ff2c62dd8d2f7c2abf78069e9801265d0162fbf1f4c11b4f0499b46","bytes":1758}
+{"evidence_id":"E006","recorded_at":"2026-09-21T20:14:27Z","tier":"T0","kind":"data","path":"results/summary.json","sha256":"ef8958ca206a23f2469d16c55c6346d1791bedf3f3c8057655f159670369d8f6","bytes":1617}
+{"evidence_id":"E007","recorded_at":"2026-09-21T20:14:27Z","tier":"T4","kind":"drafts","path":"draft/paper_draft.md","sha256":"b0bda8dea7092619ff3170613d62bf9ff6f930d9b6291aab986c53df9bbc3ad0","bytes":4172}
+{"evidence_id":"E008","recorded_at":"2026-09-21T20:14:27Z","tier":"T2","kind":"bib","path":"literature/references.bib","sha256":"11f98e7df6a15688ac456ac7e807f270ea047bedbb90ffb3fce280591dbd83e0","bytes":1361}
+{"evidence_id":"E009","recorded_at":"2026-09-21T20:14:27Z","tier":"T3","kind":"chats","path":"history/chat_export.jsonl","sha256":"154b2cbcb1c0fcc71d9b73ad66bcff933f82cc904fd267cca37d457dde05cebd","bytes":2130}
+{"evidence_id":"E010","recorded_at":"2026-09-21T20:14:27Z","tier":"T3","kind":"chats","path":"history/research_notes.md","sha256":"970ab1694daf7f286f027c3136b8fb89d6dad700b8559120f834bf1a26b8d39c","bytes":1335}

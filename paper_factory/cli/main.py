@@ -10,7 +10,7 @@ from pathlib import Path
 from ..core.config import default_config_dir, load_config
 from ..core.util import utcnow, write_json
 from ..dag.executor import Executor, NodeContext, run_status_overall
-from ..dag.handlers import HANDLERS
+from ..dag.handlers import build_handlers
 from ..state.store import Workspace
 
 
@@ -51,7 +51,7 @@ def cmd_plan(args) -> int:
     ws = Workspace(Path(args.root))
     run_id = args.run_id or ws.latest_run_id() or "PLAN"
     ctx = _ctx(args, run_id)
-    ex = Executor(ctx, HANDLERS)
+    ex = Executor(ctx, build_handlers(ctx.config.verification.hoh_nodes))
     _print_json({"run_id": run_id, "plan": ex.plan()})
     return 0
 
@@ -59,7 +59,7 @@ def cmd_plan(args) -> int:
 def _execute(args, run_id: str, resume: bool) -> int:
     ctx = _ctx(args, run_id)
     ctx.workspace.create_run(run_id)
-    ex = Executor(ctx, HANDLERS)
+    ex = Executor(ctx, build_handlers(ctx.config.verification.hoh_nodes))
     if getattr(args, "dry_run", False):
         _print_json({"dry_run": True, "run_id": run_id, "plan": ex.plan()})
         return 0

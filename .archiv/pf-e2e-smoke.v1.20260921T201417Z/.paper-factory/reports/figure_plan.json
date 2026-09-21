@@ -1,0 +1,87 @@
+{
+  "planned_at": "2026-09-21T20:13:05Z",
+  "metrics_sha256": "21230ac85412d27640a43005d1c0f5610c7257bf59c3dfad4ec4cd7cabdf1d23",
+  "figures": [
+    {
+      "figure_id": "fig_experiment_runs__false_positives",
+      "kind": "line",
+      "source": "results/experiment_runs.csv",
+      "metric_key": "experiment_runs__false_positives",
+      "y_field": "false_positives",
+      "x_field": "load",
+      "group_field": "filter",
+      "title": "false_positives vs load by filter",
+      "caption": "<<PF:caption:fig_experiment_runs__false_positives>>",
+      "outputs": {
+        "pdf": "paper/figures/fig_experiment_runs__false_positives.pdf",
+        "svg": "paper/figures/fig_experiment_runs__false_positives.svg",
+        "png": "paper/figures/fig_experiment_runs__false_positives.png"
+      }
+    },
+    {
+      "figure_id": "fig_experiment_runs__fpr",
+      "kind": "line",
+      "source": "results/experiment_runs.csv",
+      "metric_key": "experiment_runs__fpr",
+      "y_field": "fpr",
+      "x_field": "load",
+      "group_field": "filter",
+      "title": "fpr vs load by filter",
+      "caption": "<<PF:caption:fig_experiment_runs__fpr>>",
+      "outputs": {
+        "pdf": "paper/figures/fig_experiment_runs__fpr.pdf",
+        "svg": "paper/figures/fig_experiment_runs__fpr.svg",
+        "png": "paper/figures/fig_experiment_runs__fpr.png"
+      }
+    },
+    {
+      "figure_id": "fig_experiment_runs__n_insert_failed",
+      "kind": "line",
+      "source": "results/experiment_runs.csv",
+      "metric_key": "experiment_runs__n_insert_failed",
+      "y_field": "n_insert_failed",
+      "x_field": "load",
+      "group_field": "filter",
+      "title": "n_insert_failed vs load by filter",
+      "caption": "<<PF:caption:fig_experiment_runs__n_insert_failed>>",
+      "outputs": {
+        "pdf": "paper/figures/fig_experiment_runs__n_insert_failed.pdf",
+        "svg": "paper/figures/fig_experiment_runs__n_insert_failed.svg",
+        "png": "paper/figures/fig_experiment_runs__n_insert_failed.png"
+      }
+    },
+    {
+      "figure_id": "fig_experiment_runs__n_inserted",
+      "kind": "line",
+      "source": "results/experiment_runs.csv",
+      "metric_key": "experiment_runs__n_inserted",
+      "y_field": "n_inserted",
+      "x_field": "load",
+      "group_field": "filter",
+      "title": "n_inserted vs load by filter",
+      "caption": "<<PF:caption:fig_experiment_runs__n_inserted>>",
+      "outputs": {
+        "pdf": "paper/figures/fig_experiment_runs__n_inserted.pdf",
+        "svg": "paper/figures/fig_experiment_runs__n_inserted.svg",
+        "png": "paper/figures/fig_experiment_runs__n_inserted.png"
+      }
+    },
+    {
+      "figure_id": "fig_experiment_runs__n_queries",
+      "kind": "line",
+      "source": "results/experiment_runs.csv",
+      "metric_key": "experiment_runs__n_queries",
+      "y_field": "n_queries",
+      "x_field": "load",
+      "group_field": "filter",
+      "title": "n_queries vs load by filter",
+      "caption": "<<PF:caption:fig_experiment_runs__n_queries>>",
+      "outputs": {
+        "pdf": "paper/figures/fig_experiment_runs__n_queries.pdf",
+        "svg": "paper/figures/fig_experiment_runs__n_queries.svg",
+        "png": "paper/figures/fig_experiment_runs__n_queries.png"
+      }
+    }
+  ],
+  "skipped": []
+}

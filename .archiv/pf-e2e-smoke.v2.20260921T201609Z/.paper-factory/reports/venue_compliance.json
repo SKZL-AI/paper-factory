@@ -1,0 +1,32 @@
+{
+  "checked_at": "2026-09-21T20:14:41Z",
+  "venue": "preprint",
+  "checks": {
+    "main_tex_exists": {
+      "pass": true
+    },
+    "bib_exists": {
+      "pass": true
+    },
+    "compiles": {
+      "pass": false,
+      "engine": "/usr/bin/pdflatex",
+      "exit_code": 1,
+      "log_tail": [
+        "pe1/public/amsfonts/cm/cmmi10.pfb></usr/share/texlive/texmf-dist/fonts/type1/pu",
+        "blic/amsfonts/cm/cmmi6.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/am",
+        "sfonts/cm/cmmi8.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/",
+        "cm/cmr10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr1",
+        "2.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr17.pfb><",
+        "/usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmti10.pfb></usr/s",
+        "hare/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb>",
+        "Output written on /tmp/pf-e2e-smoke/.paper-factory/paper/build/main.pdf (2 page",
+        "s, 127749 bytes).",
+        "Transcript written on /tmp/pf-e2e-smoke/.paper-factory/paper/build/main.log."
+      ]
+    }
+  },
+  "failed": [
+    "compiles"
+  ]
+}

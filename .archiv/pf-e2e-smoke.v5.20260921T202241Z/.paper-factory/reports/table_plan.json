@@ -1,0 +1,25 @@
+{
+  "planned_at": "2026-09-21T20:21:38Z",
+  "metrics_sha256": "810d9e1bf42961016fccdd549cf88e95985a4b0d30e877657a33f3c9d7ea7597",
+  "tables": [
+    {
+      "table_id": "tab_experiment_runs",
+      "label": "tab:experiment_runs",
+      "source": "results/experiment_runs.csv",
+      "metric_keys": [
+        "experiment_runs__false_positives",
+        "experiment_runs__fpr",
+        "experiment_runs__n_insert_failed",
+        "experiment_runs__n_inserted",
+        "experiment_runs__n_queries"
+      ],
+      "columns": [
+        "n",
+        "mean",
+        "std",
+        "ci95_halfwidth"
+      ],
+      "caption": "Aggregated results from results/experiment\\_runs.csv; all values generated from paper_metrics.json (n = seeds per group)."
+    }
+  ]
+}

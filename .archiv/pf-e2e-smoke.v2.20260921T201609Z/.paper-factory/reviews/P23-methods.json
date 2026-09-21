@@ -1,0 +1,39 @@
+{
+  "review_id": "P23-methods",
+  "reviewer": "methods_reviewer",
+  "reviewer_family": "deterministic",
+  "created_at": "2026-09-21T20:14:38Z",
+  "independence": "independent",
+  "findings": [
+    {
+      "finding_id": "P23-methods-F01",
+      "reviewer": "methods_reviewer",
+      "severity": "MAJOR",
+      "category": "methods",
+      "statement": "significance claimed; no statistical test artifact exists",
+      "evidence_refs": [
+        "draft/paper_draft.md"
+      ],
+      "claim_refs": [],
+      "affected_section": "draft/paper_draft.md",
+      "disposition": "RESOLVED",
+      "disposition_reason": "claims retired; manuscript derives numbers from metrics only; no significance without test",
+      "resolved_by": null
+    },
+    {
+      "finding_id": "P23-methods-F02",
+      "reviewer": "methods_reviewer",
+      "severity": "MAJOR",
+      "category": "methods",
+      "statement": "significance claimed; no statistical test artifact exists",
+      "evidence_refs": [
+        "draft/paper_draft.md"
+      ],
+      "claim_refs": [],
+      "affected_section": "draft/paper_draft.md",
+      "disposition": "RESOLVED",
+      "disposition_reason": "claims retired; manuscript derives numbers from metrics only; no significance without test",
+      "resolved_by": null
+    }
+  ]
+}

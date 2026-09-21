@@ -27,27 +27,141 @@ def _doctor(ctx: NodeContext, node: Node) -> NodeOutcome:
     return NodeOutcome(Verdict.DEGRADED if degraded else Verdict.PASS, detail)
 
 
-def _intake(ctx: NodeContext, node: Node) -> NodeOutcome:
-    from ..context.intake import run_intake
+def _lazy(module: str, func: str) -> Handler:
+    def run(ctx: NodeContext, node: Node) -> NodeOutcome:
+        import importlib
 
-    return run_intake(ctx)
+        mod = importlib.import_module(module)
+        return getattr(mod, func)(ctx)
 
-
-def _context_mining(ctx: NodeContext, node: Node) -> NodeOutcome:
-    from ..context.mining import run_context_mining
-
-    return run_context_mining(ctx)
+    return run
 
 
-def _evidence_inventory(ctx: NodeContext, node: Node) -> NodeOutcome:
-    from ..evidence.inventory import run_evidence_inventory
+def _compose(ctx: NodeContext, section: str) -> NodeOutcome:
+    from ..manuscript.compose import run_section_compose
 
-    return run_evidence_inventory(ctx)
+    return run_section_compose(ctx, section)
 
 
-HANDLERS: dict[str, Handler] = {
+def _chain(ctx: NodeContext, handlers: list) -> NodeOutcome:
+    """Run handlers in order; worst verdict wins (FAIL > DEGRADED > PASS)."""
+    order = {Verdict.PASS: 0, Verdict.DEGRADED: 1, Verdict.FAIL: 2,
+             Verdict.HUMAN_REQUIRED: 3, Verdict.NOT_RUN: 4}
+    worst = NodeOutcome(Verdict.PASS, {})
+    details = []
+    for h in handlers:
+        out = h(ctx, None)
+        details.append(out.detail)
+        if order.get(out.verdict, 5) > order.get(worst.verdict, 0):
+            worst = out
+    worst.detail = {"chain": details}
+    return worst
+
+
+_BASE_HANDLERS: dict[str, Handler] = {
     "P00": _doctor,
-    "P01": _intake,
-    "P02": _context_mining,
-    "P04": _evidence_inventory,
+    "P01": _lazy("paper_factory.context.intake", "run_intake"),
+    "P02": _lazy("paper_factory.context.mining", "run_context_mining"),
+    "P03": _lazy("paper_factory.reviews.runners", "run_research_reconstruction"),
+    "P04": _lazy("paper_factory.evidence.inventory", "run_evidence_inventory"),
+    "P05": _lazy("paper_factory.statistics.metrics", "run_integrity_audit"),
+    "P06": _lazy("paper_factory.literature.discovery", "run_literature_discovery"),
+    "P07": _lazy("paper_factory.literature.novelty", "run_novelty_attack"),
+    "P08": _lazy("paper_factory.claims.builder", "run_claim_graph"),
+    "P09": _lazy("paper_factory.statistics.metrics", "run_statistics"),
+    "P10": _lazy("paper_factory.statistics.reproducibility", "run_reproducibility"),
+    "P11": _lazy("paper_factory.figures.build", "run_figure_plan"),
+    "P12": _lazy("paper_factory.tables.build", "run_table_plan"),
+    "P13": _lazy("paper_factory.figures.build", "run_figure_generation"),
+    "P14": _lazy("paper_factory.tables.build", "run_table_generation"),
+    "P15": lambda ctx, node: _chain(ctx, [
+        _lazy("paper_factory.manuscript.scaffold", "run_manuscript_architecture"),
+        _lazy("paper_factory.literature.verify", "build_references"),
+    ]),
+    "P16": lambda ctx, node: _compose(ctx, "methods"),
+    "P17": lambda ctx, node: _compose(ctx, "results"),
+    "P18": lambda ctx, node: _compose(ctx, "introduction"),
+    "P19": lambda ctx, node: _compose(ctx, "discussion"),
+    "P20": lambda ctx, node: _chain(ctx, [
+        lambda c, n: _compose(c, "abstract"),
+        _lazy("paper_factory.manuscript.compose", "run_finalize_main"),
+    ]),
+    "P21": _lazy("paper_factory.literature.verify", "run_citation_audit"),
+    "P22": _lazy("paper_factory.statistics.numbers_audit", "run_numbers_units_audit"),
+    "P23": _lazy("paper_factory.reviews.runners", "run_methods_review"),
+    "P24": _lazy("paper_factory.reviews.runners", "run_statistics_review"),
+    "P25": _lazy("paper_factory.reviews.runners", "run_adversarial_review"),
+    "P26": _lazy("paper_factory.reviews.runners", "run_reproducibility_review"),
+    "P27": _lazy("paper_factory.reviews.remediation", "run_remediation"),
+    "P28": _lazy("paper_factory.reviews.remediation", "run_scientific_freeze"),
+    "P29": _lazy("paper_factory.reviews.runners", "run_language_review"),
+    "P30": _lazy("paper_factory.reviews.runners", "run_semantic_diff"),
+    "P31": _lazy("paper_factory.paperpal.bridge", "run_paperpal"),
+    "P32": _lazy("paper_factory.venue.compliance", "run_venue_compliance"),
+    "P33": _lazy("paper_factory.release.export", "run_clean_export"),
+    "P34": _lazy("paper_factory.release.export", "run_clean_rebuild"),
+    "P35": _lazy("paper_factory.release.closure", "run_global_closure"),
+    "P36": lambda ctx, node: NodeOutcome(Verdict.HUMAN_REQUIRED,
+                                         {"reason": "final sign-off is a human decision"}),
+    "P37": lambda ctx, node: NodeOutcome(Verdict.NOT_RUN,
+                                         {"reason": "no external submission is ever automatic"}),
 }
+
+# verification-grade nodes that route through the HoH adapter when the config
+# enables them (quota-aware subset; default P05 only — see VerificationCfg.hoh_nodes)
+VERIHARNESS_CAPABLE = {"P04", "P05", "P07", "P09", "P10", "P16", "P17", "P18", "P20"}
+
+
+def build_handlers(cfg_hoh_nodes: list[str] | None = None) -> dict[str, Handler]:
+    enabled = set(cfg_hoh_nodes if cfg_hoh_nodes is not None else ["P05"]) & VERIHARNESS_CAPABLE
+    handlers: dict[str, Handler] = dict(_BASE_HANDLERS)
+    for nid in enabled:
+        base = handlers.get(nid)
+        if base is None:
+            continue
+
+        def make_wrapped(node_id: str, base_handler: Handler) -> Handler:
+            def wrapped(ctx: NodeContext, node: Node) -> NodeOutcome:
+                from ..adapters.veriharness.adapter import VeriharnessAdapter
+
+                outcome = base_handler(ctx, node)
+                adapter = VeriharnessAdapter(ctx.workspace)
+                diag = adapter.doctor()
+                if ctx.offline:
+                    outcome.detail["hoh"] = "NOT_RUN"
+                    outcome.detail["hoh_reason"] = "offline mode"
+                    return outcome
+                if not (diag.get("present") and diag.get("herdr")):
+                    outcome.detail["hoh"] = "NOT_RUN"
+                    outcome.detail["hoh_reason"] = ("DEGRADED_RUNTIME" if diag.get("present")
+                                                    else "hoh missing")
+                    return outcome
+                spec = ctx.workspace.sub("hoh-specs") / f"{node_id}.md"
+                spec.write_text(
+                    f"# PF verification node {node_id}: {node.name}\n\n"
+                    f"Work package: the artifacts this node produced under "
+                    f"`.paper-factory/reports/` are the candidate. Verify them.\n"
+                    f"Node detail: {outcome.detail}\n",
+                    encoding="utf-8")
+                result = adapter.verify_work_package(node_id, spec)
+                outcome.detail["hoh_run_id"] = result.run_id
+                outcome.detail["hoh_verdict"] = result.verdict.value
+                outcome.detail["hoh_receipts"] = len(result.receipts)
+                outcome.detail["hoh_blocked_kind"] = result.blocked_kind
+                for r in result.receipts:
+                    ctx.workspace.record_receipt(
+                        r["receipt_file"], ctx.run_id, node_id, "hoh",
+                        ctx.workspace.receipts_dir / "hoh" / result.run_id / r["receipt_file"],
+                        r["sha256"])
+                if outcome.verdict == Verdict.PASS and result.verdict == Verdict.FAIL:
+                    outcome.verdict = Verdict.DEGRADED
+                    outcome.detail["note"] = "deterministic work passed, HoH verification failed"
+                return outcome
+
+            return wrapped
+
+        handlers[nid] = make_wrapped(nid, base)
+    return handlers
+
+
+HANDLERS: dict[str, Handler] = build_handlers()

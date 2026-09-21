@@ -1,0 +1,77 @@
+{
+  "experiment": "bloom_vs_cuckoo_fpr_under_load",
+  "source": "results/experiment_runs.csv",
+  "grouping": "filter x load",
+  "records": [
+    {
+      "filter": "bloom",
+      "load": 0.5,
+      "n": 3,
+      "mean_fpr": 0.0007666666666666667,
+      "std_fpr": 0.00023094010767585029
+    },
+    {
+      "filter": "bloom",
+      "load": 0.7,
+      "n": 3,
+      "mean_fpr": 0.004233333333333333,
+      "std_fpr": 0.0005686240703077328
+    },
+    {
+      "filter": "bloom",
+      "load": 0.8,
+      "n": 3,
+      "mean_fpr": 0.0085,
+      "std_fpr": 0.000953939201416946
+    },
+    {
+      "filter": "bloom",
+      "load": 0.9,
+      "n": 3,
+      "mean_fpr": 0.014633333333333333,
+      "std_fpr": 0.00245017006212494
+    },
+    {
+      "filter": "bloom",
+      "load": 0.95,
+      "n": 3,
+      "mean_fpr": 0.0178,
+      "std_fpr": 0.00268514431641951
+    },
+    {
+      "filter": "cuckoo",
+      "load": 0.5,
+      "n": 3,
+      "mean_fpr": 0.00046666666666666666,
+      "std_fpr": 0.00015275252316519465
+    },
+    {
+      "filter": "cuckoo",
+      "load": 0.7,
+      "n": 3,
+      "mean_fpr": 0.0008333333333333334,
+      "std_fpr": 0.0002081665999466133
+    },
+    {
+      "filter": "cuckoo",
+      "load": 0.8,
+      "n": 3,
+      "mean_fpr": 0.0009333333333333333,
+      "std_fpr": 0.00011547005383792514
+    },
+    {
+      "filter": "cuckoo",
+      "load": 0.9,
+      "n": 3,
+      "mean_fpr": 0.0012,
+      "std_fpr": 0.00026457513110645904
+    },
+    {
+      "filter": "cuckoo",
+      "load": 0.95,
+      "n": 3,
+      "mean_fpr": 0.0013333333333333333,
+      "std_fpr": 0.00025166114784235834
+    }
+  ]
+}

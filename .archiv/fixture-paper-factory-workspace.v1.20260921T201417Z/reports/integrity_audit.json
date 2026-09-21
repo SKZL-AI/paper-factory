@@ -1,0 +1,30 @@
+{
+  "audited_at": "2026-09-21T19:46:19Z",
+  "findings": [
+    {
+      "severity": "MAJOR",
+      "kind": "significance_without_test",
+      "draft": "draft/paper_draft.md",
+      "span": [
+        2741,
+        2766
+      ],
+      "excerpt": ". The difference between the two\nstructures at high load is statistically significant (p < 0.01).\n\n## 4. Discussion\n\nThe meas",
+      "note": "significance claimed; no statistical test artifact exists"
+    },
+    {
+      "severity": "MAJOR",
+      "kind": "significance_without_test",
+      "draft": "draft/paper_draft.md",
+      "span": [
+        2768,
+        2776
+      ],
+      "excerpt": "e two\nstructures at high load is statistically significant (p < 0.01).\n\n## 4. Discussion\n\nThe measured FPR c",
+      "note": "significance claimed; no statistical test artifact exists"
+    }
+  ],
+  "drafts_checked": [
+    "draft/paper_draft.md"
+  ]
+}

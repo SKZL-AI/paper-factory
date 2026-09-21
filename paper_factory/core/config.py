@@ -58,6 +58,9 @@ class VerificationCfg(BaseModel):
     model_diversity: str = "preferred"
     block_on_unresolved_major: bool = True
     global_closure: bool = True
+    # Quota-aware default: one representative verification node gets a real HoH
+    # run; the dashboard reports exactly which nodes carry HoH receipts.
+    hoh_nodes: list[str] = Field(default_factory=lambda: ["P05"])
 
 
 class PaperpalCfg(BaseModel):
@@ -175,7 +178,7 @@ class MarkingRegistry(BaseModel):
     def status_for(self, provider_family: str, model_family: str) -> str:
         for e in self.entries:
             if e.provider_family == provider_family and e.model_family in (model_family, "*"):
-                return e.status.value
+                return str(e.status)
         return "unknown"
 
 

@@ -1,0 +1,203 @@
+{
+  "generated_at": "2026-09-21T20:19:34Z",
+  "source_script": "paper_factory/figures/build.py",
+  "build_command": "/home/sai/paper-factory/.venv/bin/python3 -m paper_factory.figures.build --target /tmp/pf-e2e-smoke",
+  "plan_sha256": "b069707fa60063ef7cff19149c0d4634103a589067f26a41c2035e1cf0c03f18",
+  "figures": [
+    {
+      "figure_id": "fig_experiment_runs__false_positives",
+      "kind": "line",
+      "source": "results/experiment_runs.csv",
+      "input_data_hashes": {
+        "results/experiment_runs.csv": "bcad836d8ff2c62dd8d2f7c2abf78069e9801265d0162fbf1f4c11b4f0499b46"
+      },
+      "parameters": {
+        "kind": "line",
+        "x_field": "load",
+        "y_field": "false_positives",
+        "group_field": "filter",
+        "palette": "okabe-ito",
+        "series_encoding": "color+marker+linestyle",
+        "png_dpi": 150
+      },
+      "caption": "Generated from hashed source data; see manifest for input hashes and parameters.",
+      "files": {
+        "pdf": {
+          "path": "paper/figures/fig_experiment_runs__false_positives.pdf",
+          "sha256": "1ee99fdeed70015184a92dbe8fcf065c5bcfa964da9d3458d95b177d8cf156b9",
+          "bytes": 16416
+        },
+        "svg": {
+          "path": "paper/figures/fig_experiment_runs__false_positives.svg",
+          "sha256": "69b914324c686f869ed8bc5a46c6d1eb71b8c0617435cb1616973fbe7f1f288b",
+          "bytes": 37516
+        },
+        "png": {
+          "path": "paper/figures/fig_experiment_runs__false_positives.png",
+          "sha256": "82f8228b1cdb47d084e166ab6e4b4f3179827b202344a97c80c32c92c6bd32c3",
+          "bytes": 45034
+        }
+      },
+      "validation": {
+        "axis_labels_set": true,
+        "files_nonempty": true
+      }
+    },
+    {
+      "figure_id": "fig_experiment_runs__fpr",
+      "kind": "line",
+      "source": "results/experiment_runs.csv",
+      "input_data_hashes": {
+        "results/experiment_runs.csv": "bcad836d8ff2c62dd8d2f7c2abf78069e9801265d0162fbf1f4c11b4f0499b46"
+      },
+      "parameters": {
+        "kind": "line",
+        "x_field": "load",
+        "y_field": "fpr",
+        "group_field": "filter",
+        "palette": "okabe-ito",
+        "series_encoding": "color+marker+linestyle",
+        "png_dpi": 150
+      },
+      "caption": "Generated from hashed source data; see manifest for input hashes and parameters.",
+      "files": {
+        "pdf": {
+          "path": "paper/figures/fig_experiment_runs__fpr.pdf",
+          "sha256": "0434105eae4e532a938e584edaaa9ff9fd0239e3547907e5bc3bf7d6f715e50c",
+          "bytes": 15992
+        },
+        "svg": {
+          "path": "paper/figures/fig_experiment_runs__fpr.svg",
+          "sha256": "0a113bdfe5dd008693650af32df13ed6f8065a01cbccfe26ee42133dd72967e1",
+          "bytes": 37833
+        },
+        "png": {
+          "path": "paper/figures/fig_experiment_runs__fpr.png",
+          "sha256": "5c791fd7951622d0c1758788466e69003f24dbfc39ff5a800ca38e1547b9618f",
+          "bytes": 44552
+        }
+      },
+      "validation": {
+        "axis_labels_set": true,
+        "files_nonempty": true
+      }
+    },
+    {
+      "figure_id": "fig_experiment_runs__n_insert_failed",
+      "kind": "line",
+      "source": "results/experiment_runs.csv",
+      "input_data_hashes": {
+        "results/experiment_runs.csv": "bcad836d8ff2c62dd8d2f7c2abf78069e9801265d0162fbf1f4c11b4f0499b46"
+      },
+      "parameters": {
+        "kind": "line",
+        "x_field": "load",
+        "y_field": "n_insert_failed",
+        "group_field": "filter",
+        "palette": "okabe-ito",
+        "series_encoding": "color+marker+linestyle",
+        "png_dpi": 150
+      },
+      "caption": "Generated from hashed source data; see manifest for input hashes and parameters.",
+      "files": {
+        "pdf": {
+          "path": "paper/figures/fig_experiment_runs__n_insert_failed.pdf",
+          "sha256": "84c7ff98a3eacaeca9babfab26dae0ed603e21974b41991d0c8e344cc344e577",
+          "bytes": 15753
+        },
+        "svg": {
+          "path": "paper/figures/fig_experiment_runs__n_insert_failed.svg",
+          "sha256": "4456b24c56fc4744d2a6b27b721f4885f4f48419a84614f8b87c684aebf6e92e",
+          "bytes": 36083
+        },
+        "png": {
+          "path": "paper/figures/fig_experiment_runs__n_insert_failed.png",
+          "sha256": "bc57c0b3b05953fc14ef17326cd26824416db544849befae823e86993ff73735",
+          "bytes": 28643
+        }
+      },
+      "validation": {
+        "axis_labels_set": true,
+        "files_nonempty": true
+      }
+    },
+    {
+      "figure_id": "fig_experiment_runs__n_inserted",
+      "kind": "line",
+      "source": "results/experiment_runs.csv",
+      "input_data_hashes": {
+        "results/experiment_runs.csv": "bcad836d8ff2c62dd8d2f7c2abf78069e9801265d0162fbf1f4c11b4f0499b46"
+      },
+      "parameters": {
+        "kind": "line",
+        "x_field": "load",
+        "y_field": "n_inserted",
+        "group_field": "filter",
+        "palette": "okabe-ito",
+        "series_encoding": "color+marker+linestyle",
+        "png_dpi": 150
+      },
+      "caption": "Generated from hashed source data; see manifest for input hashes and parameters.",
+      "files": {
+        "pdf": {
+          "path": "paper/figures/fig_experiment_runs__n_inserted.pdf",
+          "sha256": "d56761eb604aaf9c4b88ae5538a87a84884017b2ee7852b44dcf3f86f3e4e0b7",
+          "bytes": 14712
+        },
+        "svg": {
+          "path": "paper/figures/fig_experiment_runs__n_inserted.svg",
+          "sha256": "ba2d7ad48ad5613642c4825b6d3c9c1e366fa0868dfdc68f2b8e5ededbb44cf7",
+          "bytes": 33754
+        },
+        "png": {
+          "path": "paper/figures/fig_experiment_runs__n_inserted.png",
+          "sha256": "a5548b20f9e30ff6c197f1279800d724999967e9592f06d2b867651edf01730e",
+          "bytes": 40101
+        }
+      },
+      "validation": {
+        "axis_labels_set": true,
+        "files_nonempty": true
+      }
+    },
+    {
+      "figure_id": "fig_experiment_runs__n_queries",
+      "kind": "line",
+      "source": "results/experiment_runs.csv",
+      "input_data_hashes": {
+        "results/experiment_runs.csv": "bcad836d8ff2c62dd8d2f7c2abf78069e9801265d0162fbf1f4c11b4f0499b46"
+      },
+      "parameters": {
+        "kind": "line",
+        "x_field": "load",
+        "y_field": "n_queries",
+        "group_field": "filter",
+        "palette": "okabe-ito",
+        "series_encoding": "color+marker+linestyle",
+        "png_dpi": 150
+      },
+      "caption": "Generated from hashed source data; see manifest for input hashes and parameters.",
+      "files": {
+        "pdf": {
+          "path": "paper/figures/fig_experiment_runs__n_queries.pdf",
+          "sha256": "b6ce20ff6e3bd0092ada75265baaa4856752e8820f70fc5ec705c54ba8dba57d",
+          "bytes": 15858
+        },
+        "svg": {
+          "path": "paper/figures/fig_experiment_runs__n_queries.svg",
+          "sha256": "33e1645104fa04f90a5254f9fe28d90c57199ca3cde101761e2612af58956a99",
+          "bytes": 35449
+        },
+        "png": {
+          "path": "paper/figures/fig_experiment_runs__n_queries.png",
+          "sha256": "ef5c8c8f9fb4753813afdf68d6922b9ff8037817162dadab74c38d9b5c5dbc84",
+          "bytes": 29711
+        }
+      },
+      "validation": {
+        "axis_labels_set": true,
+        "files_nonempty": true
+      }
+    }
+  ]
+}

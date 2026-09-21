@@ -9,9 +9,9 @@ import re
 from pathlib import Path
 from typing import Any
 
-from ...core.results import Verdict
-from ...core.util import sha256_file, utcnow, write_json
-from ...dag.executor import NodeContext, NodeOutcome
+from ..core.results import Verdict
+from ..core.util import sha256_file, utcnow, write_json
+from ..dag.executor import NodeContext, NodeOutcome
 
 KEY_PATTERNS = {
     "hypotheses": re.compile(r"\b(hypothes[ie]s|vermutung|we hypothesize|annahme)\b", re.I),

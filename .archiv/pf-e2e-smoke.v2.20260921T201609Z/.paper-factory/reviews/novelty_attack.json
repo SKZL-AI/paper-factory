@@ -1,0 +1,81 @@
+{
+  "attacked_at": "2026-09-21T20:14:30Z",
+  "claims": {},
+  "prior_art_pool": [
+    {
+      "source": "openalex",
+      "id": "https://openalex.org/W3174427814",
+      "doi": "https://doi.org/10.1145/3448016.3452841",
+      "title": "Vector Quotient Filters",
+      "year": 2021,
+      "cited_by": 40
+    },
+    {
+      "source": "openalex",
+      "id": "https://openalex.org/W4402426760",
+      "doi": "https://doi.org/10.1145/3698820",
+      "title": "Memento Filter: A Fast, Dynamic, and Robust Range Filter",
+      "year": 2024,
+      "cited_by": 13
+    },
+    {
+      "source": "openalex",
+      "id": "https://openalex.org/W4387567938",
+      "doi": "https://doi.org/10.1186/s13321-023-00765-1",
+      "title": "Bloom filters for molecules",
+      "year": 2023,
+      "cited_by": 5
+    },
+    {
+      "source": "openalex",
+      "id": "https://openalex.org/W3209340886",
+      "doi": "https://doi.org/10.3390/electronics10212689",
+      "title": "Artificial Neural Networks Based Optimization Techniques: A Review",
+      "year": 2021,
+      "cited_by": 755
+    },
+    {
+      "source": "openalex",
+      "id": "https://openalex.org/W4402969639",
+      "doi": "https://doi.org/10.1145/3677128",
+      "title": "Adaptive Quotient Filters",
+      "year": 2024,
+      "cited_by": 6
+    },
+    {
+      "source": "crossref",
+      "doi": "10.1016/j.ipl.2008.05.018",
+      "title": "On the false-positive rate of Bloom filters",
+      "container": "Information Processing Letters",
+      "year": 2008
+    },
+    {
+      "source": "crossref",
+      "doi": "10.5626/jok.2022.49.1.78",
+      "title": "Improving False Positive Rate of Extended Learned Bloom Filters Using Grid Search",
+      "container": "Journal of KIISE",
+      "year": 2022
+    },
+    {
+      "source": "crossref",
+      "doi": "10.1109/ccwc51732.2021.9376160",
+      "title": "Design and Evaluation of Cascading Cuckoo Filters for Zero-False-Positive Membership Services",
+      "container": "2021 IEEE 11th Annual Computing and Communication Workshop and Conference (CCWC)",
+      "year": 2021
+    },
+    {
+      "source": "crossref",
+      "doi": "10.1109/infocom52122.2024.10621226",
+      "title": "Modeling Average False Positive Rates of Recycling Bloom Filters",
+      "container": "IEEE INFOCOM 2024 - IEEE Conference on Computer Communications",
+      "year": 2024
+    },
+    {
+      "source": "crossref",
+      "doi": "10.7717/peerj-cs.993/fig-20",
+      "title": "Figure 20: True positive rate\n                      <i>vs</i>\n                      false positive rate.",
+      "container": null,
+      "year": null
+    }
+  ]
+}

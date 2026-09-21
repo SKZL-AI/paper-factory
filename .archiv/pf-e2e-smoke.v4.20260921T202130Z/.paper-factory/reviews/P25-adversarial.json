@@ -1,0 +1,52 @@
+{
+  "review_id": "P25-adversarial",
+  "reviewer": "adversarial_reviewer_2",
+  "reviewer_family": "deterministic",
+  "created_at": "2026-09-21T20:19:38Z",
+  "independence": "independent",
+  "findings": [
+    {
+      "finding_id": "P25-adversarial-F01",
+      "reviewer": "adversarial_reviewer_2",
+      "severity": "MAJOR",
+      "category": "adversarial",
+      "statement": "significance claimed; no statistical test artifact exists",
+      "evidence_refs": [
+        "draft/paper_draft.md"
+      ],
+      "claim_refs": [],
+      "affected_section": "draft/paper_draft.md",
+      "disposition": "RESOLVED",
+      "disposition_reason": "claims retired; manuscript derives numbers from metrics only; no significance without test",
+      "resolved_by": null
+    },
+    {
+      "finding_id": "P25-adversarial-F02",
+      "reviewer": "adversarial_reviewer_2",
+      "severity": "MAJOR",
+      "category": "adversarial",
+      "statement": "significance claimed; no statistical test artifact exists",
+      "evidence_refs": [
+        "draft/paper_draft.md"
+      ],
+      "claim_refs": [],
+      "affected_section": "draft/paper_draft.md",
+      "disposition": "RESOLVED",
+      "disposition_reason": "claims retired; manuscript derives numbers from metrics only; no significance without test",
+      "resolved_by": null
+    },
+    {
+      "finding_id": "P25-adversarial-F03",
+      "reviewer": "adversarial_reviewer_2",
+      "severity": "CRITICAL",
+      "category": "citation",
+      "statement": "false_citation",
+      "evidence_refs": [],
+      "claim_refs": [],
+      "affected_section": null,
+      "disposition": "RESOLVED",
+      "disposition_reason": "false citation removed from generated references and re-audited",
+      "resolved_by": null
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "audited_at": "2026-09-21T20:13:14Z",
+  "entries": [
+    {
+      "doi": "10.1145/362686.362692",
+      "checked_at": "2026-09-21T20:13:10Z",
+      "sources": {
+        "crossref": {
+          "status": "found",
+          "http": 200
+        },
+        "openalex": {
+          "status": "found",
+          "http": 200
+        }
+      },
+      "title": "Space/time trade-offs in hash coding with allowable errors",
+      "container": "Communications of the ACM",
+      "published": {
+        "date-parts": [
+          [
+            1970,
+            7
+          ]
+        ]
+      },
+      "verdict": "VERIFIED",
+      "key": "bloom1970spacetime",
+      "claimed_title": "Space/Time Trade-offs in Hash Coding with Allowable Errors"
+    },
+    {
+      "doi": "10.1080/15427951.2004.10129096",
+      "checked_at": "2026-09-21T20:13:11Z",
+      "sources": {
+        "crossref": {
+          "status": "found",
+          "http": 200
+        },
+        "openalex": {
+          "status": "found",
+          "http": 200
+        }
+      },
+      "title": "Network Applications of Bloom Filters: A Survey",
+      "container": "Internet Mathematics",
+      "published": {
+        "date-parts": [
+          [
+            2004,
+            1
+          ]
+        ]
+      },
+      "verdict": "VERIFIED",
+      "key": "broder2004network",
+      "claimed_title": "Network Applications of {Bloom} Filters: A Survey"
+    },
+    {
+      "doi": "10.1145/2674005.2674994",
+      "checked_at": "2026-09-21T20:13:13Z",
+      "sources": {
+        "crossref": {
+          "status": "found",
+          "http": 200
+        },
+        "openalex": {
+          "status": "found",
+          "http": 200
+        }
+      },
+      "title": "Cuckoo Filter",
+      "container": "Proceedings of the 10th ACM International on Conference on emerging Networking Experiments and Technologies",
+      "published": {
+        "date-parts": [
+          [
+            2014,
+            12,
+            2
+          ]
+        ]
+      },
+      "verdict": "VERIFIED",
+      "key": "fan2014cuckoo",
+      "claimed_title": "Cuckoo Filter: Practically Better Than {Bloom}"
+    }
+  ],
+  "findings": [],
+  "post_remediation": true
+}

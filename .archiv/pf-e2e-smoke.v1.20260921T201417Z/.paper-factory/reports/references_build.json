@@ -1,0 +1,11 @@
+{
+  "built_at": "2026-09-21T20:13:10Z",
+  "kept": [
+    "bloom1970spacetime",
+    "broder2004network",
+    "fan2014cuckoo"
+  ],
+  "dropped_false": [
+    "schmidt2024adaptive"
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "computed_at": "2026-09-21T20:13:04Z",
+  "sources": {
+    "results/experiment_runs.csv": {
+      "sha256": "bcad836d8ff2c62dd8d2f7c2abf78069e9801265d0162fbf1f4c11b4f0499b46",
+      "rows": 30
+    }
+  },
+  "metrics": {
+    "experiment_runs__n_inserted": {
+      "source": "results/experiment_runs.csv",
+      "field": "n_inserted",
+      "n": 30,
+      "mean": 7700.0,
+      "std": 1627.352408689945,
+      "se": 297.11254108328296,
+      "ci95_halfwidth": 582.3405805232346,
+      "small_sample": false,
+      "note": "normal-approx CI"
+    },
+    "experiment_runs__n_insert_failed": {
+      "source": "results/experiment_runs.csv",
+      "field": "n_insert_failed",
+      "n": 30,
+      "mean": 0.0,
+      "std": 0.0,
+      "se": 0.0,
+      "ci95_halfwidth": 0.0,
+      "small_sample": false,
+      "note": "normal-approx CI"
+    },
+    "experiment_runs__n_queries": {
+      "source": "results/experiment_runs.csv",
+      "field": "n_queries",
+      "n": 30,
+      "mean": 10000.0,
+      "std": 0.0,
+      "se": 0.0,
+      "ci95_halfwidth": 0.0,
+      "small_sample": false,
+      "note": "normal-approx CI"
+    },
+    "experiment_runs__false_positives": {
+      "source": "results/experiment_runs.csv",
+      "field": "false_positives",
+      "n": 30,
+      "mean": 50.7,
+      "std": 62.65623231790962,
+      "se": 11.439410602934434,
+      "ci95_halfwidth": 22.42124478175149,
+      "small_sample": false,
+      "note": "normal-approx CI"
+    },
+    "experiment_runs__fpr": {
+      "source": "results/experiment_runs.csv",
+      "field": "fpr",
+      "n": 30,
+      "mean": 0.005070000000000001,
+      "std": 0.006265623231790962,
+      "se": 0.0011439410602934433,
+      "ci95_halfwidth": 0.0022421244781751486,
+      "small_sample": false,
+      "note": "normal-approx CI"
+    }
+  },
+  "audit": {
+    "missing_cells": 0,
+    "exclusions": [],
+    "small_samples": [],
+    "randomization": "recorded_in_source"
+  }
+}
