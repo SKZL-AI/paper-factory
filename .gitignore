@@ -9,3 +9,4 @@ state/runs.sqlite*
 release/
 paper/build/
 *.pyc
+.archiv/
