@@ -1,0 +1,37 @@
+{
+  "generated_at": "2026-09-21T20:22:50Z",
+  "files": [
+    {
+      "path": "paper/main.tex",
+      "sha256": "4faa2fe3d5620632a13ef46bad20373fdf0af850c4d9d2cda0d66518b7f53a4a",
+      "status": "created"
+    },
+    {
+      "path": "paper/sections/abstract.tex",
+      "sha256": "b5cc9015219844c45b911da7eaab4afc2fc9dafc837d9f4a50050bef66ce556c",
+      "status": "created"
+    },
+    {
+      "path": "paper/sections/discussion.tex",
+      "sha256": "11b445f9b22a3a970bc705ce1723939a55473d637521b32c33c9f2552a0dae4c",
+      "status": "created"
+    },
+    {
+      "path": "paper/sections/introduction.tex",
+      "sha256": "6ffda18bacf6ad70df72b1881ce8332729d9df23cb4df5414b90dce5891803bc",
+      "status": "created"
+    },
+    {
+      "path": "paper/sections/methods.tex",
+      "sha256": "d5bf4a7a9c079f7c761e19dcc533998a389c921b67b78634b97294b361f407ce",
+      "status": "created"
+    },
+    {
+      "path": "paper/sections/results.tex",
+      "sha256": "7969f091395d714ba19fff0b1310f515005b4cb36130696fd026e3358c73d976",
+      "status": "created"
+    }
+  ],
+  "created": 6,
+  "kept_existing": 0
+}

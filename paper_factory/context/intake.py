@@ -46,16 +46,25 @@ def classify(found: dict[str, list[str]], requested: str = "auto") -> str:
     if requested != "auto":
         return requested
     has_code = bool(found["code"])
-    has_data = bool(found["data"])
+    # results/ are experiment OUTPUTS (derived); data/ + databases are the DATA track
+    has_results = any(p.startswith("results/") for p in found["data"])
+    has_data = any(not p.startswith("results/") for p in found["data"])
     has_draft = bool(found["drafts"])
-    kinds = sum([has_code, has_data, has_draft])
-    if kinds > 1 or (found["chats"] and kinds >= 1) or (found["bib"] and kinds >= 1):
+    has_chats = bool(found["chats"])
+    has_bib = bool(found["bib"])
+    if has_draft and (has_code or has_data or has_results):
+        return "MIXED_EVIDENCE"
+    if has_code and has_data:
+        return "MIXED_EVIDENCE"
+    if has_chats and (has_code or has_data or has_results or has_draft):
+        return "MIXED_EVIDENCE"
+    if has_bib and (has_code or has_data or has_results):
         return "MIXED_EVIDENCE"
     if has_draft:
         return "DRAFT_ASSISTED"
     if has_code:
         return "CODE_ONLY"
-    if has_data:
+    if has_data or has_results:
         return "DATA_ONLY"
     return "EMPTY"
 

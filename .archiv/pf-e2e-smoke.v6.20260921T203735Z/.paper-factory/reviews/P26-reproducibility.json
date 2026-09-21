@@ -1,0 +1,8 @@
+{
+  "review_id": "P26-reproducibility",
+  "reviewer": "reproducibility_reviewer",
+  "reviewer_family": "deterministic",
+  "created_at": "2026-09-21T20:22:54Z",
+  "independence": "independent",
+  "findings": []
+}

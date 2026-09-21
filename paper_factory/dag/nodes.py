@@ -32,7 +32,7 @@ NODES: tuple[Node, ...] = (
     Node("P02", "Context Mining", "agent", deps=("P01",)),
     Node("P03", "Research Reconstruction", "agent", deps=("P02",)),
     Node("P04", "Evidence Inventory", "verification", deps=("P01", "P03"), veriharness=True),
-    Node("P05", "Result Integrity Audit", "verification", deps=("P04",), veriharness=True),
+    Node("P05", "Result Integrity Audit", "verification", deps=("P04", "P09"), veriharness=True),
     Node("P06", "Literature Discovery", "deterministic", deps=("P01",)),
     Node("P07", "Prior-Art / Novelty Attack", "verification", deps=("P06", "P03"), veriharness=True),
     Node("P08", "Claim Graph", "agent", deps=("P04", "P05", "P07")),

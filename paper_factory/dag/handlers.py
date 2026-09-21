@@ -139,9 +139,14 @@ def build_handlers(cfg_hoh_nodes: list[str] | None = None) -> dict[str, Handler]
                 spec = ctx.workspace.sub("hoh-specs") / f"{node_id}.md"
                 spec.write_text(
                     f"# PF verification node {node_id}: {node.name}\n\n"
-                    f"Work package: the artifacts this node produced under "
-                    f"`.paper-factory/reports/` are the candidate. Verify them.\n"
-                    f"Node detail: {outcome.detail}\n",
+                    f"Work package: add a `VERIFICATION.md` to this repository that\n"
+                    f"documents exactly how the experiment results are reproduced\n"
+                    f"(commands, expected artifacts). Keep it factual and short.\n\n"
+                    f"## Acceptance criteria\n"
+                    f"- K1: `python3 code/analyze.py` exits 0 (analysis reproduces)\n"
+                    f"- K2: `test -s results/summary.json` (result artifact exists)\n"
+                    f"- K3: `test -s VERIFICATION.md` (documentation written)\n"
+                    f"- K4: `grep -q analyze VERIFICATION.md` (docs name the analysis)\n",
                     encoding="utf-8")
                 result = adapter.verify_work_package(node_id, spec)
                 outcome.detail["hoh_run_id"] = result.run_id

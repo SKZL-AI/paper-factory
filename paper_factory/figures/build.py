@@ -112,8 +112,13 @@ def run_figure_plan(ctx: NodeContext) -> NodeOutcome:
         fields, rows, kinds = _column_kinds(csv_path)
         group_field = _pick_group_field(fields, kinds, len(rows))
         x_field = _pick_x_field(fields, kinds, len(rows))
+        seen_fields: set[str] = set()
         for key, m in by_source[source]:
-            figure_id = f"fig_{key}".replace("-", "_")
+            # grouped metrics share (source, field): one figure per outcome field
+            if m["field"] in seen_fields:
+                continue
+            seen_fields.add(m["field"])
+            figure_id = f"fig_{Path(source).stem}__{m['field']}".replace("-", "_")
             kind = "line" if (group_field and x_field) else "bar"
             if kind == "line":
                 title = f"{m['field']} vs {x_field} by {group_field}"
@@ -128,7 +133,7 @@ def run_figure_plan(ctx: NodeContext) -> NodeOutcome:
                 "x_field": x_field,
                 "group_field": group_field,
                 "title": title,
-                "caption": f"Generated from hashed source data; see manifest for input hashes and parameters.",
+                "caption": "Generated from hashed source data; see manifest for input hashes and parameters.",
                 "outputs": {ext: f"paper/figures/{figure_id}.{ext}" for ext in ("pdf", "svg", "png")},
             })
 

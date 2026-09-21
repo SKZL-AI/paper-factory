@@ -1,0 +1,21 @@
+{
+  "checked_at": "2026-09-21T20:22:57Z",
+  "venue": "preprint",
+  "checks": {
+    "main_tex_exists": {
+      "pass": true
+    },
+    "bib_exists": {
+      "pass": true
+    },
+    "compiles": {
+      "pass": true,
+      "engine": "/usr/bin/pdflatex",
+      "exit_code": 0,
+      "pdf_exists": true,
+      "hard_errors": [],
+      "log_tail": []
+    }
+  },
+  "failed": []
+}

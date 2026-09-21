@@ -112,12 +112,15 @@ def test_table_plan_and_generation(ctx):
     assert "\\toprule" in text
     assert "\\midrule" in text
     assert "\\bottomrule" in text
-    # a real metric value, recomputed independently straight from the CSV
+    # a real metric value, recomputed independently straight from the CSV,
+    # grouped per (filter, load) — statistics must not pool across design
+    # parameters (regression guard for the 2026-09-21 pooling fix)
     with open(ctx.workspace.target_root / "results" / "experiment_runs.csv",
               newline="", encoding="utf-8") as fh:
-        fpr_vals = [float(r["fpr"]) for r in csv.DictReader(fh)]
-    expected = f"{statistics.fmean(fpr_vals):.6g}"
-    assert expected in text, f"metric mean {expected} not found in tables.tex"
+        rows = [r for r in csv.DictReader(fh)
+                if r["filter"] == "bloom" and float(r["load"]) == 0.90]
+    expected = f"{statistics.fmean([float(r['fpr']) for r in rows]):.6g}"
+    assert expected in text, f"grouped metric mean {expected} not found in tables.tex"
     manifest = read_json(ctx.workspace.reports_dir / "tables_manifest.json")
     assert manifest["output"]["sha256"]
     assert manifest["tables"], "manifest must list rendered tables"

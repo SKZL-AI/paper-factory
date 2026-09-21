@@ -69,7 +69,7 @@ def _compose_section(section: str, ctx: NodeContext) -> str:
             safe = key.replace("_", "")
             shown = key.replace("_", "\\_")
             lines.append(f"For \\texttt{{{shown}}} we measured a mean of "
-                         f"$\\pf{safe}mean$ (n=$\\pf{safe}n$).")
+                         f"$\\pfget{{{safe}mean}}$ (n=$\\pfget{{{safe}n}}$).")
         if not metrics.get("metrics"):
             lines.append("% no metrics available — results section stays empty rather than invented")
         return "\n".join(lines) + "\n"
@@ -82,7 +82,8 @@ def _compose_section(section: str, ctx: NodeContext) -> str:
         lines = ["\\section{Discussion and Limitations}", "\\label{sec:discussion}"]
         small = metrics.get("audit", {}).get("small_samples", [])
         if small:
-            lines.append(f"Sample sizes are small for: {', '.join(small)}; "
+            shown = ", ".join(s.replace("_", "\\_") for s in small[:6])
+            lines.append(f"Sample sizes are small for \\texttt{{{shown}}}; "
                          "we therefore report descriptive statistics only and make no "
                          "significance claims.")
         lines.append("Claims that no artifact could carry were retired before freeze; "
