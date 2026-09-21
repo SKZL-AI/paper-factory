@@ -1,0 +1,27 @@
+{
+  "question": "Kann VeriHarness v0.1.0 von zwei Main-Sessions (Kimi + Claude Code) gleichzeitig in derselben Herdr-Instanz genutzt werden, ohne dass Runs/Panes/Worktrees/Branches durcheinanderkommen?",
+  "verdict": "JA — sicher, sofern disjunkte run_ids (PF erzwingt Prefix) und eigener --root (Defense in Depth).",
+  "audited_at": "2026-09-21T19:15:00Z",
+  "code_evidence": [
+    {"layer": "Run-State", "mechanism": "flock(.lock) pro Run, LOCK_EX|LOCK_NB → LockBusy bei zweitem Controller", "ref": "src/hoh/store.py:120-136"},
+    {"layer": "Run-State", "mechanism": "Layout runs/<run_id>/ — keine run-übergreifenden Dateien", "ref": "src/hoh/store.py:15-24"},
+    {"layer": "Immutability", "mechanism": "Results/Receipts per os.link/'xb' exklusiv; Kollision → parken statt überschreiben (FileExistsError)", "ref": "src/hoh/store.py:165,205-211,725-738"},
+    {"layer": "Stale-Writer", "mechanism": "State-Write prüft run_id und Writer-Generation; fremder/alter Writer blockt sichtbar", "ref": "src/hoh/store.py:246-253"},
+    {"layer": "Branches", "mechanism": "Branchname = hoh-{run_id} bzw. hoh-{node.run_id||id} → eindeutig pro Run", "ref": "src/hoh/launcher.py:183,597"},
+    {"layer": "Worktrees", "mechanism": "Erstellung via Herdr 'worktree --repo --branch' → branch-namensraum-isoliert", "ref": "src/hoh/launcher.py:218"},
+    {"layer": "Sandbox/Scratch", "mechanism": ".hoh-scratch-<receipt_id> eindeutig; Arenas unter _arenas/<run_id>", "ref": "src/hoh/store.py:457,497-529; src/hoh/runner.py:991"},
+    {"layer": "Herdr-Panes", "mechanism": "Dispatcher hängt am HERDR_WORKSPACE_ID der AUFRUFENDEN Session; trackt own_panes/own_tabs; fremde Panes werden nie geschlossen", "ref": "src/hoh/dispatchers.py:299-300,325-343,479"},
+    {"layer": "Quota", "mechanism": "Quota-Erkennung ist Textklassifikation pro Rollenlauf; kein globales Shared-Quota-File", "ref": "src/hoh/quota.py:23-57"},
+    {"layer": "Default-Root", "mechanism": "DEFAULT_ROOT = $HOH_RUNS oder ~/hoh/runs — teilbar, aber run_id-isoliert; PF setzt eigenen Root", "ref": "src/hoh/cli.py:24"}
+  ],
+  "residual_risks": [
+    "Gleicher --root UND gleiche run_id in beiden Sessions → LockBusy (fail-safe, keine Korruption). PF-Adapter erzwingt Prefix 'PF-' + eigenen Root.",
+    "Herdr-UI: Panes beider Sessions sind in derselben Server-Instanz sichtbar (kosmetisch); IDs sind server-seitig eindeutig.",
+    "Provider-Quota wird von beiden Sessions gemeinsam verbraucht (ökonomisch, nicht funktional)."
+  ],
+  "paper_factory_policy": {
+    "run_id_prefix": "PF-",
+    "own_root": "<target>/.paper-factory/hoh-runs",
+    "foreign_panes": "never_touch"
+  }
+}

@@ -1,0 +1,39 @@
+usage: hoh run [-h] [--iterations ITERATIONS] [--until-accepted]
+               [--planner PLANNER] [--developer DEVELOPER] [--qa QA]
+               [--no-herdr] [--isolation {none,strict}]
+               [--role-model ROLE=MODEL] [--role-effort ROLE=LEVEL]
+               [--role-timeout SEC]
+               run_id
+
+positional arguments:
+  run_id
+
+options:
+  -h, --help            show this help message and exit
+  --iterations ITERATIONS
+                        how many iterations
+  --until-accepted      stop after the first acceptance
+  --planner PLANNER
+  --developer DEVELOPER
+  --qa QA               a different model in a fresh context is the strongest
+                        setup for the independent review
+  --no-herdr            run without Herdr -- no acceptance value for
+                        A01/A02/A12
+  --isolation {none,strict}
+                        how acceptance checks are executed. 'none' is the
+                        historical path: a reduced environment and setrlimit,
+                        which is a tripwire and not a boundary. 'strict' runs
+                        every check inside a filesystem- and network-isolated
+                        sandbox and refuses to start the run at all if the
+                        machine cannot provide one.
+  --role-model ROLE=MODEL
+                        model per role, repeatable: planner=sonnet, qa=opus.
+                        'all=sonnet' sets every role. Without this, each role
+                        runs on whatever the harness defaults to -- which is
+                        invisible in the run record.
+  --role-effort ROLE=LEVEL
+                        effort level per role, same shape: low, medium, high,
+                        xhigh, max
+  --role-timeout SEC    deadline per role run in seconds (default 2700 = 45
+                        min). A thorough differential review takes time; too
+                        tight a deadline trains superficial work.

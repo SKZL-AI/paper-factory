@@ -1,0 +1,21 @@
+usage: hoh start [-h] --repo REPO --spec SPEC [--project PROJECT]
+                 [--run-id RUN_ID] [--max-iterations MAX_ITERATIONS]
+                 [--max-dispatches MAX_DISPATCHES]
+                 [--mode {no-mistakes,direct-PR,local-only}]
+
+options:
+  -h, --help            show this help message and exit
+  --repo REPO           project worktree (git)
+  --spec SPEC           path to the specification
+  --project PROJECT     project name (default: directory name)
+  --run-id RUN_ID       own run id instead of a generated one
+  --max-iterations MAX_ITERATIONS
+  --max-dispatches MAX_DISPATCHES
+                        ceiling on role dispatches for this run. The field
+                        existed and nothing could set it, so a project that
+                        wanted to hold a node and its repair runs to one
+                        shared budget had no way to say so -- which is how a
+                        matched-budget benchmark came to give one arm twice
+                        the resource
+  --mode {no-mistakes,direct-PR,local-only}
+                        delivery mode. yolo always stays off.

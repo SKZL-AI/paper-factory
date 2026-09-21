@@ -1,0 +1,32 @@
+[project]
+name = "paper-factory"
+version = "0.1.0"
+description = "Harness-neutral, evidence-first, agentic research-paper production system. Deterministic orchestration core; VeriHarness/HoH as verification kernel; Herdr as runtime."
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "Furkan Sakızlı" }]
+dependencies = [
+  "pydantic>=2.0",
+  "pyyaml>=6.0",
+  "requests>=2.31",
+  "matplotlib>=3.8",
+]
+
+[project.optional-dependencies]
+db = ["duckdb>=0.10", "pandas>=2.0", "pyarrow>=14.0"]
+literature = ["paperqa"]
+gateway = ["litellm>=1.40"]
+dev = ["pytest>=8.0", "ruff>=0.5"]
+
+[project.scripts]
+paper-factory = "paper_factory.cli.main:main"
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["paper_factory*"]
+
+[tool.ruff]
+line-length = 100

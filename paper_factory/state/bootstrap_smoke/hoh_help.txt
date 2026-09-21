@@ -1,0 +1,32 @@
+usage: hoh [-h] [--root ROOT]
+           {worktree,start,run,status,report,pause,resume,unblock,cancel,amend,goal,resume-quota,deliver,backup,restore,list,project} ...
+
+Harness-of-Harness on top of Herdr: evidence-bound acceptance for long-horizon
+agent runs.
+
+positional arguments:
+  {worktree,start,run,status,report,pause,resume,unblock,cancel,amend,goal,resume-quota,deliver,backup,restore,list,project}
+    worktree            Create the isolated worktree through Herdr (the
+                        developer writes there)
+    start               Create a new run
+    run                 Run iterations
+    status              Current state as JSON
+    report              Report as markdown
+    pause               Halt at a safe boundary
+    resume              Resume with reconciliation
+    unblock             Lift the block (out of BLOCKED, with a reason)
+    cancel              Cancel
+    amend               Change a running specification, on the record
+    goal                Goalbook spanning run boundaries
+    resume-quota        Resume runs stuck on the usage quota once the wait is
+                        over
+    deliver             Deliver an accepted checkpoint
+    backup              Back up the run state (without arenas)
+    restore             Restore a backed-up run
+    list                All runs
+    project             The orchestration layer above a run: which runs happen
+                        at all
+
+options:
+  -h, --help            show this help message and exit
+  --root ROOT           directory holding the runs

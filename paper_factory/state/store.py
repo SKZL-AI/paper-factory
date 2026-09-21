@@ -1,0 +1,190 @@
+"""Per-target-project workspace layout + SQLite run-state store.
+
+Mutable orchestration state lives in SQLite; scientific evidence lives in
+immutable JSON/JSONL/YAML artifacts on disk.
+"""
+from __future__ import annotations
+
+import sqlite3
+from pathlib import Path
+from typing import Any
+
+from ..core.util import utcnow
+
+WORKSPACE_DIRNAME = ".paper-factory"
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS runs (
+  run_id TEXT PRIMARY KEY,
+  created_at TEXT NOT NULL,
+  target_root TEXT NOT NULL,
+  config_hash TEXT,
+  status TEXT NOT NULL DEFAULT 'OPEN'
+);
+CREATE TABLE IF NOT EXISTS nodes (
+  run_id TEXT NOT NULL,
+  node_id TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'NOT_RUN',
+  started_at TEXT,
+  finished_at TEXT,
+  detail TEXT,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (run_id, node_id)
+);
+CREATE TABLE IF NOT EXISTS receipts (
+  receipt_id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  node_id TEXT,
+  kind TEXT NOT NULL,
+  path TEXT NOT NULL,
+  sha256 TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id TEXT NOT NULL,
+  node_id TEXT,
+  ts TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  payload TEXT
+);
+"""
+
+
+class Workspace:
+    def __init__(self, target_root: Path):
+        self.target_root = target_root.resolve()
+        self.root = self.target_root / WORKSPACE_DIRNAME
+
+    # canonical subpaths -------------------------------------------------
+    @property
+    def db_path(self) -> Path:
+        return self.root / "runs.sqlite"
+
+    def sub(self, *parts: str) -> Path:
+        p = self.root.joinpath(*parts)
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    @property
+    def evidence_dir(self) -> Path:
+        return self.sub("evidence")
+
+    @property
+    def claims_dir(self) -> Path:
+        return self.sub("claims")
+
+    @property
+    def context_dir(self) -> Path:
+        return self.sub("context")
+
+    @property
+    def reviews_dir(self) -> Path:
+        return self.sub("reviews")
+
+    @property
+    def receipts_dir(self) -> Path:
+        return self.sub("receipts")
+
+    @property
+    def paper_dir(self) -> Path:
+        return self.sub("paper")
+
+    @property
+    def paperpal_outbox(self) -> Path:
+        return self.sub("paperpal", "outbox")
+
+    @property
+    def paperpal_inbox(self) -> Path:
+        return self.sub("paperpal", "inbox")
+
+    @property
+    def release_dir(self) -> Path:
+        return self.sub("release")
+
+    @property
+    def reports_dir(self) -> Path:
+        return self.sub("reports")
+
+    def exists(self) -> bool:
+        return self.root.exists()
+
+    # sqlite --------------------------------------------------------------
+    def connect(self) -> sqlite3.Connection:
+        self.root.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        conn.executescript(SCHEMA)
+        return conn
+
+    def create_run(self, run_id: str, config_hash: str = "") -> None:
+        with self.connect() as c:
+            c.execute(
+                "INSERT OR IGNORE INTO runs(run_id, created_at, target_root, config_hash) VALUES (?,?,?,?)",
+                (run_id, utcnow(), str(self.target_root), config_hash),
+            )
+
+    def set_node_status(self, run_id: str, node_id: str, status: str, detail: Any = None) -> None:
+        import json
+
+        with self.connect() as c:
+            row = c.execute(
+                "SELECT attempts FROM nodes WHERE run_id=? AND node_id=?", (run_id, node_id)
+            ).fetchone()
+            if row is None:
+                c.execute(
+                    "INSERT INTO nodes(run_id, node_id, status, started_at, finished_at, detail, attempts)"
+                    " VALUES (?,?,?,?,?,?,1)",
+                    (run_id, node_id, status, utcnow(), utcnow(), json.dumps(detail) if detail else None),
+                )
+            else:
+                c.execute(
+                    "UPDATE nodes SET status=?, finished_at=?, detail=?, attempts=attempts+1"
+                    " WHERE run_id=? AND node_id=?",
+                    (status, utcnow(), json.dumps(detail) if detail else None, run_id, node_id),
+                )
+
+    def node_status(self, run_id: str, node_id: str) -> str:
+        with self.connect() as c:
+            row = c.execute(
+                "SELECT status FROM nodes WHERE run_id=? AND node_id=?", (run_id, node_id)
+            ).fetchone()
+        return row["status"] if row else "NOT_RUN"
+
+    def all_node_statuses(self, run_id: str) -> dict[str, str]:
+        with self.connect() as c:
+            rows = c.execute("SELECT node_id, status FROM nodes WHERE run_id=?", (run_id,)).fetchall()
+        return {r["node_id"]: r["status"] for r in rows}
+
+    def record_receipt(self, receipt_id: str, run_id: str, node_id: str | None, kind: str,
+                       path: Path, sha256: str | None) -> None:
+        with self.connect() as c:
+            c.execute(
+                "INSERT OR REPLACE INTO receipts(receipt_id, run_id, node_id, kind, path, sha256, created_at)"
+                " VALUES (?,?,?,?,?,?,?)",
+                (receipt_id, run_id, node_id, kind, str(path), sha256, utcnow()),
+            )
+
+    def receipts_for(self, run_id: str, node_id: str | None = None) -> list[dict[str, Any]]:
+        with self.connect() as c:
+            if node_id:
+                rows = c.execute(
+                    "SELECT * FROM receipts WHERE run_id=? AND node_id=?", (run_id, node_id)
+                ).fetchall()
+            else:
+                rows = c.execute("SELECT * FROM receipts WHERE run_id=?", (run_id,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def event(self, run_id: str, kind: str, node_id: str | None = None, payload: Any = None) -> None:
+        import json
+
+        with self.connect() as c:
+            c.execute(
+                "INSERT INTO events(run_id, node_id, ts, kind, payload) VALUES (?,?,?,?,?)",
+                (run_id, node_id, utcnow(), kind, json.dumps(payload) if payload is not None else None),
+            )
+
+    def latest_run_id(self) -> str | None:
+        with self.connect() as c:
+            row = c.execute("SELECT run_id FROM runs ORDER BY created_at DESC LIMIT 1").fetchone()
+        return row["run_id"] if row else None
