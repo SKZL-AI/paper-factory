@@ -103,10 +103,8 @@ def run_section_compose(ctx: NodeContext, section: str) -> NodeOutcome:
     target = sections_dir / f"{section}.tex"
     rel = f"paper/sections/{section}.tex"
 
-    decision = decide_write(rel, role="manuscript_writer", backend=DETERMINISTIC_BACKEND,
-                            policy=ctx.policy, marking=ctx.marking)
-    if not decision.allowed:
-        return NodeOutcome(Verdict.FAIL, {"reason": decision.reason})
+    decide_write(rel, role="manuscript_writer", backend=DETERMINISTIC_BACKEND,
+                 policy=ctx.policy, marking=ctx.marking)  # raises PolicyViolation on denial
 
     text = _compose_section(section, ctx)
     if target.exists() and target.read_text(encoding="utf-8") == text:

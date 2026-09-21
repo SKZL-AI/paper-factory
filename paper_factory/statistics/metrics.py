@@ -139,7 +139,7 @@ def run_integrity_audit(ctx: NodeContext) -> NodeOutcome:
 
     sig_pat = re.compile(r"(p\s*[<≤=]\s*0?\.\d+|statistically significant|significant\b)",
                          re.I)
-    num_pat = re.compile(r"\b0?\.\d{2,}\b")
+    num_pat = re.compile(r"\b\d+\.\d{2,}%?\b")
 
     metrics: dict[str, Any] = {}
     true_values: dict[str, float] = {}
@@ -147,12 +147,27 @@ def run_integrity_audit(ctx: NodeContext) -> NodeOutcome:
     if metrics_path.exists():
         metrics = json.loads(metrics_path.read_text(encoding="utf-8")).get("metrics", {})
         true_values = {k: v["mean"] for k, v in metrics.items()}
-        has_test_artifact = any(
-            "test" in k.lower() or "pvalue" in k.lower() for k in true_values)
+    # a statistical test artifact is a results/analysis file carrying an actual
+    # p-value/statistic field — not a filename that happens to contain "test"
+    for candidate in list((root / "results").glob("*.json")) + list((root / "analysis").glob("*.json")):
+        try:
+            data = json.loads(candidate.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        text = json.dumps(data).lower()
+        if any(k in text for k in ('"p_value"', '"pvalue"', '"p"', '"statistic"', '"test_name"')):
+            if '"p_value"' in text or '"pvalue"' in text or '"statistic"' in text:
+                has_test_artifact = True
+                break
 
     for d in drafts:
         text = d.read_text(encoding="utf-8", errors="replace")
-        sig_spans = [m.span() for m in sig_pat.finditer(text)]
+        raw_spans = sorted(m.span() for m in sig_pat.finditer(text))
+        sig_spans = []
+        for sp in raw_spans:  # dedupe overlapping matches (alternation hits twice)
+            if sig_spans and sp[0] <= sig_spans[-1][1]:
+                continue
+            sig_spans.append(sp)
         if sig_spans and not has_test_artifact:
             for sp in sig_spans:
                 findings.append({

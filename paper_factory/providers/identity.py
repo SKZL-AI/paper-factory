@@ -63,7 +63,7 @@ def _endpoint_alias(url: str) -> str | None:
 
 def resolve_backend(
     harness_name: str,
-    harness_config: ProviderEntry,
+    harness_config: ProviderEntry | None,
     env: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Resolve provider/model family for one configured harness instance.
@@ -79,7 +79,7 @@ def resolve_backend(
         "basis": "none",
     }
 
-    configured_family = (harness_config.family or "unknown").strip()
+    configured_family = ((harness_config.family if harness_config else None) or "unknown").strip()
     if configured_family and configured_family != "unknown":
         out["provider_family"] = configured_family
         out["basis"] = "providers.yaml family"

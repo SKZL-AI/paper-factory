@@ -1,5 +1,5 @@
 {
-  "collected_at": "2026-09-21T19:13:15Z",
+  "collected_at": "2026-09-21T21:23:15Z",
   "machine": {
     "os": "Linux",
     "os_release": "6.6.87.2-microsoft-standard-WSL2",
@@ -292,6 +292,8 @@
         "[projects.\"/home/sai/sai/sai-train\"]",
         "trust_level =",
         "[projects.\"/home\"]",
+        "trust_level =",
+        "[projects.\"/tmp/pf-hoh-live/.paper-factory/hoh-runs/_arenas/PF-e05758a3-P05\"]",
         "trust_level =",
         "[tui.model_availability_nux]",
         "\"gpt-5.5\" =",

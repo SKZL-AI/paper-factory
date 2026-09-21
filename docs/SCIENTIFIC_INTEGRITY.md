@@ -15,7 +15,9 @@ loads/filters — regression test exists). The integrity audit re-reads drafts
 and flags: numbers in metric range but off every derived value
 (tolerance: 5% or the print rounding unit), and significance claims with no
 computed test artifact. The numbers/units audit (P22) forbids hand-typed
-decimals in manuscript sections.
+decimals in manuscript sections and main.tex. Known scope, stated honestly: the draft-side
+integrity audit matches decimals with ≥2 places and percentages; bare integers (years, counts)
+are out of scope because they are too noisy to police deterministically.
 
 ## Claims
 

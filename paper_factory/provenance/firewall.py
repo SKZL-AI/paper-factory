@@ -20,7 +20,25 @@ class PolicyViolation(Exception):
     """Raised when a write to a protected path is not allowed. Never caught silently."""
 
 
+def normalize_rel_path(rel_path: str) -> str:
+    """Canonical form for policy checks. Rejects traversal and absolutes."""
+    import posixpath
+
+    if rel_path.startswith(("/", "~")):
+        raise PolicyViolation(f"absolute path not allowed for policy check: {rel_path!r}")
+    norm = posixpath.normpath(rel_path.replace("\\", "/"))
+    if norm.startswith("..") or "/../" in rel_path.replace("\\", "/"):
+        raise PolicyViolation(f"path traversal not allowed for policy check: {rel_path!r}")
+    return norm
+
+
+def _norm_family(family: str | None) -> str:
+    f = (family or "").strip().lower()
+    return f or "unknown"
+
+
 def is_protected(rel_path: str, patterns: list[str]) -> bool:
+    rel_path = normalize_rel_path(rel_path)
     p = PurePath(rel_path)
     for pat in patterns:
         try:
@@ -56,8 +74,9 @@ def decide_write(rel_path: str, *, role: str, backend: dict, policy: ProviderPol
     if role_policy is None or not role_policy.writes_final_prose:
         raise PolicyViolation(f"role '{role}' has writes_final_prose=false; cannot modify {rel_path}")
 
-    family = backend.get("family", "unknown")
-    status = marking.status_for(backend.get("provider_family", family), backend.get("model_family", "unknown"))
+    family = _norm_family(backend.get("family"))
+    status = marking.status_for(_norm_family(backend.get("provider_family")),
+                                _norm_family(backend.get("model_family")))
 
     if family in role_policy.forbidden_model_families:
         raise PolicyViolation(

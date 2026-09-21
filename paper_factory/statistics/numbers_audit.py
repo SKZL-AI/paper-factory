@@ -12,7 +12,8 @@ RAW_DECIMAL = re.compile(r"\b0?\.\d{2,}\b")
 
 def run_numbers_units_audit(ctx: NodeContext) -> NodeOutcome:
     paper = ctx.workspace.paper_dir
-    sections = sorted(paper.glob("sections/*.tex")) if paper.exists() else []
+    sections = (sorted(paper.glob("sections/*.tex")) + [paper / "main.tex"]) if paper.exists() else []
+    sections = [s for s in sections if s.exists()]
     if not sections:
         return NodeOutcome(Verdict.NOT_RUN, {"reason": "no manuscript sections yet"})
     findings = []

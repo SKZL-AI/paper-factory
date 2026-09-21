@@ -158,9 +158,16 @@ def build_handlers(cfg_hoh_nodes: list[str] | None = None) -> dict[str, Handler]
                         r["receipt_file"], ctx.run_id, node_id, "hoh",
                         ctx.workspace.receipts_dir / "hoh" / result.run_id / r["receipt_file"],
                         r["sha256"])
-                if outcome.verdict == Verdict.PASS and result.verdict == Verdict.FAIL:
-                    outcome.verdict = Verdict.DEGRADED
-                    outcome.detail["note"] = "deterministic work passed, HoH verification failed"
+                # Verification-grade semantics: a node whose config demands HoH
+                # verification does not keep a bare PASS without it.
+                if outcome.verdict == Verdict.PASS:
+                    if result.verdict == Verdict.FAIL:
+                        outcome.verdict = Verdict.FAIL
+                        outcome.detail["note"] = "HoH verification failed"
+                    elif result.verdict != Verdict.PASS:
+                        outcome.verdict = Verdict.DEGRADED
+                        outcome.detail["note"] = ("deterministic work passed; HoH verification "
+                                                  "incomplete/degraded — recorded honestly")
                 return outcome
 
             return wrapped

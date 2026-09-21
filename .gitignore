@@ -10,3 +10,4 @@ release/
 paper/build/
 *.pyc
 .archiv/
+examples/demo_project/.paper-factory/

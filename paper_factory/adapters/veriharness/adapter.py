@@ -21,16 +21,15 @@ import json
 import os
 import shutil
 import subprocess
-import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from ...core.results import Verdict
+from ...provenance.firewall import PolicyViolation
 from ...core.util import sha256_file, utcnow, write_json
 
 RUN_PREFIX = "PF-"
-_hoh_lock = threading.Lock()  # process-local; file lock below covers cross-process
 
 
 @dataclass
@@ -79,14 +78,36 @@ class VeriharnessAdapter:
     def ensure_clone(self) -> Path:
         """Materialize a PF-owned git snapshot of the target project.
 
-        Never touches the original repo. If the target is a git repo we clone
-        it; otherwise we create a fresh snapshot repo of the working files.
+        Hard invariants (adversarial-review hardened):
+        - the clone must be a REAL directory under the workspace root
+          (symlinks are rejected — a symlinked clone would silently run HoH
+          against the original, violating the O177 policy);
+        - the clone is refreshed when the source changed since the snapshot
+          (a stale clone would verify stale code while producing
+          valid-looking receipts).
         """
-        import fcntl
+        if self.clone_dir.is_symlink():
+            raise PolicyViolation(
+                f"hoh-repo clone must not be a symlink: {self.clone_dir}")
+        if self.clone_dir.exists() and not self.clone_dir.resolve().is_relative_to(self.ws.root.resolve()):
+            raise PolicyViolation(f"hoh-repo clone escapes the workspace: {self.clone_dir}")
 
-        if (self.clone_dir / ".git").exists():
-            return self.clone_dir
         src = self.ws.target_root
+        src_fingerprint = self._source_fingerprint(src)
+        marker = self.runs_root / "clone-manifest.json"
+        if (self.clone_dir / ".git").exists():
+            if marker.exists():
+                import json as _json
+
+                old = _json.loads(marker.read_text())
+                if old.get("source_fingerprint") == src_fingerprint:
+                    return self.clone_dir
+                # stale clone: park it, snapshot fresh (never delete)
+                parked = self.clone_dir.with_name(
+                    self.clone_dir.name + f".v1.{utcnow().replace(':', '')}")
+                self.clone_dir.rename(parked)
+            else:
+                return self.clone_dir  # pre-manifest clone from an earlier version
         self.clone_dir.mkdir(parents=True, exist_ok=True)
         if (src / ".git").exists():
             subprocess.run(["git", "clone", "--quiet", str(src), str(self.clone_dir)],
@@ -99,7 +120,7 @@ class VeriharnessAdapter:
 
             tmp = self.clone_dir / ".incoming"
             if tmp.exists():
-                shutil.rmtree(tmp)  # PF-owned scratch only
+                tmp.rename(self.clone_dir / f".incoming.parked.{utcnow().replace(':', '')}")
             shutil.copytree(src, tmp, ignore=ignore)
             for item in tmp.iterdir():
                 shutil.move(str(item), self.clone_dir)
@@ -110,7 +131,26 @@ class VeriharnessAdapter:
             subprocess.run(["git", "-c", "user.name=paper-factory", "-c",
                             "user.email=pf@local", "commit", "-q", "-m",
                             "PF baseline snapshot"], cwd=self.clone_dir, check=True)
+        self.runs_root.mkdir(parents=True, exist_ok=True)
+        (self.runs_root / "clone-manifest.json").write_text(
+            json.dumps({"created_at": utcnow(), "source": str(src),
+                        "source_fingerprint": src_fingerprint}), encoding="utf-8")
         return self.clone_dir
+
+    @staticmethod
+    def _source_fingerprint(src: Path) -> str:
+        """Content fingerprint of the target's tracked-relevant files (cheap:
+        path + size + mtime). Detects 'source changed since snapshot'."""
+        import hashlib
+
+        h = hashlib.sha256()
+        exclude = {".paper-factory", ".git", "node_modules", "__pycache__", ".venv"}
+        for p in sorted(src.rglob("*")):
+            if not p.is_file() or any(part in exclude for part in p.parts):
+                continue
+            st = p.stat()
+            h.update(f"{p.relative_to(src)}|{st.st_size}|{int(st.st_mtime)}|".encode())
+        return h.hexdigest()
 
     # -- run lifecycle ------------------------------------------------------
     def _call(self, *args: str, timeout: int = 300) -> tuple[int, dict[str, Any] | str]:

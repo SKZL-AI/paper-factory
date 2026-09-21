@@ -34,9 +34,16 @@ def run_remediation(ctx: NodeContext) -> NodeOutcome:
                         c.status = ClaimStatus.RETIRED
                         retired.append(c.claim_id)
                 entry.update(action="retire_unsupported_claims", retired=retired)
-                f.disposition = Disposition.RESOLVED
-                f.disposition_reason = ("claims retired; manuscript derives numbers from "
-                                        "metrics only; no significance without test")
+                # verification-based disposition: the finding is resolved iff the
+                # post-condition demonstrably holds, not because we acted.
+                outstanding = [c.claim_id for c in graph.claims
+                               if c.status in (ClaimStatus.UNSUPPORTED, ClaimStatus.PROPOSED)]
+                if not outstanding:
+                    f.disposition = Disposition.RESOLVED
+                    f.disposition_reason = ("post-condition verified: no unsupported or proposed "
+                                            f"claims remain (retired this pass: {retired})")
+                else:
+                    entry["outstanding_after"] = outstanding  # stays undisposed → blocks closure
             elif f.category == "citation" or f.category == "adversarial" and "citation" in f.statement:
                 # drop unverifiable citations from the manuscript bibliography
                 from ..literature.verify import build_references, _audit_entries, parse_bib

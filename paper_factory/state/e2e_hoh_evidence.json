@@ -1,22 +1,206 @@
 {
   "started_at": "2026-09-21T20:54:55Z",
-  "doctor": {
-    "executable": "/home/sai/paper-factory/.venv/bin/hoh",
-    "present": true,
-    "herdr": true,
-    "bwrap": true
-  },
+  "finished_at": "2026-09-21T21:12:15Z",
   "run_id": "PF-e05758a3-P05",
-  "verdict": "FAIL",
-  "receipts": [],
-  "note": "",
-  "accepted": false,
-  "blocked_kind": null,
-  "stage": "DEVELOPING",
-  "detail": {
-    "run_rc": 1,
-    "stage": "DEVELOPING",
-    "condition": "BLOCKED"
+  "verdict": "PASS",
+  "accepted": true,
+  "accepted_candidate": {
+    "candidate_id": "PF-e05758a3-P05-i2",
+    "repo_path": "/tmp/pf-hoh-live/.paper-factory/hoh-repo",
+    "commit": "a5404ed0ff1f6b3bf567ade75659c3303f775ecd",
+    "tree_clean": false,
+    "tree_digest": "18fae5da305dafd2043460ecf16f700e22537d71",
+    "created_at": "2026-09-21T21:10:15Z",
+    "note": "after developer run, plan dc571bf06f3d0531"
   },
-  "finished_at": "2026-09-21T20:56:16Z"
+  "stage": "CHECKPOINTED",
+  "blocked_kind": null,
+  "iterations": 2,
+  "endpoints": null,
+  "evidence_items": 16,
+  "evidence_verified": 10,
+  "receipts": [
+    {
+      "receipt_file": "PF-e05758a3-P05-i1-a4-K1-basis.json",
+      "sha256": "76b3ca6832b68eda31260bb62e67f37cbf59a8249f1b75f1928e63bbb5f93c06",
+      "bytes": 1039
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i1-a4-K1.json",
+      "sha256": "e38941c1378c63c2553b921b7b4b27abaa04c277e9f772e5229ac9813d03c971",
+      "bytes": 1027
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i1-a4-K2-basis.json",
+      "sha256": "e0f8d1d7044502fd1e4f5dc059fa8e6b44c445b78cdbbe535b409f6cdd4aa5b9",
+      "bytes": 992
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i1-a4-K2.json",
+      "sha256": "01f2c001a50410d102ba5c4f1383dd1b3e32bf94c29cd1fc74ace9e8e650a43f",
+      "bytes": 980
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i1-a4-K3-basis.json",
+      "sha256": "883e3686f815fac3ee578d30489d93ae0715bba667f04114edaa9d1fcf20c012",
+      "bytes": 987
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i1-a4-K3.json",
+      "sha256": "28014c5305b441edbd62fd228f9df3ce49da5434ead15ad047171d33c8aa0c66",
+      "bytes": 975
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i1-a4-K4-basis.json",
+      "sha256": "23a9a323c67fe41a036e4b972d98b5d27997e8252d3549e3715c47209291889d",
+      "bytes": 995
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i1-a4-K4.json",
+      "sha256": "1511d6a030ea14deea8167341fb9d86d2c27b3ca96f9257fa58498c5769062a2",
+      "bytes": 983
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i1-a4-K5-basis.json",
+      "sha256": "910f5f0650c80a8baa16bd20c4273af4dc81f968dfa132e34c69679fd9d664f3",
+      "bytes": 1106
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i1-a4-K5.json",
+      "sha256": "a51c59c08909afddbcfc7672a57c6d22c75291c001b388a87ec87b56caf554a8",
+      "bytes": 1094
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i1-a4-K6-basis.json",
+      "sha256": "b9bb2f55654a9db8de66dcc89498d8f93d15663a8877f2b6a04f1897c95eff78",
+      "bytes": 1184
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i1-a4-K6.json",
+      "sha256": "5cad9927fd0d4f4aa31de042ffab919cc30f692318ef47a9a854a42c9593d25a",
+      "bytes": 1172
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i1-a4-K7-basis.json",
+      "sha256": "81e33d9c06eae9945444c97885795acd2dff324a1a1f2cf6eee3903933c107b1",
+      "bytes": 1436
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i1-a4-K7.json",
+      "sha256": "48fa00b0449001d78e4b29788a7daa9b0a717ed5bc5da725666343765c30285c",
+      "bytes": 1424
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i1-a4-K8-basis.json",
+      "sha256": "dd0b1a5288015e3a1bb80c5638546f40fefc346be6276a0d580f4318bd0d3c77",
+      "bytes": 1117
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i1-a4-K8.json",
+      "sha256": "85ce41c117e5dadfeba9de578b6a66b0bbd24d7059b6c8be88f867caa463b2e6",
+      "bytes": 1105
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i2-a1-K1-basis.json",
+      "sha256": "64d9eee2569c252f1a4b65b80d2b4a96b652eb77c765a22fcf833ca91683bfc7",
+      "bytes": 1039
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i2-a1-K1.json",
+      "sha256": "69a503529981f3964081551e5b5d454a3fbcad347b6c698acaea77c4ffb8afae",
+      "bytes": 1027
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i2-a1-K10-basis.json",
+      "sha256": "40dafbbae703d5e4f87c87913039291537628883a4ad0282ff89e81090887762",
+      "bytes": 1072
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i2-a1-K10.json",
+      "sha256": "540709724a820ad758af72853e44c488760ec27dec46125db9c445abf7a05c71",
+      "bytes": 1060
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i2-a1-K2-basis.json",
+      "sha256": "83bad42c63b1227af784742b9e43e2dc8edbf6fdd9292f45581efaf33343a1a2",
+      "bytes": 992
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i2-a1-K2.json",
+      "sha256": "740e1c7ef64fb1117456a14589ce64b051efe941ade0904f6da21f141cc1b654",
+      "bytes": 980
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i2-a1-K3-basis.json",
+      "sha256": "d638bf0e1a0cb8b0ec659707d81c385a8bf95c02ec8844ec3c6551c1e72e304d",
+      "bytes": 987
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i2-a1-K3.json",
+      "sha256": "6e5e42c90aa26529bac23f075500fd25b6efb9a2adc0f6daf669ebb5cdac8b2d",
+      "bytes": 975
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i2-a1-K4-basis.json",
+      "sha256": "887b3b4daf8ae62464b8599a011f6eec88fbc9a73d9127b02c0d5d39552383fd",
+      "bytes": 995
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i2-a1-K4.json",
+      "sha256": "c7f26ba601a782499219974dbc3f8b7cdb3b83e0fa2b9e5bda548e2f2cfb2f22",
+      "bytes": 983
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i2-a1-K5-basis.json",
+      "sha256": "a693f86ab5888f9b5ccd30747123ec332f6a11b13c024bebd879ef3a472f05e9",
+      "bytes": 1106
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i2-a1-K5.json",
+      "sha256": "3cc02fe08b5eb66378dbb5d5428a58f2baffe3f9243eda69118dcc2f25df5694",
+      "bytes": 1094
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i2-a1-K6-basis.json",
+      "sha256": "71e539b3ac120e282bda865c1f78e8731a96a2aa4cc0faf315d89e5f420640a8",
+      "bytes": 1184
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i2-a1-K6.json",
+      "sha256": "0793ad58e8340a6a0d064644bf22295b40117ac1c1b5b8a6ecc6c3cd092d9cbd",
+      "bytes": 1172
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i2-a1-K7-basis.json",
+      "sha256": "f7ef1d706b60b8ea250908371a94f2d2e5152e4897ec9aa4f3ec3ea8b55ce395",
+      "bytes": 1436
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i2-a1-K7.json",
+      "sha256": "768d06a74f63a0e5845fa0fb8a077da890e3c6a4818aa3588ac7ecdeedcc58d5",
+      "bytes": 1424
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i2-a1-K8-basis.json",
+      "sha256": "4d4aec9ac0a40ca48b467931a2abc3ac29412fac1042f5b20841b0c51aa82065",
+      "bytes": 1117
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i2-a1-K8.json",
+      "sha256": "cfcb16d8d31067a08444177ef327f10e3ce06bc2e817d6e11a31a2b50fbe8436",
+      "bytes": 1105
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i2-a1-K9-basis.json",
+      "sha256": "0bdc6fdb9e8f8b6717e198a7de58268ee84d8bbc874f61c85c055e00eaba006b",
+      "bytes": 1131
+    },
+    {
+      "receipt_file": "PF-e05758a3-P05-i2-a1-K9.json",
+      "sha256": "8fa4170be2ecd9e4da7406914d6cf2d535a139e066cbd87cdf84dfabbf8d3ec9",
+      "bytes": 1119
+    }
+  ],
+  "receipt_count": 36,
+  "note": "planner=claude developer=claude qa=codex via herdr panes w6F; roles real dispatched; receipts immutable"
 }

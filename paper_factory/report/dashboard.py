@@ -78,7 +78,7 @@ def render_dashboard(workspace_reports: Path | None = None, out: Path | None = N
     for name, info in (providers.get("providers") or {}).items():
         d = info.get("doctor") or {}
         state = "PASS" if d.get("present") else "UNAVAILABLE"
-        fam = (info.get("backend") or {}).get("family", "unknown")
+        fam = (info.get("backend") or {}).get("provider_family", "unknown")
         board_rows.append(row([f"Provider {name}", _badge(state),
                                html.escape(f"family={fam} marking={info.get('marking_status', 'unknown')}")]))
 
