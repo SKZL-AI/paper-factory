@@ -72,7 +72,7 @@ def _u4(ctx: NodeContext) -> tuple[str, str]:
     if not audit.exists():
         return "NOT_RUN", "no citation audit"
     data = json.loads(audit.read_text())
-    crit = [f for f in data.get("findings", []) if f.get("severity") == "CRITICAL"]
+    crit = [f for f in data.get("findings", []) if f.get("kind") == "false_citation"]
     if crit:
         return "FAIL", f"false citations: {[f.get('key') for f in crit]}"
     if data.get("offline"):
@@ -164,10 +164,21 @@ def _u9(ctx: NodeContext) -> tuple[str, str]:
 
 def _u10(ctx: NodeContext) -> tuple[str, str]:
     ws = ctx.workspace
-    pdfs = list(ws.release_dir.glob("*/build/main.pdf"))
-    if not pdfs:
+    rep = ws.reports_dir / "clean_rebuild.json"
+    if not rep.exists():
+        return "NOT_RUN", "no clean rebuild report"
+    data = json.loads(rep.read_text())
+    if not data.get("pdf_produced"):
         return "FAIL", "clean rebuild produced no pdf"
-    return "PASS", "clean bundle rebuilds"
+    pdf = Path(data.get("pdf_path", ""))
+    if not pdf.exists():
+        return "FAIL", f"rebuilt pdf missing: {pdf}"
+    freeze = ws.reports_dir / "scientific_freeze.json"
+    if freeze.exists():
+        frozen_at = json.loads(freeze.read_text()).get("frozen_at", "")
+        if data.get("rebuilt_at", "") < frozen_at:
+            return "FAIL", "rebuild predates the scientific freeze (stale)"
+    return "PASS", "clean bundle rebuilds (post-freeze, this run)"
 
 
 def _u11(ctx: NodeContext) -> tuple[str, str]:
@@ -185,6 +196,8 @@ def _u11(ctx: NodeContext) -> tuple[str, str]:
 
 def _u12(ctx: NodeContext) -> tuple[str, str]:
     ws = ctx.workspace
+    if not origin_receipts(ws):
+        return "NOT_RUN", "no origin receipts on record"
     forbidden = []
     for r in origin_receipts(ws):
         fam = (r.get("backend") or {}).get("family", "unknown")
@@ -197,6 +210,8 @@ def _u12(ctx: NodeContext) -> tuple[str, str]:
 
 def _u13(ctx: NodeContext) -> tuple[str, str]:
     ws = ctx.workspace
+    if not origin_receipts(ws):
+        return "NOT_RUN", "no origin receipts on record"
     unknown = [r["rel_path"] for r in origin_receipts(ws)
                if (r.get("backend") or {}).get("family", "unknown") == "unknown"]
     if unknown:
@@ -205,12 +220,23 @@ def _u13(ctx: NodeContext) -> tuple[str, str]:
 
 
 def _u14(ctx: NodeContext) -> tuple[str, str]:
-    statuses = {(r.get("backend") or {}).get("marking_status", "unknown")
-                for r in origin_receipts(ctx.workspace)}
-    if "documented_no_marking" in statuses:
-        # allowed, but the report must still say 'unknown is possible' elsewhere
-        pass
-    return "PASS", f"marking statuses reported: {sorted(statuses) or ['n/a']}"
+    receipts = origin_receipts(ctx.workspace)
+    if not receipts:
+        return "NOT_RUN", "no origin receipts — marking never assessed"
+    statuses = {(r.get("backend") or {}).get("marking_status", "unknown") for r in receipts}
+    # honesty rule: 'documented_no_marking' may only appear with a registry entry
+    # backing it; otherwise the claim is fabricated certainty.
+    for r in receipts:
+        backend = r.get("backend") or {}
+        claimed = backend.get("marking_status", "unknown")
+        if claimed == "documented_no_marking":
+            registry_status = ctx.marking.status_for(
+                backend.get("provider_family", "unknown"), backend.get("model_family", "unknown"))
+            if registry_status != "documented_no_marking":
+                return "FAIL", (f"origin receipt claims documented_no_marking for "
+                                f"{backend.get('provider_family')}/{backend.get('model_family')} "
+                                f"but registry says {registry_status}")
+    return "PASS", f"marking statuses reported honestly: {sorted(statuses)}"
 
 
 def _u15(ctx: NodeContext) -> tuple[str, str]:

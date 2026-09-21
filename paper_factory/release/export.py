@@ -124,6 +124,11 @@ def run_clean_rebuild(ctx: NodeContext) -> NodeOutcome:
                     str(build), "main.tex"])
     pdf = build / "main.pdf"
     hard_errors = [ln for ln in proc.stdout.splitlines() if ln.startswith("!")] if proc else ["no run"]
+    write_json(ws.reports_dir / "clean_rebuild.json", {
+        "rebuilt_at": utcnow(), "run_id": ctx.run_id, "pdf_produced": pdf.exists(),
+        "pdf_path": str(pdf), "engine": pdflatex,
+        "exit_code": proc.returncode if proc else None,
+        "hard_errors": hard_errors[:5]})
     detail = {"engine": pdflatex, "exit_code": proc.returncode if proc else None,
               "pdf_produced": pdf.exists(), "hard_errors": hard_errors[:5],
               "log_tail": [] if pdf.exists() and not hard_errors else proc.stdout.splitlines()[-15:]}

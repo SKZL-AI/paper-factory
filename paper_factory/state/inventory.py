@@ -128,9 +128,13 @@ def collect_inventory() -> dict[str, Any]:
         "tools": {t: _probe([t, "--version"]) for t in TOOLS},
         "harnesses": {h: _probe([h, "--version"]) for h in HARNESSES},
         "research_systems": {r: _probe([r, "--version"]) for r in RESEARCH},
+        "python_packages": {d: _pip_probe(d) for d in ("hoh", "paperqa", "duckdb", "litellm")},
         "env_key_names_present": _env_key_names(),
         "provider_config_structure": _provider_config_structure(),
     }
+    # hoh may be installed in a venv only — merge the importlib probe
+    if not inv["research_systems"]["hoh"].get("present") and inv["python_packages"]["hoh"].get("present"):
+        inv["research_systems"]["hoh"] = {**inv["python_packages"]["hoh"], "via": "venv"}
     # herdr server status (cheap, local socket)
     if shutil.which("herdr"):
         try:

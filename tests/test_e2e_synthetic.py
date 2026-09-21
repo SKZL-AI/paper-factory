@@ -185,7 +185,7 @@ def test_11_alternative_provider_resume():
     adapter, detail = router.select_for_role("methods_review")
     assert adapter is not None
     assert detail["provider_name"]
-    assert detail["selection_notes"] is not None  # selection is on record
+    assert isinstance(detail["selection_notes"], list)  # selection is on record
 
 
 def test_12_same_family_review_marked_degraded():
@@ -270,19 +270,45 @@ def test_17_hoh_receipts_exist():
     assert data["receipts"], "HoH receipts must be preserved"
     assert data["verdict"] in ("PASS", "DEGRADED")
     assert data["run_id"].startswith("PF-")
+    # bind the committed evidence to the actual receipts on disk (hash check)
+    import hashlib
+
+    live = Path("/tmp/pf-hoh-live/.paper-factory/hoh-runs") / data["run_id"] / "receipts"
+    if live.is_dir():
+        mismatched = []
+        for r in data["receipts"]:
+            f = live / r["receipt_file"]
+            if not f.exists():
+                mismatched.append(r["receipt_file"])
+                continue
+            if hashlib.sha256(f.read_bytes()).hexdigest() != r["sha256"]:
+                mismatched.append(r["receipt_file"] + " (hash)")
+        assert not mismatched, f"evidence JSON does not match receipts on disk: {mismatched[:3]}"
+    else:
+        # live evidence directory gone → honest NOT_RUN, not a pass
+        import pytest as _pt
+        _pt.skip("HoH live receipt directory no longer present — evidence hash check NOT_RUN")
 
 
 # 18: herdr endpoint evidence -------------------------------------------------------------
 
 def test_18_herdr_runtime_evidence():
+    """Independent check: query herdr directly (not through our adapter), then
+    require the adapter to agree with reality."""
+    import subprocess as sp
+
     from paper_factory.adapters.herdr.adapter import HerdrAdapter
 
+    direct = sp.run(["herdr", "status"], capture_output=True, text=True, timeout=15)
+    herdr_really_up = direct.returncode == 0 and "running" in direct.stdout
     status = HerdrAdapter().status()
-    if status["available"]:
+    if herdr_really_up:
+        assert status["available"], "adapter says unavailable while herdr is up (dishonest)"
         assert status["verdict"] == "PASS"
-        assert status["endpoint"]["workspace_id"]
+        ep = status["endpoint"]
+        assert ep["workspace_id"] and ep["pane_id"], "endpoint evidence incomplete"
     else:
-        assert status["verdict"] == "DEGRADED_RUNTIME"
+        assert status["verdict"] == "DEGRADED_RUNTIME", "herdr down must read DEGRADED_RUNTIME"
 
 
 def test_19_u7_detects_evidence_tampering(full_run):
@@ -308,3 +334,20 @@ def test_19_u7_detects_evidence_tampering(full_run):
     state, note = _u7(ctx)
     assert state in ("PASS", "FAIL")  # FAIL ok if receipts missing for this run id; never NOT_RUN
     assert state != "NOT_RUN", f"U7 masked an error again: {note}"
+
+
+def test_20_major_review_finding_from_pipeline(full_run):
+    """The planted significance-without-test issue must surface as a MAJOR
+    review finding produced by the pipeline (not planted by the test), and be
+    dispositioned after remediation."""
+    reviews_dir = full_run["proj"] / ".paper-factory/reviews"
+    reports = [json.loads(p.read_text()) for p in reviews_dir.glob("P2*.json")]
+    assert reports, "no review reports produced"
+    majors = [f for r in reports for f in r.get("findings", [])
+              if f.get("severity") == "MAJOR"]
+    assert majors, "pipeline must surface the planted issue as MAJOR"
+    sig = [f for f in majors if "significance" in (f.get("statement") or "").lower()
+           or "test" in (f.get("statement") or "").lower()]
+    assert sig, f"significance finding missing in majors: {[m.get('statement') for m in majors]}"
+    assert all(f.get("disposition") is not None for f in majors), \
+        "MAJOR findings must be dispositioned after remediation"

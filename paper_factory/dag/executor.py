@@ -70,7 +70,9 @@ class Executor:
                 statuses[nid] = Verdict.SKIPPED_DEPENDENCY
                 self._record(node, Verdict.SKIPPED_DEPENDENCY, {"reason": "dependency_human_required"})
                 continue
-            if any(s in (Verdict.SKIPPED_DEPENDENCY, Verdict.FAIL) for s in dep_states):
+            blocking = (Verdict.SKIPPED_DEPENDENCY, Verdict.FAIL, Verdict.NOT_RUN,
+                        Verdict.UNSUPPORTED_ENVIRONMENT, Verdict.INVALIDATED)
+            if any(s in blocking for s in dep_states):
                 statuses[nid] = Verdict.SKIPPED_DEPENDENCY
                 self._record(node, Verdict.SKIPPED_DEPENDENCY, {"reason": "dependency_not_satisfied"})
                 continue
@@ -129,6 +131,9 @@ def run_status_overall(statuses: dict[str, Verdict]) -> str:
             nid for nid, v in statuses.items()
             if v in (Verdict.SKIPPED_DEPENDENCY, Verdict.NOT_RUN) and not NODE_MAP[nid].optional
         ]
+        # closure with unproven invariants (DEGRADED at P35) is never "CLOSED"
+        if statuses.get("P35") not in (None, Verdict.PASS):
+            return "INCOMPLETE"
         return "CLOSED" if not skipped_required else "INCOMPLETE"
     return "INCOMPLETE"
 
