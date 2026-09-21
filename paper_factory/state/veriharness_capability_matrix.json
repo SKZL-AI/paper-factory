@@ -1,0 +1,32 @@
+{
+  "generated_at": "2026-09-21T19:50:00Z",
+  "subject": {
+    "name": "VeriHarness / hoh",
+    "version": "0.1.0",
+    "git": "https://github.com/SKZL-AI/veriharness @ 5d576bd (v0.1.0+18 on main)",
+    "installed": "editable from /home/sai/veriharness into paper-factory .venv"
+  },
+  "method": "Explore-Subagent las alle Docs + src/hoh vollständig; Schlüsselbehauptungen vom Captain stichprobenartig am Code gegengeprüft (launcher.py:46-48, stages.py:210-216, cli.py:1280-1290, policy/ vorhanden, bwrap vorhanden).",
+  "legend": ["SUPPORTED", "SUPPORTED_WITH_ADAPTER", "PARTIAL", "NOT_REQUIRED", "GAP"],
+  "requirements": [
+    {"req": "plan → develop → independent QA → evidence → accept/reject → replan (ein Run)", "class": "SUPPORTED", "evidence": "controller.py; roles.py:160-414; examples/minimal inkl. recorded rejection"},
+    {"req": "Receipt-System mit Runner-Nachprüfung (PASS braucht receipt_id, Exit-Match, Log-Digest)", "class": "SUPPORTED", "evidence": "contracts.py:333-406; controller.py:1012-1069; runner.py:1237-1282"},
+    {"req": "Worktree-Isolation über Herdr (einziger Schreiber = Developer)", "class": "SUPPORTED", "evidence": "herdr.py:174-191; workspace.py:256-300; launcher.py:353-355"},
+    {"req": "Herdr-Integration (harte Voraussetzung HERDR_ENV=1 + CLI)", "class": "SUPPORTED", "evidence": "herdr.py:45-56; dispatchers.py:465-516; HERDR_ENV=1 auf dieser Maschine aktiv"},
+    {"req": "Sandbox strict (bubblewrap, fail-closed, von innen vermessen)", "class": "SUPPORTED", "evidence": "sandbox.py:385-510; bwrap auf /usr/bin/bwrap vorhanden"},
+    {"req": "Provider-Profile claude/pi/kimi/codex + --role-model/--role-effort", "class": "SUPPORTED", "evidence": "dispatchers.py:201-206,159-185; cli.py:695-721"},
+    {"req": "Quota-/Provider-Fehlerklassifikation", "class": "SUPPORTED_WITH_ADAPTER", "evidence": "taxonomy.py:52-109; quota.py; ABER: launcher.py:48 erwartet 'usage_quota', stages.py:213 schreibt 'usage_limit' → Adapter liest blocked_kind direkt aus state.json, nicht das Launcher-Verdikt (gegengeprüft 2026-09-21)"},
+    {"req": "CLI mit JSON-Output für Orchestrierung (start/run/status/goal/project resume/...)", "class": "SUPPORTED", "evidence": "cli.py:31-32; Smoke archiviert unter paper_factory/state/bootstrap_smoke/"},
+    {"req": "Importierbare Python-API (Controller, RunStore, runner.verify_receipt, ...)", "class": "SUPPORTED_WITH_ADAPTER", "evidence": "keine Stabilitätsgarantie (__init__.py leer) → Adapter kapselt, Pin auf Commit 5d576bd"},
+    {"req": "DAG-Orchestrierung / Repair-Nodes / Global Closure ÜBER Runs hinweg", "class": "PARTIAL", "evidence": "project.py/orchestrator.py existieren, aber Erzeugen/Driven nur via Python-API, CLI read-only (cli.py:1119-1128); Gates (union_gate etc.) sind Deployment-Tooling außerhalb des Pakets → PF baut eigene U1-U16-Closure und nutzt HoH pro Knoten"},
+    {"req": "Zwei Sessions / zwei Runs über demselben Repo", "class": "GAP", "evidence": "O177 (gemessen von der Claude-Session 2026-09-21): Capability-Witness blockt beide Läufe bei fremden Commits; Limit 12d/13b/14. PF-Policy: eigener Klon + eigener HOH_RUNS-Root + Serialisierung (concurrency_audit.json)"},
+    {"req": "Kostenmessung pro Dispatch", "class": "GAP", "evidence": "telemetry cost_disclosure=None (Limit 3)"},
+    {"req": "Kriterien können Evidence (runs/) oder Vorgänger-Diffs prüfen", "class": "GAP", "evidence": "Limits 10/11: Arena hat kein .git, keinen Vorgänger; Evidence-Capsule existiert nicht → PF prüft Evidenz-Chain selbst (U2/U7)"},
+    {"req": "Wissenschaftliche Rollen (statistik_reviewer, novelty_attack, ...)", "class": "NOT_REQUIRED", "evidence": "wissenschaftliche Semantik lebt in der Work-Package-Spec, nicht in HoH-Enums (Master-Prompt §21)"},
+    {"req": "hoh amend (Spec-Änderung on the record)", "class": "SUPPORTED", "evidence": "cli.py:1342-1360; amendment.py"},
+    {"req": "Goalbook (run-übergreifende Objectives, Human-Approval)", "class": "SUPPORTED", "evidence": "goalbook.py:219-306"},
+    {"req": "resume-quota / recovery (attach/evaluate/block)", "class": "SUPPORTED", "evidence": "quota.py:53; cli.py:198-246,450-539; stages.py:49-96"},
+    {"req": "Delivery local-only (fast-forward push . branch:target, --approve)", "class": "SUPPORTED", "evidence": "delivery.py:87-205; PF nutzt vorerst nur Receipt-Einsammlung, kein deliver"},
+    {"req": "Guard-Patterns (dangerous/house-rules) für Check-Kommandos", "class": "SUPPORTED", "evidence": "src/hoh/policy/*.txt vorhanden; runner.py:340-385 erzwingt Existenz"}
+  ]
+}
