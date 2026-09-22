@@ -1,7 +1,7 @@
 {
-  "collected_at": "2026-09-21T23:31:22Z",
+  "collected_at": "2026-09-22T00:16:49Z",
   "exit_code": 0,
-  "summary_line": "63 passed in 38.28s",
+  "summary_line": "63 passed in 37.15s",
   "tests": [
     {
       "name": "test_doctor_runs_without_error[claude]",
@@ -13,13 +13,13 @@
       "name": "test_doctor_runs_without_error[codex]",
       "class": "tests.test_adapters",
       "state": "PASS",
-      "time_s": 0.11
+      "time_s": 0.17
     },
     {
       "name": "test_doctor_runs_without_error[kimi]",
       "class": "tests.test_adapters",
       "state": "PASS",
-      "time_s": 1.25
+      "time_s": 1.18
     },
     {
       "name": "test_doctor_runs_without_error[pi]",
@@ -49,13 +49,13 @@
       "name": "test_installed_harnesses_are_present[codex]",
       "class": "tests.test_adapters",
       "state": "PASS",
-      "time_s": 0.11
+      "time_s": 0.12
     },
     {
       "name": "test_installed_harnesses_are_present[kimi]",
       "class": "tests.test_adapters",
       "state": "PASS",
-      "time_s": 1.23
+      "time_s": 1.18
     },
     {
       "name": "test_installed_harnesses_are_present[pi]",
@@ -97,7 +97,7 @@
       "name": "test_real_capabilities_match_probe",
       "class": "tests.test_adapters",
       "state": "PASS",
-      "time_s": 0.18
+      "time_s": 0.17
     },
     {
       "name": "test_invoke_mocked_receipt_hashes",
@@ -139,7 +139,7 @@
       "name": "test_litellm_invoke_mocked",
       "class": "tests.test_adapters",
       "state": "PASS",
-      "time_s": 0.05
+      "time_s": 0.03
     },
     {
       "name": "test_receipt_to_jsonl",
@@ -151,25 +151,25 @@
       "name": "test_01_code_only",
       "class": "tests.test_e2e_synthetic",
       "state": "PASS",
-      "time_s": 4.72
+      "time_s": 4.51
     },
     {
       "name": "test_02_data_only",
       "class": "tests.test_e2e_synthetic",
       "state": "PASS",
-      "time_s": 3.85
+      "time_s": 3.72
     },
     {
       "name": "test_03_draft_assisted",
       "class": "tests.test_e2e_synthetic",
       "state": "PASS",
-      "time_s": 2.41
+      "time_s": 2.44
     },
     {
       "name": "test_04_mixed_evidence",
       "class": "tests.test_e2e_synthetic",
       "state": "PASS",
-      "time_s": 13.4
+      "time_s": 12.77
     },
     {
       "name": "test_05_chat_ingestion",
@@ -205,19 +205,19 @@
       "name": "test_10_provider_failure_classified",
       "class": "tests.test_e2e_synthetic",
       "state": "PASS",
-      "time_s": 0.07
+      "time_s": 0.06
     },
     {
       "name": "test_11_alternative_provider_resume",
       "class": "tests.test_e2e_synthetic",
       "state": "PASS",
-      "time_s": 1.89
+      "time_s": 1.79
     },
     {
       "name": "test_12_same_family_review_marked_degraded",
       "class": "tests.test_e2e_synthetic",
       "state": "PASS",
-      "time_s": 2.33
+      "time_s": 2.35
     },
     {
       "name": "test_13_forbidden_final_prose_origin_blocked",
@@ -229,7 +229,7 @@
       "name": "test_14_paperpal_absence_human_required",
       "class": "tests.test_e2e_synthetic",
       "state": "PASS",
-      "time_s": 4.56
+      "time_s": 4.62
     },
     {
       "name": "test_15_clean_bundle_rebuild",
@@ -247,7 +247,7 @@
       "name": "test_17_hoh_receipts_exist",
       "class": "tests.test_e2e_synthetic",
       "state": "PASS",
-      "time_s": 0.01
+      "time_s": 0.0
     },
     {
       "name": "test_18_herdr_runtime_evidence",
@@ -283,19 +283,19 @@
       "name": "test_figure_generation",
       "class": "tests.test_figures_tables_manuscript",
       "state": "PASS",
-      "time_s": 0.63
+      "time_s": 0.65
     },
     {
       "name": "test_table_plan_and_generation",
       "class": "tests.test_figures_tables_manuscript",
       "state": "PASS",
-      "time_s": 0.01
+      "time_s": 0.0
     },
     {
       "name": "test_manuscript_architecture_and_idempotency",
       "class": "tests.test_figures_tables_manuscript",
       "state": "PASS",
-      "time_s": 0.01
+      "time_s": 0.0
     },
     {
       "name": "test_section_check",
@@ -384,6 +384,6 @@
   ],
   "stdout_tail": [
     "...............................................................          [100%]",
-    "63 passed in 38.28s"
+    "63 passed in 37.15s"
   ]
 }
