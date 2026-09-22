@@ -127,3 +127,23 @@ def run_section_check(ctx: NodeContext, section: str) -> NodeOutcome:
     if problems:
         return NodeOutcome(Verdict.FAIL, detail)
     return NodeOutcome(Verdict.PASS, detail)
+
+
+def run_manuscript_structure_check(ctx: NodeContext) -> NodeOutcome:
+    """All-sections wiring of run_section_check into the DAG (P20): catches
+    surviving <<PF:...>> placeholders, dangling \\ref and duplicate \\label
+    across the composed manuscript — e.g. when a compose node was skipped or
+    failed upstream. Not redundant with P22 (numbers/units only)."""
+    per_section: dict[str, str] = {}
+    problems: dict[str, list[str]] = {}
+    for section in SECTIONS:
+        outcome = run_section_check(ctx, section)
+        per_section[section] = outcome.verdict.value
+        if outcome.verdict == Verdict.FAIL:
+            problems[section] = outcome.detail.get("problems", [])
+    summary = {"checked_at": utcnow(), "sections": per_section,
+               "verdict": (Verdict.FAIL if problems else Verdict.PASS).value}
+    write_json(ctx.workspace.reports_dir / "manuscript_structure_check.json", summary)
+    if problems:
+        return NodeOutcome(Verdict.FAIL, {"sections": per_section, "problems": problems})
+    return NodeOutcome(Verdict.PASS, {"sections": per_section})

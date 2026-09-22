@@ -85,6 +85,7 @@ _BASE_HANDLERS: dict[str, Handler] = {
     "P20": lambda ctx, node: _chain(ctx, [
         lambda c, n: _compose(c, "abstract"),
         _lazy("paper_factory.manuscript.compose", "run_finalize_main"),
+        _lazy("paper_factory.manuscript.scaffold", "run_manuscript_structure_check"),
     ]),
     "P21": _lazy("paper_factory.literature.verify", "run_citation_audit"),
     "P22": _lazy("paper_factory.statistics.numbers_audit", "run_numbers_units_audit"),

@@ -12,7 +12,7 @@ from typing import Any, Callable
 
 from ..claims.graph import load_claims
 from ..core.results import Verdict
-from ..core.util import read_jsonl, utcnow, write_json
+from ..core.util import read_jsonl, sha256_file, utcnow, write_json
 from ..dag.executor import NodeContext, NodeOutcome
 from ..provenance.firewall import is_protected
 from ..provenance.origin import origin_receipts, protected_files
@@ -82,7 +82,12 @@ def _u4(ctx: NodeContext) -> tuple[str, str]:
 
 
 def _u5(ctx: NodeContext) -> tuple[str, str]:
-    reviews = load_reviews(ctx.workspace.reviews_dir)
+    reviews, invalid = load_reviews(ctx.workspace.reviews_dir)
+    if invalid:
+        # fail closed: a corrupt review artifact could hide CRITICAL/MAJOR
+        findings = [f"{i['path']} ({i['error'].splitlines()[0] if i['error'] else '?'})"
+                    for i in invalid]
+        return "FAIL", f"REVIEW_ARTIFACT_INVALID: {findings}"
     if not reviews:
         return "NOT_RUN", "no reviews recorded"
     blocking = unresolved_blocking(reviews)
@@ -91,21 +96,123 @@ def _u5(ctx: NodeContext) -> tuple[str, str]:
     return "PASS", f"{len(reviews)} reviews, none blocking"
 
 
+def _validated_rel(ws, rel: str) -> Path | None:
+    """Resolve a pointer-supplied workspace-relative path; None when it is
+    empty, degenerate, absolute, escaping, or resolving outside the workspace
+    (e.g. through a symlinked bundle directory)."""
+    p = Path(rel)
+    if not rel or p.is_absolute() or not p.parts or ".." in p.parts:
+        return None
+    resolved = (ws.root / p).resolve()
+    try:
+        resolved.relative_to(ws.root.resolve())
+    except ValueError:
+        return None
+    return resolved
+
+
 def _u6(ctx: NodeContext) -> tuple[str, str]:
+    # reviewed protected manuscript set == frozen set == release set: the full
+    # canonical freeze manifest is compared, not just main.tex
+    from ..reviews.remediation import compute_freeze_manifest, compute_freeze_symlinks
+
     ws = ctx.workspace
     freeze = ws.reports_dir / "scientific_freeze.json"
     if not freeze.exists():
         return "NOT_RUN", "no freeze record"
-    import hashlib
-
     frozen = json.loads(freeze.read_text())
-    paper = ws.paper_dir / "main.tex"
+    files = frozen.get("files")
+    if not isinstance(files, dict) or not files:
+        return "FAIL", "freeze record has no file manifest"
+    unsafe = [k for k in files if Path(k).is_absolute() or ".." in Path(k).parts]
+    if unsafe:
+        return "FAIL", f"unsafe paths in freeze manifest: {unsafe[:3]}"
+    paper = ws.paper_dir
     if not paper.exists():
         return "NOT_RUN", "no manuscript"
-    cur = hashlib.sha256(paper.read_bytes()).hexdigest()
-    if frozen.get("main_tex_sha256") != cur:
-        return "FAIL", "manuscript changed after freeze"
-    return "PASS", "reviewed == release manuscript"
+    current = compute_freeze_manifest(paper)
+    problems = []
+    missing = sorted(k for k in files if k not in current)
+    changed = sorted(k for k in files if k in current and current[k] != files[k])
+    added = sorted(k for k in current if k not in files)
+    if missing:
+        problems.append(f"frozen files deleted: {missing[:5]}")
+    if changed:
+        problems.append(f"frozen files mutated: {changed[:5]}")
+    if added:
+        problems.append(f"files added after freeze: {added[:5]}")
+    frozen_links = frozen.get("symlinks", {})
+    frozen_link_hashes = frozen.get("symlink_hashes", {})
+    current_links, current_link_hashes = compute_freeze_symlinks(paper, allowed_root=ws.root)
+    if frozen_links != current_links:
+        problems.append(
+            f"symlink map changed after freeze: frozen {sorted(frozen_links)} vs "
+            f"current {sorted(current_links)}")
+    changed_targets = sorted(k for k, h in frozen_link_hashes.items()
+                             if current_link_hashes.get(k) != h)
+    if changed_targets:
+        problems.append(f"symlink target content changed after freeze: {changed_targets[:5]}")
+    # release side: the active bundle must carry the identical frozen set
+    # (minus the paths the release policy deliberately excludes)
+    pointer_path = ws.reports_dir / "current_release.json"
+    if pointer_path.exists():
+        pointer = json.loads(pointer_path.read_text())
+        bundle_rel = pointer.get("bundle", "")
+        if not bundle_rel.startswith("release/"):
+            return "FAIL", f"bundle path outside release/ in pointer: {bundle_rel!r}"
+        bundle_root = _validated_rel(ws, bundle_rel)
+        if bundle_root is None:
+            return "FAIL", ("unsafe or degenerate bundle path in release pointer: "
+                            f"{bundle_rel!r}")
+        bundle_paper = bundle_root / "paper"
+        if not bundle_paper.exists():
+            problems.append("active release bundle has no manuscript tree")
+        else:
+            excluded = set()
+            if not ctx.config.release.include_chat_logs:
+                # mirrors the export filter exactly: link name OR link target
+                # matching the chat heuristic is excluded from the bundle
+                def _chaty(s: str) -> bool:
+                    return any(h in s.lower() for h in ("chat", "transcript", "handoff"))
+                excluded = {k for k in files if _chaty(k)}
+                excluded |= {k for k, tgt in frozen_links.items()
+                             if _chaty(k) or _chaty(str(tgt))}
+            bundle_cur = compute_freeze_manifest(bundle_paper)
+            # excluded means "allowed to be ABSENT" — a policy-excluded path
+            # present in the bundle at all is a release violation (e.g. a
+            # chat transcript smuggled in after export)
+            bpresent = sorted(k for k in excluded if k in bundle_cur)
+            if bpresent:
+                problems.append(f"policy-excluded files present in bundle: {bpresent[:5]}")
+            bmissing = sorted(k for k in files if k not in excluded and k not in bundle_cur)
+            bchanged = sorted(k for k in files
+                              if k not in excluded and k in bundle_cur
+                              and bundle_cur[k] != files[k])
+            # the export never ships symlinks — any symlink inside the bundle
+            # manuscript tree is tampering
+            bundle_links, _ = compute_freeze_symlinks(bundle_paper)
+            if bundle_links:
+                problems.append(f"bundle contains symlinks: {sorted(bundle_links)[:5]}")
+            # export materializes internal symlinks as regular copies — those
+            # copies must exist and match the pinned target content; a
+            # regular file at a frozen EXTERNAL symlink path is an addition
+            materialized = set(frozen_link_hashes)
+            for rel in sorted(materialized - excluded):
+                if rel not in bundle_cur:
+                    problems.append(f"bundle missing materialized symlink copy: {rel}")
+                elif bundle_cur[rel] != frozen_link_hashes[rel]:
+                    problems.append(f"bundle copy at frozen symlink path diverges: {rel}")
+            badded = sorted(k for k in bundle_cur
+                            if k not in files and k not in materialized)
+            if bmissing:
+                problems.append(f"bundle missing frozen files: {bmissing[:5]}")
+            if bchanged:
+                problems.append(f"bundle files diverge from freeze: {bchanged[:5]}")
+            if badded:
+                problems.append(f"bundle carries files outside the freeze: {badded[:5]}")
+    if problems:
+        return "FAIL", "; ".join(problems)
+    return "PASS", f"{len(files)} frozen files hash-identical (reviewed == frozen == release)"
 
 
 def _u7(ctx: NodeContext) -> tuple[str, str]:
@@ -139,17 +246,77 @@ def _u7(ctx: NodeContext) -> tuple[str, str]:
 
 
 def _u8(ctx: NodeContext) -> tuple[str, str]:
+    # bound to the ACTIVE bundle via the pointer P33 persists — never a
+    # lexicographic guess over parked/FAILED/older bundles. The binding is
+    # fail-closed: a pointer missing its status/hash/bundle, or a scan without
+    # a matching scanned_root, is FAIL — not an unpinned pass.
     ws = ctx.workspace
-    scan = list((ws.release_dir).glob("*/secret_scan.json"))
-    if not scan:
-        return "NOT_RUN", "no release scan"
-    latest = json.loads(sorted(scan)[-1].read_text())
-    verdict = latest.get("verdict")
-    if verdict == "FAIL":
-        return "FAIL", "secret scan failed"
-    if verdict == "DEGRADED":
-        return "DEGRADED", f"scan skipped files: {latest.get('skipped', [])[:3]}"
-    return "PASS", "no secrets/private transcripts in release"
+    pointer_path = ws.reports_dir / "current_release.json"
+    if not pointer_path.exists():
+        return "NOT_RUN", "no active release bundle (P33 has not exported)"
+    pointer = json.loads(pointer_path.read_text())
+    if pointer.get("status") != "PASS":
+        return "FAIL", f"active release export did not pass (status={pointer.get('status')!r})"
+    bundle_rel = pointer.get("bundle", "")
+    if not bundle_rel.startswith("release/"):
+        return "FAIL", f"bundle path outside release/ in pointer: {bundle_rel!r}"
+    bundle_root = _validated_rel(ws, bundle_rel)
+    if bundle_root is None:
+        return "FAIL", ("unsafe or degenerate bundle path in release pointer: "
+                        f"{bundle_rel!r}")
+    scan_rel = pointer.get("secret_scan", "")
+    if not scan_rel.startswith(bundle_rel + "/"):
+        return "FAIL", f"scan path {scan_rel!r} not inside active bundle {bundle_rel!r}"
+    scan_path = _validated_rel(ws, scan_rel)
+    if scan_path is None:
+        return "FAIL", ("unsafe scan path in release pointer: "
+                        f"{pointer.get('secret_scan')!r}")
+    recorded = pointer.get("secret_scan_sha256")
+    if not recorded:
+        return "FAIL", "release pointer lacks the scan hash pin"
+    if not scan_path.exists():
+        return "FAIL", f"active bundle scan missing: {pointer['secret_scan']}"
+    if sha256_file(scan_path) != recorded:
+        return "FAIL", "secret_scan.json changed since export"
+    scan = json.loads(scan_path.read_text())
+    scanned_root = scan.get("scanned_root")
+    if not scanned_root:
+        return "FAIL", "scan report lacks scanned_root"
+    if Path(scanned_root).resolve() != bundle_root.resolve():
+        return "FAIL", f"scan belongs to {scanned_root}, not active bundle {pointer['bundle']}"
+    verdict = scan.get("verdict")
+    if verdict != "PASS":
+        return "FAIL", f"secret scan verdict: {verdict}"
+    # full-bundle tamper evidence: the pointer pins every file of the bundle
+    # (P33 export set + P34 build outputs). Anything missing, mutated, added
+    # or symlinked afterwards is a release violation.
+    manifest = pointer.get("bundle_files")
+    if not isinstance(manifest, dict) or not manifest:
+        return "FAIL", "release pointer lacks the full bundle manifest"
+    bad_keys = [k for k in manifest if Path(k).is_absolute() or ".." in Path(k).parts]
+    if bad_keys:
+        return "FAIL", f"unsafe paths in bundle manifest: {bad_keys[:3]}"
+    problems = []
+    current_files: dict[str, str] = {}
+    for p in sorted(bundle_root.rglob("*")):
+        if p.is_symlink():
+            problems.append(f"symlink in bundle: {p.relative_to(bundle_root)}")
+            continue
+        if p.is_file():
+            current_files[p.relative_to(bundle_root).as_posix()] = sha256_file(p)
+    for rel, pinned in manifest.items():
+        if rel not in current_files:
+            problems.append(f"bundle file missing: {rel}")
+        elif current_files[rel] != pinned:
+            problems.append(f"bundle file mutated: {rel}")
+    extra = sorted(k for k in current_files if k not in manifest)
+    if extra:
+        problems.append(f"unpinned files in bundle: {extra[:5]}")
+    if problems:
+        return "FAIL", "; ".join(problems[:3])
+    return "PASS", (f"active bundle {pointer['bundle']} scanned clean "
+                    f"({scan.get('scanned_files')} files), "
+                    f"{len(manifest)} files hash-pinned")
 
 
 def _u9(ctx: NodeContext) -> tuple[str, str]:
@@ -294,15 +461,27 @@ def run_global_closure(ctx: NodeContext) -> NodeOutcome:
             state, note = "FAIL", f"checker error: {type(exc).__name__}: {exc}"
         results[uid] = {"title": title, "state": state, "note": note}
     failed = [u for u, r in results.items() if r["state"] == "FAIL"]
+    degraded = [u for u, r in results.items() if r["state"] == "DEGRADED"]
     not_run = [u for u, r in results.items() if r["state"] == "NOT_RUN"]
     human = [u for u, r in results.items() if r["state"] == "HUMAN_REQUIRED"]
-    report = {"closed_at": utcnow(), "invariants": results,
-              "failed": failed, "not_run": not_run, "human_required": human}
+    # fail closed: a state outside the known vocabulary is never a PASS
+    known = {"PASS", "FAIL", "DEGRADED", "NOT_RUN", "HUMAN_REQUIRED"}
+    unknown = [u for u, r in results.items() if r["state"] not in known]
+    if unknown:
+        failed = failed + unknown
+    report = {"closed_at": utcnow(), "invariants": results, "failed": failed,
+              "degraded": degraded, "not_run": not_run, "human_required": human,
+              "unknown_states": unknown}
     write_json(ctx.workspace.reports_dir / "global_closure.json", report)
     if failed:
         return NodeOutcome(Verdict.FAIL, {"failed": failed, "not_run": not_run})
     if human:
         return NodeOutcome(Verdict.HUMAN_REQUIRED, {"human_required": human, "not_run": not_run})
+    # a degraded invariant must never round up to PASS — it blocks CLOSED
+    # (run_status_overall requires P35 == PASS)
+    if degraded:
+        return NodeOutcome(Verdict.DEGRADED, {"degraded": degraded, "not_run": not_run,
+                                              "note": "degraded invariants never round up to PASS"})
     if not_run:
         return NodeOutcome(Verdict.DEGRADED, {"not_run": not_run,
                                               "note": "invariants without evidence stay NOT_RUN"})

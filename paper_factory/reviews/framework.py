@@ -41,16 +41,35 @@ def save_review(reviews_dir: Path, report: ReviewReport) -> Path:
     return path
 
 
-def load_reviews(reviews_dir: Path) -> list[ReviewReport]:
-    out = []
+def load_reviews(reviews_dir: Path) -> tuple[list[ReviewReport], list[dict[str, str]]]:
+    """Returns (valid reviews, invalid artifacts). Fails closed: a review file
+    that exists but does not parse or violates the schema is reported as a
+    REVIEW_ARTIFACT_INVALID entry — never silently skipped, so a corrupt file
+    cannot make CRITICAL/MAJOR findings disappear."""
+    out: list[ReviewReport] = []
+    invalid: list[dict[str, str]] = []
     for f in sorted(reviews_dir.glob("*.json")):
-        if f.stem == "novelty_attack":
-            continue
         try:
             out.append(ReviewReport.model_validate_json(f.read_text(encoding="utf-8")))
-        except Exception:
-            continue
-    return out
+        except Exception as exc:
+            if f.stem == "novelty_attack":
+                # P07 writes its (non-review) artifact under this name — skip
+                # it only when it provably IS that artifact: the P07 shape
+                # present AND no review-ish fields. Shape keys alone are
+                # forgeable; a broken review hiding behind them must surface
+                # as REVIEW_ARTIFACT_INVALID instead of disappearing.
+                try:
+                    import json as _json
+                    data = _json.loads(f.read_text(encoding="utf-8"))
+                except Exception:
+                    data = None
+                reviewish = {"findings", "review_id", "reviewer", "severity"}
+                if (isinstance(data, dict) and {"attacked_at", "claims"} <= set(data)
+                        and not (set(data) & reviewish)):
+                    continue  # the genuine P07 artifact
+            invalid.append({"kind": "REVIEW_ARTIFACT_INVALID", "path": str(f),
+                            "error": f"{type(exc).__name__}: {exc}"})
+    return out, invalid
 
 
 def unresolved_blocking(reviews: list[ReviewReport]) -> list[Finding]:

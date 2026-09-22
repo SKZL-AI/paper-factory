@@ -48,5 +48,25 @@ result hashes; mismatches are reported, not hidden.
 ## Release
 
 Clean export excludes chat logs, internal reviews, local config. The secret
-scanner (pattern + entropy) fails closed. The bundle rebuilds independently
-(P34) before closure passes (U10).
+scanner (pattern + entropy) fails closed: files of any size are streamed with
+a boundary overlap (nothing is skipped for size), non-text files are scanned
+under 13 byte-space views at once (latin-1, UTF-16 LE/BE both parities,
+UTF-32 LE/BE all four parities — no density gate an attacker could split a
+payload around), and a symlink inside the bundle fails the scan. U8 reads the
+scan of the *active* bundle via the pointer P33 persists
+(`reports/current_release.json`, hash-pinned) — never a lexicographic guess —
+and additionally verifies the full bundle manifest (`bundle_files`: the P33
+export set plus the P34 build outputs): any unpinned, mutated, missing or
+symlinked file fails closure. Build artifacts are pinned but not scanned by
+design: they derive from scanned, pinned sources via pdflatex without shell
+escapes. U6 compares the full canonical freeze manifest (every frozen file:
+present, hash-identical, none added; symlink map and pinned internal symlink
+targets included) against both the workspace and the active bundle. Corrupt
+review artifacts fail closed as REVIEW_ARTIFACT_INVALID instead of being
+skipped. A DEGRADED or unknown invariant state never rounds up to closure
+PASS. The bundle rebuilds independently (P34) before closure passes (U10).
+
+Trust boundary: closure detects tampering with release artifacts against the
+records in `reports/` (freeze record, release pointer). The integrity of
+`reports/` itself is an operator assumption — it is the trust root of every
+closure check, not something closure can prove from inside.
