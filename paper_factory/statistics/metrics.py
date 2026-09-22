@@ -71,12 +71,19 @@ def run_statistics(ctx: NodeContext) -> NodeOutcome:
         # identifier columns (unique per row, e.g. run_id) are never group keys
         text_fields = [f for f in fields
                        if f not in numeric_fields and 1 < len({r.get(f, "") for r in rows}) <= 12]
-        # design parameters: numeric with low cardinality (load, …) but not seeds
+        # design parameters: numeric with low cardinality that REPEAT across
+        # rows (load, …) but not seeds. A numeric column whose values are all
+        # distinct is a measurement, not a grouping axis — without the
+        # "distinct < rows" guard, every small aggregated table (real papers
+        # often ship exactly those) loses all outcome fields (GAP-001).
         design_nums = [f for f in numeric_fields
-                       if f.lower() not in ("seed",) and 1 < len({r[f] for r in rows}) <= 12]
+                       if f.lower() not in ("seed",)
+                       and 1 < len({r[f] for r in rows}) < len(rows)
+                       and len({r[f] for r in rows}) <= 12]
         group_cols = text_fields + design_nums
         outcome_fields = [f for f in numeric_fields if f not in design_nums
-                          and f.lower() not in ("seed", "iteration", "run", "n")]
+                          and f.lower() not in ("seed", "iteration", "run", "n")
+                          and len({r[f] for r in rows if (r.get(f) or "").strip()}) > 1]
 
         groups: dict[tuple, list[dict[str, str]]] = {}
         for r in rows:

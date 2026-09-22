@@ -92,10 +92,15 @@ def run_figure_plan(ctx: NodeContext) -> NodeOutcome:
     """
     metrics_path = ctx.workspace.reports_dir / "paper_metrics.json"
     if not metrics_path.exists():
-        return NodeOutcome(Verdict.FAIL,
-                           {"reason": "paper_metrics.json missing — run statistics first"})
+        # honest degradation, not a hard failure: with no derived metrics
+        # there is nothing to plan figures from — recorded, not blocking
+        return NodeOutcome(Verdict.DEGRADED,
+                           {"reason": "no paper_metrics.json — no figures derivable"})
     doc = read_json(metrics_path)
     metrics: dict[str, Any] = doc.get("metrics") or {}
+    if not metrics:
+        return NodeOutcome(Verdict.DEGRADED,
+                           {"reason": "paper_metrics.json has no metrics — no figures derivable"})
     plan: dict[str, Any] = {"planned_at": utcnow(), "metrics_sha256": sha256_file(metrics_path),
                             "figures": [], "skipped": []}
 
@@ -237,8 +242,8 @@ def run_figure_generation(ctx: NodeContext) -> NodeOutcome:
     planned figure is missing or invalid."""
     plan_path = ctx.workspace.reports_dir / "figure_plan.json"
     if not plan_path.exists():
-        return NodeOutcome(Verdict.FAIL,
-                           {"reason": "figure_plan.json missing — run figure plan first"})
+        return NodeOutcome(Verdict.DEGRADED,
+                           {"reason": "no figure_plan.json — planning degraded upstream"})
     plan = read_json(plan_path)
     figures: list[dict[str, Any]] = plan.get("figures") or []
     if not figures:

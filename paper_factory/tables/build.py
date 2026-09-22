@@ -42,10 +42,15 @@ def run_table_plan(ctx: NodeContext) -> NodeOutcome:
     columns n/mean/std/CI95 where present)."""
     metrics_path = ctx.workspace.reports_dir / "paper_metrics.json"
     if not metrics_path.exists():
-        return NodeOutcome(Verdict.FAIL,
-                           {"reason": "paper_metrics.json missing — run statistics first"})
+        # honest degradation, not a hard failure: with no derived metrics
+        # there is nothing to tabulate — recorded, not blocking
+        return NodeOutcome(Verdict.DEGRADED,
+                           {"reason": "no paper_metrics.json — no tables derivable"})
     doc = read_json(metrics_path)
     metrics: dict[str, Any] = doc.get("metrics") or {}
+    if not metrics:
+        return NodeOutcome(Verdict.DEGRADED,
+                           {"reason": "paper_metrics.json has no metrics — no tables derivable"})
     plan: dict[str, Any] = {"planned_at": utcnow(), "metrics_sha256": sha256_file(metrics_path),
                             "tables": []}
 
@@ -106,11 +111,11 @@ def run_table_generation(ctx: NodeContext) -> NodeOutcome:
     plan_path = ctx.workspace.reports_dir / "table_plan.json"
     metrics_path = ctx.workspace.reports_dir / "paper_metrics.json"
     if not plan_path.exists():
-        return NodeOutcome(Verdict.FAIL,
-                           {"reason": "table_plan.json missing — run table plan first"})
+        return NodeOutcome(Verdict.DEGRADED,
+                           {"reason": "no table_plan.json — planning degraded upstream"})
     if not metrics_path.exists():
-        return NodeOutcome(Verdict.FAIL,
-                           {"reason": "paper_metrics.json missing — run statistics first"})
+        return NodeOutcome(Verdict.DEGRADED,
+                           {"reason": "no paper_metrics.json — nothing to render"})
     plan = read_json(plan_path)
     metrics: dict[str, Any] = (read_json(metrics_path).get("metrics")) or {}
     tables: list[dict[str, Any]] = plan.get("tables") or []

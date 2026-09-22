@@ -53,6 +53,7 @@ def render_dashboard(workspace_reports: Path | None = None, out: Path | None = N
     e2e = _load("synthetic_e2e_report.json")
     hoh = _load("e2e_hoh_evidence.json")
     concurrency = _load("concurrency_audit.json")
+    pilot = _load("real_pilot_01_summary.json")
     git = _git_state()
 
     run_statuses: dict[str, str] = {}
@@ -108,6 +109,34 @@ def render_dashboard(workspace_reports: Path | None = None, out: Path | None = N
     else:
         hoh_html = f"<p>{_badge('NOT_RUN')} no live HoH evidence recorded</p>"
 
+    pilot_html = ""
+    if pilot:
+        p_dag = "".join(row([nid, _badge(state)])
+                        for nid, state in sorted((pilot.get("statuses") or {}).items()))
+        p_closure = "".join(row([uid, _badge(state)])
+                            for uid, state in sorted((pilot.get("closure") or {}).items()))
+        cm = pilot.get("claim_matrix") or {}
+        p_claims = "".join(row([k, str(v)]) for k, v in cm.items() if k != "note")
+        p_gaps = "".join(row([html.escape(g)]) for g in pilot.get("gaps", []))
+        p_hr = "".join(row([html.escape(h)]) for h in pilot.get("human_required", []))
+        rf = pilot.get("review_findings") or {}
+        pilot_html = f"""
+<h2>10 · REAL PILOT 01 — {html.escape(str(pilot.get('project', '')))}</h2>
+<div class="card">
+ <p>Modus <code>{html.escape(str(pilot.get('input_mode')))}</code> · run
+ <code>{html.escape(str(pilot.get('run_id')))}</code> · overall
+ {_badge(str(pilot.get('overall')))} · baseline <code>{html.escape(str(pilot.get('baseline_head')))}</code>
+ · Tests: {html.escape(str(pilot.get('tests')))}</p>
+ <p class="muted">Closure failed on: {html.escape(str(pilot.get('closure_failed')))}
+ · unresolved blocking: {html.escape(str(pilot.get('unresolved_blocking')))}
+ · review findings: {html.escape(json.dumps(rf))}</p>
+ <h3 style="color:#93c5fd">Pipeline P00–P37</h3><table>{p_dag}</table>
+ <h3 style="color:#93c5fd">Closure U1–U16</h3><table>{p_closure}</table>
+ <h3 style="color:#93c5fd">Claim-Status (vs. Ground Truth, blind)</h3><table>{p_claims}</table>
+ <h3 style="color:#93c5fd">Gaps</h3><table>{p_gaps}</table>
+ <h3 style="color:#93c5fd">HUMAN_REQUIRED</h3><table>{p_hr}</table>
+</div>"""
+
     doc = f"""<!DOCTYPE html>
 <html lang="de"><head><meta charset="utf-8"><title>PAPER FACTORY — Dashboard</title>
 <style>
@@ -153,6 +182,8 @@ def render_dashboard(workspace_reports: Path | None = None, out: Path | None = N
 <h2>9 · Git-State</h2>
 <div class="card"><p>repo <code>{html.escape(git['repo'])}</code> · branch <code>{git['branch']}</code>
  · HEAD <code>{git['head']}</code> · commits {git['commits']} · dirty files: {len(git['dirty'])}</p></div>
+
+{pilot_html}
 </body></html>"""
 
     out = out or (REPO / "dashboard" / "index.html")

@@ -1,5 +1,5 @@
 {
-  "collected_at": "2026-09-21T21:23:15Z",
+  "collected_at": "2026-09-22T10:01:37Z",
   "machine": {
     "os": "Linux",
     "os_release": "6.6.87.2-microsoft-standard-WSL2",
@@ -146,7 +146,9 @@
   },
   "research_systems": {
     "hoh": {
-      "present": false
+      "present": true,
+      "installed_version": "0.1.0",
+      "via": "venv"
     },
     "herdr": {
       "present": true,
@@ -170,6 +172,21 @@
       "present": false
     },
     "zotero-cli": {
+      "present": false
+    }
+  },
+  "python_packages": {
+    "hoh": {
+      "present": true,
+      "installed_version": "0.1.0"
+    },
+    "paperqa": {
+      "present": false
+    },
+    "duckdb": {
+      "present": false
+    },
+    "litellm": {
       "present": false
     }
   },
