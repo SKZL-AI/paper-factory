@@ -18,18 +18,30 @@ from pathlib import Path
 import pytest
 import yaml
 
+from paper_factory.dag.executor import EXIT_UNKNOWN, OVERALL_EXIT_CODES
+
 REPO = Path(__file__).resolve().parents[1]
 FIXTURE = REPO / "fixtures" / "synthetic_project"
 # E2E runs must never spend quota: this config disables HoH (hoh_nodes: []).
 CONFIG = Path(__file__).resolve().parent / "e2e-config"
 CLI = [str(REPO / ".venv/bin/paper-factory")]
 
+# process-boundary contract: named run-state codes + 2 (usage error)
+_VALID_RC = set(OVERALL_EXIT_CODES.values()) | {2, EXIT_UNKNOWN}
+
 
 def _run(root: Path, *args: str) -> dict:
     proc = subprocess.run(CLI + ["--root", str(root), "--config-dir", str(CONFIG), *args],
                           capture_output=True, text=True, timeout=900)
-    assert proc.returncode in (0, 1), f"cli died: {proc.stderr[-500:]}"
-    return json.loads(proc.stdout)
+    assert proc.returncode in _VALID_RC, f"cli died: {proc.stderr[-500:]}"
+    out = json.loads(proc.stdout)
+    if "overall" in out:
+        # exit 0 must mean CLOSED and nothing else; the JSON must not claim a
+        # different state than the exit code signals
+        assert (proc.returncode == 0) == (out["overall"] == "CLOSED"), (
+            f"exit/overall mismatch: rc={proc.returncode} overall={out['overall']}")
+        assert out["exit_code"] == proc.returncode
+    return out
 
 
 def _fresh_variant(tmp_path: Path, keep: list[str]) -> Path:

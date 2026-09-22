@@ -1028,3 +1028,190 @@ def test_rb_o2_tables_tex_without_manifest_pin_fails(tmp_path):
         "generated_at": "t", "tables": []}), encoding="utf-8")
     _, states = _closure_states(ctx)
     assert states["U3"] == "FAIL", states
+
+
+# ---------------------------------------------------------------------------
+# Post-pilot audit: CLI process-exit contract — exit 0 <=> overall == "CLOSED"
+# ---------------------------------------------------------------------------
+
+import json as _json
+import subprocess as _sp
+
+import pytest as _pytest
+
+from paper_factory.cli.main import main as _cli_main
+from paper_factory.dag.executor import (EXIT_DEGRADED, EXIT_EMPTY, EXIT_FAILED,
+                                        EXIT_HUMAN_REQUIRED, EXIT_INCOMPLETE,
+                                        EXIT_UNKNOWN, OVERALL_EXIT_CODES,
+                                        exit_code_for_overall, run_status_overall)
+from paper_factory.dag.nodes import NODE_MAP
+
+_EXIT_REPO = Path(__file__).resolve().parents[1]
+_EXIT_CONFIG = Path(__file__).resolve().parent / "e2e-config"
+
+_OVERALL_FIXTURES = {
+    "EMPTY": {},
+    "FAILED": {"P01": "PASS", "P35": "FAIL"},
+    "HUMAN_REQUIRED": {"P01": "PASS", "P31": "HUMAN_REQUIRED"},
+    "INCOMPLETE": {"P01": "PASS", "P02": "PASS"},
+    "DEGRADED": {**{nid: "PASS" for nid in NODE_MAP}, "P33": "DEGRADED"},
+    "CLOSED": {nid: "PASS" for nid in NODE_MAP},
+}
+
+
+def test_gap_exit_mapping_zero_iff_closed():
+    for overall, code in OVERALL_EXIT_CODES.items():
+        assert exit_code_for_overall(overall) == code
+        assert (code == 0) == (overall == "CLOSED"), (overall, code)
+
+
+def test_gap_exit_unknown_overall_fails_closed():
+    assert exit_code_for_overall("SOME_FUTURE_STATE") == EXIT_UNKNOWN
+    assert exit_code_for_overall("") == EXIT_UNKNOWN
+    assert EXIT_UNKNOWN != 0
+
+
+@_pytest.mark.parametrize("expected", sorted(_OVERALL_FIXTURES))
+def test_gap_exit_aggregation_feeds_exit_code(expected):
+    overall = run_status_overall(dict(_OVERALL_FIXTURES[expected]))
+    assert overall == expected, (expected, overall)
+    code = exit_code_for_overall(overall)
+    assert (code == 0) == (overall == "CLOSED")
+
+
+class _StubExecutor:
+    """Command-level seam: the real CLI path (argparse, JSON, exit mapping)
+    with only DAG execution replaced — no quota, no network."""
+
+    statuses: dict = {}
+
+    def __init__(self, ctx, handlers):
+        pass
+
+    def plan(self):
+        return []
+
+    def execute(self, resume=True):
+        return dict(self.statuses)
+
+
+@_pytest.mark.parametrize("overall", sorted(_OVERALL_FIXTURES))
+def test_gap_exit_cli_complete_exit_codes(tmp_path, monkeypatch, capsys, overall):
+    statuses = {k: Verdict(v) for k, v in _OVERALL_FIXTURES[overall].items()}
+    monkeypatch.setattr("paper_factory.cli.main.Executor",
+                        lambda ctx, handlers: _stub_with(statuses))
+    rc = _cli_main(["--root", str(tmp_path), "--config-dir", str(_EXIT_CONFIG),
+                    "complete"])
+    out = _json.loads(capsys.readouterr().out)
+    assert out["overall"] == overall
+    assert out["exit_code"] == rc, "JSON must not claim a state the exit code denies"
+    assert rc == OVERALL_EXIT_CODES[overall]
+    assert (rc == 0) == (overall == "CLOSED")
+
+
+def _stub_with(statuses):
+    stub = _StubExecutor.__new__(_StubExecutor)
+    stub.statuses = statuses
+    return stub
+
+
+def test_gap_exit_cli_run_and_resume_entrypoints_obey(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("paper_factory.cli.main.Executor",
+                        lambda ctx, handlers: _stub_with(
+                            {k: Verdict(v) for k, v in
+                             _OVERALL_FIXTURES["DEGRADED"].items()}))
+    rc_run = _cli_main(["--root", str(tmp_path), "--config-dir", str(_EXIT_CONFIG),
+                        "run"])
+    assert rc_run == EXIT_DEGRADED
+    out = _json.loads(capsys.readouterr().out)
+    assert out["exit_code"] == rc_run and out["overall"] == "DEGRADED"
+
+    monkeypatch.setattr("paper_factory.cli.main.Executor",
+                        lambda ctx, handlers: _stub_with(
+                            {k: Verdict(v) for k, v in
+                             _OVERALL_FIXTURES["HUMAN_REQUIRED"].items()}))
+    rc_resume = _cli_main(["--root", str(tmp_path), "--config-dir", str(_EXIT_CONFIG),
+                           "resume", "--run-id", "whatever"])
+    assert rc_resume == EXIT_HUMAN_REQUIRED
+    out = _json.loads(capsys.readouterr().out)
+    assert out["exit_code"] == rc_resume and out["overall"] == "HUMAN_REQUIRED"
+
+
+def test_gap_exit_cli_closed_real_subprocess(tmp_path):
+    """True process boundary, zero quota: a workspace whose nodes are all
+    PASS-seeded must let `complete --resume` reach CLOSED and exit 0 — proving
+    exit 0 is reachable AND that it requires the canonical CLOSED state."""
+    rid = "exit-contract-closed"
+    ws = Workspace(tmp_path)
+    ws.create_run(rid)
+    for nid in NODE_MAP:
+        ws.set_node_status(rid, nid, "PASS", {})
+    proc = _sp.run(
+        [str(_EXIT_REPO / ".venv/bin/paper-factory"),
+         "--root", str(tmp_path), "--config-dir", str(_EXIT_CONFIG),
+         "complete", "--resume", "--offline", "--run-id", rid],
+        capture_output=True, text=True, timeout=120)
+    assert proc.returncode == 0, proc.stderr[-500:]
+    out = _json.loads(proc.stdout)
+    assert out["overall"] == "CLOSED"
+    assert out["exit_code"] == 0
+
+
+def test_gap_exit_cli_degraded_real_subprocess(tmp_path):
+    """Same boundary from the other side: all PASS except P35 (re-run by
+    resume; closure on an artifact-empty workspace honestly DEGRADES) must
+    exit non-zero and must not print CLOSED."""
+    rid = "exit-contract-degraded"
+    ws = Workspace(tmp_path)
+    ws.create_run(rid)
+    for nid in NODE_MAP:
+        if nid != "P35":
+            ws.set_node_status(rid, nid, "PASS", {})
+    proc = _sp.run(
+        [str(_EXIT_REPO / ".venv/bin/paper-factory"),
+         "--root", str(tmp_path), "--config-dir", str(_EXIT_CONFIG),
+         "complete", "--resume", "--offline", "--run-id", rid],
+        capture_output=True, text=True, timeout=120)
+    out = _json.loads(proc.stdout)
+    assert proc.returncode == EXIT_DEGRADED, (proc.returncode, out["overall"])
+    assert out["overall"] == "DEGRADED"
+    assert out["exit_code"] == proc.returncode
+
+
+def test_gap_exit_cli_failed_real_subprocess(tmp_path):
+    """Deterministic FAILED at the process boundary: an undisposed MAJOR
+    review finding makes U5 FAIL (same mechanism as e2e test_09), so P35 FAILs
+    and the CLI must exit EXIT_FAILED, never 0."""
+    from paper_factory.reviews.framework import (Finding, ReviewReport,
+                                                 save_review)
+    rid = "exit-contract-failed"
+    ws = Workspace(tmp_path)
+    ws.create_run(rid)
+    for nid in NODE_MAP:
+        if nid != "P35":
+            ws.set_node_status(rid, nid, "PASS", {})
+    save_review(ws.reviews_dir, ReviewReport(
+        review_id="ZZ-planted-exit", reviewer="test",
+        findings=[Finding(finding_id="ZZ-1", reviewer="test", severity="MAJOR",
+                          category="methods", statement="planted undisposed major")]))
+    proc = _sp.run(
+        [str(_EXIT_REPO / ".venv/bin/paper-factory"),
+         "--root", str(tmp_path), "--config-dir", str(_EXIT_CONFIG),
+         "complete", "--resume", "--offline", "--run-id", rid],
+        capture_output=True, text=True, timeout=120)
+    out = _json.loads(proc.stdout)
+    assert proc.returncode == EXIT_FAILED, (proc.returncode, out["overall"])
+    assert out["overall"] == "FAILED"
+    assert out["exit_code"] == proc.returncode
+
+
+def test_gap_exit_release_stub_fails_closed(tmp_path):
+    """Reviewer B (post-pilot audit): the release stub must not exit 0 while
+    reporting NOT_RUN — exit 0 is reserved for real success."""
+    proc = _sp.run(
+        [str(_EXIT_REPO / ".venv/bin/paper-factory"),
+         "--root", str(tmp_path), "--config-dir", str(_EXIT_CONFIG), "release"],
+        capture_output=True, text=True, timeout=60)
+    out = _json.loads(proc.stdout)
+    assert out["release"] == "NOT_RUN"
+    assert proc.returncode == EXIT_INCOMPLETE

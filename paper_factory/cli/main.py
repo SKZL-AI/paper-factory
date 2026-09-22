@@ -9,7 +9,8 @@ from pathlib import Path
 
 from ..core.config import default_config_dir, load_config
 from ..core.util import utcnow, write_json
-from ..dag.executor import Executor, NodeContext, run_status_overall
+from ..dag.executor import (EXIT_INCOMPLETE, Executor, NodeContext,
+                            exit_code_for_overall, run_status_overall)
 from ..dag.handlers import build_handlers
 from ..state.store import Workspace
 
@@ -65,14 +66,19 @@ def _execute(args, run_id: str, resume: bool) -> int:
         return 0
     statuses = ex.execute(resume=resume)
     overall = run_status_overall(statuses)
+    code = exit_code_for_overall(overall)
     _print_json({
         "run_id": run_id,
         "overall": overall,
+        "exit_code": code,
         "statuses": {k: v.value for k, v in statuses.items()},
     })
-    # exit 1 only for hard failure/empty; DEGRADED/HUMAN_REQUIRED/INCOMPLETE are
-    # honest non-closed terminal states the operator must see, not shell errors
-    return 0 if overall in ("CLOSED", "HUMAN_REQUIRED", "INCOMPLETE", "DEGRADED") else 1
+    # Process-boundary contract: exit 0 means CLOSED and nothing else. Every
+    # non-closed terminal state (FAILED/HUMAN_REQUIRED/INCOMPLETE/DEGRADED/
+    # EMPTY) exits non-zero so unattended callers never see a false-green.
+    # Usage errors keep exit 2 (argparse convention); dry-run is an explicit
+    # operator plan print and stays 0 without claiming a pipeline result.
+    return code
 
 
 def cmd_run(args) -> int:
@@ -129,7 +135,9 @@ def cmd_release(args) -> int:
     ws = Workspace(Path(args.root))
     run_id = args.run_id or ws.latest_run_id()
     _print_json({"run_id": run_id, "release": "NOT_RUN", "reason": "release pipeline builds during P33-P35"})
-    return 0
+    # fail-closed like the run commands: exit 0 is reserved for real success,
+    # and this stub has never produced a release (reviewer B, post-pilot audit)
+    return EXIT_INCOMPLETE
 
 
 def cmd_intake(args) -> int:

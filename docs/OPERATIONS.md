@@ -19,6 +19,31 @@ paper-factory resume                       # continues after human deliveries
 paper-factory status / report / audit      # inspection
 ```
 
+## Process-exit contract (for CI / herdr / VeriHarness / shell callers)
+
+`paper-factory run|complete|resume` maps the canonical `run_status_overall`
+state to the process exit code. **Exit 0 means CLOSED and nothing else** —
+every non-closed terminal state is non-zero, so unattended callers never see
+a false-green:
+
+| overall state   | exit |
+|-----------------|------|
+| CLOSED          | 0    |
+| FAILED          | 1    |
+| (usage error, argparse convention) | 2 |
+| HUMAN_REQUIRED  | 3    |
+| INCOMPLETE      | 4    |
+| DEGRADED        | 5    |
+| EMPTY           | 6    |
+| unknown/unmapped (defensive) | 7 |
+
+The JSON stdout of these commands carries the same truth: `overall` is the
+`run_status_overall` value and `exit_code` equals the process exit code.
+`--dry-run` prints a plan and exits 0 without claiming a pipeline result.
+`paper-factory release` is a stub until P33–P35 produce a bundle; it reports
+`NOT_RUN` and exits non-zero (4) — exit 0 stays reserved for real success.
+
+
 ## File layout in a target project
 
 ```

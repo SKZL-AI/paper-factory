@@ -170,4 +170,39 @@ def run_status_overall(statuses: dict[str, "Verdict | str"]) -> str:
     return "CLOSED"
 
 
-__all__ = ["Executor", "NodeContext", "NodeOutcome", "Handler", "run_status_overall", "OK_STATES", "NODES"]
+# CLI process-exit contract — the boundary unattended callers (CI, herdr,
+# VeriHarness, shell scripts) actually see. Exit 0 signals CLOSED and nothing
+# else; every other overall state is non-zero. 2 is deliberately NOT a run
+# state: this CLI already uses 2 for usage errors (argparse, "no run to
+# resume", "no report"), so run states start at 3 to keep the meanings distinct.
+EXIT_CLOSED = 0
+EXIT_FAILED = 1
+EXIT_HUMAN_REQUIRED = 3
+EXIT_INCOMPLETE = 4
+EXIT_DEGRADED = 5
+EXIT_EMPTY = 6
+EXIT_UNKNOWN = 7  # defensive: an unmapped overall string must never exit 0
+
+OVERALL_EXIT_CODES = {
+    "CLOSED": EXIT_CLOSED,
+    "FAILED": EXIT_FAILED,
+    "HUMAN_REQUIRED": EXIT_HUMAN_REQUIRED,
+    "INCOMPLETE": EXIT_INCOMPLETE,
+    "DEGRADED": EXIT_DEGRADED,
+    "EMPTY": EXIT_EMPTY,
+}
+
+
+def exit_code_for_overall(overall: str) -> int:
+    """Canonical process-exit mapping for run_status_overall() values.
+
+    Invariant: exit 0 <=> overall == "CLOSED". Any unknown/future overall
+    string fails closed to EXIT_UNKNOWN (non-zero), never to 0.
+    """
+    return OVERALL_EXIT_CODES.get(overall, EXIT_UNKNOWN)
+
+
+__all__ = ["Executor", "NodeContext", "NodeOutcome", "Handler", "run_status_overall",
+           "OK_STATES", "NODES", "exit_code_for_overall", "OVERALL_EXIT_CODES",
+           "EXIT_CLOSED", "EXIT_FAILED", "EXIT_HUMAN_REQUIRED", "EXIT_INCOMPLETE",
+           "EXIT_DEGRADED", "EXIT_EMPTY", "EXIT_UNKNOWN"]
