@@ -1,5 +1,5 @@
 {
-  "collected_at": "2026-09-21T22:46:49Z",
+  "collected_at": "2026-09-21T23:30:40Z",
   "policy": {
     "disallow_anthropic_generated_final_prose": true,
     "unknown_backend_final_prose": "deny",

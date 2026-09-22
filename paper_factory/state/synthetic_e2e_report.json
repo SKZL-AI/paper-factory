@@ -1,13 +1,13 @@
 {
-  "collected_at": "2026-09-21T22:47:33Z",
+  "collected_at": "2026-09-21T23:31:22Z",
   "exit_code": 0,
-  "summary_line": "61 passed in 40.25s",
+  "summary_line": "63 passed in 38.28s",
   "tests": [
     {
       "name": "test_doctor_runs_without_error[claude]",
       "class": "tests.test_adapters",
       "state": "PASS",
-      "time_s": 0.12
+      "time_s": 0.1
     },
     {
       "name": "test_doctor_runs_without_error[codex]",
@@ -19,7 +19,7 @@
       "name": "test_doctor_runs_without_error[kimi]",
       "class": "tests.test_adapters",
       "state": "PASS",
-      "time_s": 1.31
+      "time_s": 1.25
     },
     {
       "name": "test_doctor_runs_without_error[pi]",
@@ -49,19 +49,19 @@
       "name": "test_installed_harnesses_are_present[codex]",
       "class": "tests.test_adapters",
       "state": "PASS",
-      "time_s": 0.12
+      "time_s": 0.11
     },
     {
       "name": "test_installed_harnesses_are_present[kimi]",
       "class": "tests.test_adapters",
       "state": "PASS",
-      "time_s": 1.24
+      "time_s": 1.23
     },
     {
       "name": "test_installed_harnesses_are_present[pi]",
       "class": "tests.test_adapters",
       "state": "PASS",
-      "time_s": 0.41
+      "time_s": 0.4
     },
     {
       "name": "test_opencode_unavailable_not_error",
@@ -97,7 +97,7 @@
       "name": "test_real_capabilities_match_probe",
       "class": "tests.test_adapters",
       "state": "PASS",
-      "time_s": 0.17
+      "time_s": 0.18
     },
     {
       "name": "test_invoke_mocked_receipt_hashes",
@@ -139,7 +139,7 @@
       "name": "test_litellm_invoke_mocked",
       "class": "tests.test_adapters",
       "state": "PASS",
-      "time_s": 0.06
+      "time_s": 0.05
     },
     {
       "name": "test_receipt_to_jsonl",
@@ -151,25 +151,25 @@
       "name": "test_01_code_only",
       "class": "tests.test_e2e_synthetic",
       "state": "PASS",
-      "time_s": 4.89
+      "time_s": 4.72
     },
     {
       "name": "test_02_data_only",
       "class": "tests.test_e2e_synthetic",
       "state": "PASS",
-      "time_s": 3.91
+      "time_s": 3.85
     },
     {
       "name": "test_03_draft_assisted",
       "class": "tests.test_e2e_synthetic",
       "state": "PASS",
-      "time_s": 2.45
+      "time_s": 2.41
     },
     {
       "name": "test_04_mixed_evidence",
       "class": "tests.test_e2e_synthetic",
       "state": "PASS",
-      "time_s": 13.09
+      "time_s": 13.4
     },
     {
       "name": "test_05_chat_ingestion",
@@ -211,13 +211,13 @@
       "name": "test_11_alternative_provider_resume",
       "class": "tests.test_e2e_synthetic",
       "state": "PASS",
-      "time_s": 1.88
+      "time_s": 1.89
     },
     {
       "name": "test_12_same_family_review_marked_degraded",
       "class": "tests.test_e2e_synthetic",
       "state": "PASS",
-      "time_s": 2.47
+      "time_s": 2.33
     },
     {
       "name": "test_13_forbidden_final_prose_origin_blocked",
@@ -229,7 +229,7 @@
       "name": "test_14_paperpal_absence_human_required",
       "class": "tests.test_e2e_synthetic",
       "state": "PASS",
-      "time_s": 4.6
+      "time_s": 4.56
     },
     {
       "name": "test_15_clean_bundle_rebuild",
@@ -247,10 +247,22 @@
       "name": "test_17_hoh_receipts_exist",
       "class": "tests.test_e2e_synthetic",
       "state": "PASS",
-      "time_s": 0.0
+      "time_s": 0.01
     },
     {
       "name": "test_18_herdr_runtime_evidence",
+      "class": "tests.test_e2e_synthetic",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_19_u7_detects_evidence_tampering",
+      "class": "tests.test_e2e_synthetic",
+      "state": "PASS",
+      "time_s": 0.01
+    },
+    {
+      "name": "test_20_major_review_finding_from_pipeline",
       "class": "tests.test_e2e_synthetic",
       "state": "PASS",
       "time_s": 0.0
@@ -271,7 +283,7 @@
       "name": "test_figure_generation",
       "class": "tests.test_figures_tables_manuscript",
       "state": "PASS",
-      "time_s": 0.67
+      "time_s": 0.63
     },
     {
       "name": "test_table_plan_and_generation",
@@ -283,7 +295,7 @@
       "name": "test_manuscript_architecture_and_idempotency",
       "class": "tests.test_figures_tables_manuscript",
       "state": "PASS",
-      "time_s": 0.0
+      "time_s": 0.01
     },
     {
       "name": "test_section_check",
@@ -371,7 +383,7 @@
     }
   ],
   "stdout_tail": [
-    ".............................................................            [100%]",
-    "61 passed in 40.25s"
+    "...............................................................          [100%]",
+    "63 passed in 38.28s"
   ]
 }

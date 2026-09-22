@@ -32,9 +32,29 @@ def normalize_rel_path(rel_path: str) -> str:
     return norm
 
 
+_FAMILY_CLASSES = {
+    "anthropic": "anthropic", "claude": "anthropic",
+    "openai": "openai", "gpt": "openai",
+    "moonshot": "moonshot", "kimi": "moonshot",
+    "zai": "glm", "glm": "glm",
+    "deepseek": "deepseek",
+    "deterministic": "deterministic", "paper-factory": "deterministic",
+    "human": "human",
+}
+
+
 def _norm_family(family: str | None) -> str:
+    """Normalize to a family CLASS: prefix/alias matching, never free text.
+    "claude-3-opus" → anthropic; "anthropic-vertex" → anthropic."""
     f = (family or "").strip().lower()
-    return f or "unknown"
+    if not f:
+        return "unknown"
+    if f in _FAMILY_CLASSES:
+        return _FAMILY_CLASSES[f]
+    for prefix, cls in _FAMILY_CLASSES.items():
+        if f.startswith(prefix) or prefix in f:
+            return cls
+    return "unknown"
 
 
 def is_protected(rel_path: str, patterns: list[str]) -> bool:
@@ -75,10 +95,24 @@ def decide_write(rel_path: str, *, role: str, backend: dict, policy: ProviderPol
         raise PolicyViolation(f"role '{role}' has writes_final_prose=false; cannot modify {rel_path}")
 
     family = _norm_family(backend.get("family"))
-    status = marking.status_for(_norm_family(backend.get("provider_family")),
-                                _norm_family(backend.get("model_family")))
+    forbidden = {_norm_family(f) for f in role_policy.forbidden_model_families}
+    # marking registry: raw exact match first (entries are stored raw), then a
+    # class-level fallback so "anthropic-vertex"/"claude-3" still find the
+    # anthropic/claude entry. Normalized values must never replace the raw
+    # lookup — that kills the documented_marking backstop (regression R3).
+    raw_pf = backend.get("provider_family", "unknown")
+    raw_mf = backend.get("model_family", "unknown")
+    status = marking.status_for(raw_pf, raw_mf)
+    if status == "unknown":
+        pf_cls = _norm_family(raw_pf)
+        mf_cls = _norm_family(raw_mf)
+        for e in marking.entries:
+            if _norm_family(e.provider_family) == pf_cls and (
+                    e.model_family == "*" or _norm_family(e.model_family) == mf_cls):
+                status = str(e.status)
+                break
 
-    if family in role_policy.forbidden_model_families:
+    if family in forbidden:
         raise PolicyViolation(
             f"model family '{family}' is forbidden for role '{role}' (protected path {rel_path})")
     if family == "unknown" and (role_policy.unknown_backend == "deny"

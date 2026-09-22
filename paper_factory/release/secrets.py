@@ -66,25 +66,39 @@ def scan_tree(root: Path, *, include_globs: tuple[str, ...] = ("**/*",),
                 continue
             try:
                 text = p.read_text(encoding="utf-8", errors="strict")
+                if "\x00" in text:
+                    # NUL-interleaved content (UTF-16 ohne BOM u.ä.) decodiert als
+                    # "valide" UTF-8 — ist aber kein scanbarer Text. Umleiten.
+                    raise UnicodeDecodeError("utf-8", b"", 0, 1, "NUL bytes present")
             except UnicodeDecodeError:
-                # UTF-16 (NUL-interleaved) decodes to text that patterns can match
-                try:
-                    text = p.read_text(encoding="utf-16")
-                    scanned += 1
-                    findings.extend(scan_text(text, str(p.relative_to(root))))
-                    continue
-                except (UnicodeDecodeError, UnicodeError):
-                    pass
-                # binary: byte-level scan with the high-signal patterns
+                # NUL-interleaved content: detect UTF-16LE/BE by NUL position
+                # (Python's utf-16 codec refuses BOM-less input — decode explicitly)
                 try:
                     blob = p.read_bytes()
-                    scanned += 1
-                    for name, pat in BYTE_PATTERNS:
-                        for m in pat.finditer(blob):
-                            findings.append({"file": str(p.relative_to(root)), "kind": name,
-                                             "span": [m.start(), m.end()], "binary": True})
                 except OSError as exc:
                     errors.append(f"{p.relative_to(root)}: {exc}")
+                    continue
+                decoded = None
+                if len(blob) >= 4:
+                    even_nuls = sum(1 for i in range(0, min(len(blob), 400), 2) if blob[i] == 0)
+                    odd_nuls = sum(1 for i in range(1, min(len(blob), 400), 2) if blob[i] == 0)
+                    try:
+                        if odd_nuls > even_nuls and odd_nuls > 20:
+                            decoded = blob.decode("utf-16-le")
+                        elif even_nuls > 20:
+                            decoded = blob.decode("utf-16-be")
+                    except UnicodeDecodeError:
+                        decoded = None
+                if decoded is not None:
+                    scanned += 1
+                    findings.extend(scan_text(decoded, str(p.relative_to(root))))
+                    continue
+                # binary: byte-level scan with the high-signal patterns
+                scanned += 1
+                for name, pat in BYTE_PATTERNS:
+                    for m in pat.finditer(blob):
+                        findings.append({"file": str(p.relative_to(root)), "kind": name,
+                                         "span": [m.start(), m.end()], "binary": True})
                 continue
             except OSError as exc:
                 errors.append(f"{p.relative_to(root)}: {exc}")

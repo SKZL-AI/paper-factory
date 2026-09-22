@@ -5,7 +5,7 @@ Datum: 2026-09-21/22 · Maschine: WSL2 (SAI-01) · Autor: Kimi (Captain-Session)
 ## SYSTEM STATUS
 
 ```
-PAPER FACTORY CORE     PASS          (CLI, DAG P00–P37, 61/61 Tests grün)
+PAPER FACTORY CORE     PASS          (CLI, DAG P00–P37, 63/63 Tests grün)
 VERIHARNESS            PASS          (v0.1.0 @5d576bd, editable-Install, echter Live-Run)
 HERDR                  PASS          (0.8.0 läuft; Pane-Evidenz w6F)
 OPENCODE               UNAVAILABLE   (nicht installiert; Wrapper-Template liegt bereit)
@@ -17,7 +17,7 @@ LITERATURE STACK       PASS          (Crossref + OpenAlex live verifiziert; Pape
 LATEX                  DEGRADED      (pdflatex-Multipass ok; latexmk fehlt → HUMAN_REQUIRED sudo)
 PAPERPAL               HUMAN_REQUIRED(manuelle Bridge outbox/inbox; kein API)
 PROVENANCE             PASS          (Firewall + Origin-Receipts, U11–U14 grün)
-SYNTHETIC E2E          PASS          (61/61 Tests, davon 18 Akzeptanztests)
+SYNTHETIC E2E          PASS          (63/63 Tests, davon 18 Akzeptanztests)
 GLOBAL CLOSURE         PASS          (U1–U16 am Referenzlauf, siehe Dashboard)
 ```
 
