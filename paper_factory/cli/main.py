@@ -70,7 +70,9 @@ def _execute(args, run_id: str, resume: bool) -> int:
         "overall": overall,
         "statuses": {k: v.value for k, v in statuses.items()},
     })
-    return 0 if overall in ("CLOSED", "HUMAN_REQUIRED", "INCOMPLETE") else 1
+    # exit 1 only for hard failure/empty; DEGRADED/HUMAN_REQUIRED/INCOMPLETE are
+    # honest non-closed terminal states the operator must see, not shell errors
+    return 0 if overall in ("CLOSED", "HUMAN_REQUIRED", "INCOMPLETE", "DEGRADED") else 1
 
 
 def cmd_run(args) -> int:

@@ -114,11 +114,24 @@ P11–P26 PASS · P27 DEGRADED (1 deferred) · P28–P32 PASS · P33/P34 PASS ·
 **P35 FAIL (U5)** · P36 SKIPPED (hängt von P35) · P37 NOT-RUN-by-design.
 Run 1 (pre-Fix): FAIL ab P11/P12, 25 Knoten SKIPPED.
 
+> **Korrektur (Post-Pilot-Audit 2026-09-22):** P31 war im Snapshot als PASS
+> verbucht — korrigiert zu **DEGRADED** (manueller Operator-Check, keine externe
+> Paperpal-Evidenz; Details im Abschnitt POST-PILOT INTEGRITY AUDIT unten).
+> P36/P37 kanonisch **SKIPPED_DEPENDENCY** (P36: hängt an P35; P37: externe
+> Submission läuft per Design nie automatisch, hängt an P36) — die frühere
+> Zeile „P37 NOT-RUN-by-design" war eine zweite, abweichende Bezeichnung für
+> denselben Maschinenzustand und ist damit vereinheitlicht.
+
 ## GLOBAL CLOSURE
 
 U1–U4 PASS · **U5 FAIL** (1 unresolved MAJOR) · U6–U16 PASS.
 Gesamt: **FAILED** — und das ist der korrekte, ehrliche Endzustand: das System
 reicht ein Paper mit einem offenen verifizierten MAJOR-Befund NICHT durch.
+
+> **Korrektur (Post-Pilot-Audit 2026-09-22):** U9/U16 waren im Snapshot PASS —
+> korrigiert zu **U9 DEGRADED** (nur Operator-Check, keine externe
+> Paperpal-Evidenz) und **U16 NOT_RUN** (`external_edits: false` — es gab keine
+> externen Edits, also nichts zu reconcilen). Gesamt bleibt **FAILED** (U5).
 
 ## REAL-WORLD PF GAPS
 
@@ -147,6 +160,51 @@ PF-e05758a3-P05). Herdr wurde im Pilot nicht benötigt (deterministischer Lauf).
 2. Systempakete (`texlive-latex-extra graphviz qpdf poppler-utils`) — sudo.
 3. Paperpal bleibt manuelle Bridge (im Pilot ehrlich als Operator-Check gefahren,
    kein API); U9/U16 PASS über Bridge + Semantic Diff.
+
+   > **Korrektur (Post-Pilot-Audit 2026-09-22):** Der Inbox-Eintrag wurde vom
+   > Orchestrierungs-Agenten als Operator verfasst (Selbstdeklaration im
+   > Artefakt: „not a Paperpal product") — er ist **kein** Paperpal-Ergebnis.
+   > U9/U16 waren fälschlich PASS; korrigiert: U9 DEGRADED, U16 NOT_RUN.
+   > Ein echter Paperpal-Report des Nutzers steht weiterhin aus.
+
+## POST-PILOT INTEGRITY AUDIT (2026-09-22, auf Basis des eingefrorenen Snapshots `96b1a9c`)
+
+Vier Befunde, alle mit Regressionstests und Fix; Snapshot `96b1a9c` unverändert,
+Korrekturen in einem Folge-Commit (Korrektur-Provenienz: Alter Claim oben
+sichtbar, Neuer mit Datum/Grund):
+
+1. **Paperpal-Provenienz (POST-AUDIT-1):** Inbox-Artefakt `language_check_report.txt`
+   (sha256 `20696911…89eab`) ist ein interner Operator-Check, verfasst vom
+   Orchestrierungs-Agenten — keine externe Paperpal-Evidence. Fixes:
+   `paperpal/bridge.py` klassifiziert Inbox-Provenienz fail-closed
+   (`external_paperpal_declared` nur mit explizitem `source: paperpal`-Header
+   oder Sidecar), `_u9`/`_u16` lesen die Klasse ehrlich aus. Empirisch gegen
+   eine unveränderte **Kopie** des Pilot-Workspace verifiziert:
+   P31→DEGRADED, U9→DEGRADED, U16→NOT_RUN, U2/U5/U7 unverändert, P35 bleibt FAIL.
+2. **GAP-002-Rest: False-Green bis P35 (POST-AUDIT-2):** U2 prüfte nur rohe
+   Dezimalzahlen — ein quantitativer Claim ohne `paper_metrics.json` konnte
+   P35 PASS erreichen. Fix: Closure-Provenienz-Gate (quantitativer Inhalt oder
+   `\pfget`-Nutzung ohne Metrik-Artefakt → FAIL; ungebundene Makros → FAIL;
+   kaputtes `paper_metrics.json` → FAIL). P11–P14 bleiben DEGRADED (nicht pauschal
+   FAIL) — der Block sitzt präzise in der Closure.
+3. **Overall-State (POST-AUDIT-3):** Dashboard nutzte eine zweite Wahrheit
+   (`FAILED if fail else PASS`). Jetzt eine kanonische Funktion
+   `run_status_overall` (executor.py) für CLI **und** Dashboard:
+   FAILED > HUMAN_REQUIRED > INCOMPLETE > DEGRADED > CLOSED; DEGRADED wird nie
+   mehr blind zu CLOSED gerundet; unbekannte States/Knoten → INCOMPLETE.
+4. **Status-Konsistenz:** P36/P37 kanonisch SKIPPED_DEPENDENCY mit getrennter
+   Erklärung (`status_notes` in `real_pilot_01_summary.json`, im Dashboard
+   gerendert); Maschinenstate und Erklärung sind jetzt getrennte Felder.
+
+Regressionstests: `tests/test_real_pilot_gaps.py` (+75, Suite 132 → **207**),
+dazu eine adversariale Review-Kampagne gegen die Audit-Fixe selbst: 2
+unabhängige Reviewer mit Widerlegungsauftrag, A 4 Runden bis JA (GAP-001),
+B 10 Runden bis JA (GAP-002/False-Green) — ~80 verifizierte Angriffsrepros,
+alle final blockiert; Details als POST-AUDIT-4 im Gap-Report. Dokumentierte
+Restgrenzen: siehe Gap-Report (u.a. Empfehlung PDF-Text-Scan als
+architektonischer Endpunkt).
+Offen bleiben unverändert: GAP-003/004/005/006/010 (ausdrücklich NICHT Teil
+dieses Audits).
 4. ADV-05 muss menschlich disponiert werden (AUTHOR_DECISION oder Fix der
    Audit-Heuristik) — erst dann kann eine erneute Closure PASS erreichen.
 

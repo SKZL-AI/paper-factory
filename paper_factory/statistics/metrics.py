@@ -16,6 +16,7 @@ from typing import Any
 from ..core.results import Verdict
 from ..core.util import sha256_file, utcnow, write_json
 from ..dag.executor import NodeContext, NodeOutcome
+from .quantitative import PFGET_ACCESSOR_LINE
 
 
 def _mean_ci(values: list[float]) -> dict[str, Any]:
@@ -23,6 +24,7 @@ def _mean_ci(values: list[float]) -> dict[str, Any]:
     mean = statistics.fmean(values)
     if n < 2:
         return {"n": n, "mean": mean, "std": None, "ci95": None,
+                "small_sample": True,
                 "note": "n<2: no spread estimable"}
     std = statistics.stdev(values)
     se = std / math.sqrt(n)
@@ -33,10 +35,95 @@ def _mean_ci(values: list[float]) -> dict[str, Any]:
             "note": "normal-approx CI; n<5 flagged small_sample" if n < 5 else "normal-approx CI"}
 
 
-def _load_csv(path: Path) -> tuple[list[str], list[dict[str, str]]]:
-    with open(path, newline="", encoding="utf-8") as fh:
+_MISSING_SENTINELS = {"", "na", "n/a", "nan", "null", "none", "-"}
+
+# replication axes / identifiers are never grouping columns and never outcomes
+_EXCLUDE_NAMES = {"seed", "seeds", "seed_id", "random_seed", "rng_seed", "iteration",
+                  "iter", "run", "runs", "run_id", "runid", "n", "rep", "reps",
+                  "replicate", "trial", "trials", "index", "idx", "id", "fold",
+                  "epoch", "step"}
+
+# numeric columns with these names are design axes when they repeat across rows;
+# repetition alone is NOT sufficient (a repeated measurement is an outcome —
+# GAP-001 mirror bug, reviewer F2). Vocabulary + repetition = design.
+_DESIGN_NAMES = {"load", "arm", "condition", "cond", "group", "batch", "level",
+                 "temperature", "temp", "treatment", "cell", "config", "variant",
+                 "setup", "design", "dataset", "lr", "learning_rate", "batch_size",
+                 "depth", "width", "layers", "dim", "model_size"}
+
+
+def _is_missing(s: str) -> bool:
+    return s.strip().lower() in _MISSING_SENTINELS
+
+
+def _parse_value(s: str) -> float | None:
+    """Finite float or None. nan/inf never reach statistics (reviewer F1/F10)."""
+    try:
+        v = float(s)
+    except ValueError:
+        return None
+    return v if math.isfinite(v) else None
+
+
+def macro_base_names(keys: list[str]) -> dict[str, str]:
+    """Deterministic, collision-safe macro base names (reviewer F7).
+
+    Sanitize (strip _ and -, '.' -> 'p'); when two keys sanitize to the same
+    base, both get a content-hash suffix so neither silently overwrites.
+    """
+    def sanitize(k: str) -> str:
+        return k.replace("-", "_").replace(".", "p").replace("_", "")
+
+    bases: dict[str, str] = {}
+    by_base: dict[str, list[str]] = {}
+    for k in keys:
+        by_base.setdefault(sanitize(k), []).append(k)
+    import hashlib
+    for base, ks in by_base.items():
+        if len(ks) == 1:
+            bases[ks[0]] = base
+        else:
+            for k in ks:
+                bases[k] = f"{base}x{hashlib.sha256(k.encode()).hexdigest()[:6]}"
+    return bases
+
+
+def expected_macro_entries(metrics: dict[str, Any]) -> dict[str, str]:
+    """The macro definitions that generated/numbers.tex MUST contain for the
+    given metrics — shared by the generator (P09) and the closure binding
+    check (U2), so provenance is verified, not just asserted (reviewer F3)."""
+    entries: dict[str, str] = {}
+    bases = macro_base_names(list(metrics.keys()))
+    for key, stat in metrics.items():
+        base = bases[key]
+        entries[f"{base}mean"] = f"{stat['mean']:.6g}"
+        if stat.get("std") is not None:
+            entries[f"{base}std"] = f"{stat['std']:.6g}"
+        entries[f"{base}n"] = str(stat["n"])
+    return entries
+
+
+def _load_csv(path: Path) -> tuple[list[str], list[dict[str, str]], list[str]]:
+    with open(path, newline="", encoding="utf-8-sig") as fh:  # -sig strips BOM (reviewer F5)
         reader = csv.DictReader(fh)
-        return list(reader.fieldnames or []), list(reader)
+        raw_fields = list(reader.fieldnames or [])
+        stripped = [f.strip() for f in raw_fields]
+        warnings = []
+        if len(stripped) != len(set(stripped)):
+            dupes = sorted({f for f in stripped if stripped.count(f) > 1})
+            warnings.append(f"duplicate header columns shadowed: {dupes}")
+        fields = []
+        seen_fields: set[str] = set()
+        for f in stripped:
+            if f not in seen_fields:  # duplicate headers shadow; keep first (R5/F-R4)
+                fields.append(f)
+                seen_fields.add(f)
+        rows = [{k.strip(): v for k, v in r.items()} for r in reader if k_is_str(r)]
+        return fields, rows, warnings
+
+
+def k_is_str(row: dict) -> bool:
+    return all(isinstance(k, str) for k in row)
 
 
 def run_statistics(ctx: NodeContext) -> NodeOutcome:
@@ -46,85 +133,184 @@ def run_statistics(ctx: NodeContext) -> NodeOutcome:
         return NodeOutcome(Verdict.DEGRADED, {"reason": "no results/ directory — no metrics derivable"})
 
     metrics: dict[str, Any] = {"computed_at": utcnow(), "sources": {}, "metrics": {},
-                               "audit": {"missing_cells": 0, "exclusions": [],
+                               "audit": {"missing_cells": 0, "missing_group_keys": 0,
+                                         "exclusions": [], "classification": {},
                                          "small_samples": [], "randomization": "recorded_in_source",
-                                         "grouping": "per design-parameter group (never pooled across loads/filters)"}}
-    macro_lines = ["% generated by paper-factory statistics — do not hand-edit",
-                   "\\makeatletter",
-                   "\\newcommand{\\pfget}[1]{\\ifcsname pf@#1\\endcsname"
-                   "\\csname pf@#1\\endcsname\\else\\textbf{??}\\fi}",
-                   "\\makeatother"]
-
-    def is_float(s: str) -> bool:
-        try:
-            float(s)
-            return True
-        except ValueError:
-            return False
+                                         "grouping": "grouped by detected design columns "
+                                                     "(see classification); single global group "
+                                                     "when none are present"}}
+    macro_header = ["% generated by paper-factory statistics — do not hand-edit",
+                    "\\makeatletter",
+                    PFGET_ACCESSOR_LINE,
+                    "\\makeatother"]
 
     for csv_path in sorted(results_dir.glob("*.csv")):
-        fields, rows = _load_csv(csv_path)
+        fields, rows, warnings = _load_csv(csv_path)
         src_key = str(csv_path.relative_to(root))
         metrics["sources"][src_key] = {"sha256": sha256_file(csv_path), "rows": len(rows)}
-        numeric_fields = [f for f in fields if rows and all(is_float((r.get(f) or "").strip())
-                                                            for r in rows if (r.get(f) or "").strip())]
-        # identifier columns (unique per row, e.g. run_id) are never group keys
-        text_fields = [f for f in fields
-                       if f not in numeric_fields and 1 < len({r.get(f, "") for r in rows}) <= 12]
-        # design parameters: numeric with low cardinality that REPEAT across
-        # rows (load, …) but not seeds. A numeric column whose values are all
-        # distinct is a measurement, not a grouping axis — without the
-        # "distinct < rows" guard, every small aggregated table (real papers
-        # often ship exactly those) loses all outcome fields (GAP-001).
-        design_nums = [f for f in numeric_fields
-                       if f.lower() not in ("seed",)
-                       and 1 < len({r[f] for r in rows}) < len(rows)
-                       and len({r[f] for r in rows}) <= 12]
+        for w in warnings:
+            metrics["audit"]["exclusions"].append({"source": src_key, "reason": w})
+        # numeric = at least one parseable value and every non-missing cell parses;
+        # missing = sentinel OR non-finite (nan/inf) — both audited identically (R2)
+        numeric_fields = []
+        for f in fields:
+            vals = [(r.get(f) or "").strip() for r in rows]
+            present = [v for v in vals
+                       if not _is_missing(v) and not (_try_float(v) and _parse_value(v) is None)]
+            n_missing = len(vals) - len(present)
+            if n_missing:
+                metrics["audit"]["missing_cells"] += n_missing
+                metrics["audit"]["exclusions"].append(
+                    {"column": f, "missing": n_missing, "source": src_key})
+            if present and all(_try_float(v) for v in present):
+                numeric_fields.append(f)
+        # replication axes / identifiers are neither group keys nor outcomes
+        excluded = [f for f in fields if f.lower() in _EXCLUDE_NAMES]
+        for f in excluded:
+            metrics["audit"]["classification"][f] = {"class": "excluded",
+                                                     "reason": "replication axis / identifier name"}
+        # identifier text columns (unique per row) are never group keys;
+        # text columns above the group-cardinality cap are dropped VISIBLY (R6)
+        text_fields = []
+        for f in fields:
+            if f in numeric_fields or f in excluded:
+                continue
+            distinct_text = len({(r.get(f, "").strip()) for r in rows
+                                 if not _is_missing(r.get(f, ""))})
+            if 1 < distinct_text <= 12:
+                text_fields.append(f)
+                reason = "categorical grouping column"
+                if f.lower() in _DESIGN_NAMES:
+                    # a design-named column that failed numeric parsing (garbage
+                    # cells) falls back to text grouping — visibly, not silently
+                    reason = ("design-vocabulary name but non-numeric cells — "
+                              "grouped as text")
+                metrics["audit"]["classification"][f] = {
+                    "class": "text_group", "distinct": distinct_text, "reason": reason}
+            else:
+                metrics["audit"]["classification"][f] = {
+                    "class": "ignored_text", "distinct": distinct_text,
+                    "reason": "text column outside group-cardinality window (1<d<=12)"}
+        # design parameters: numeric, repeating across rows, and named like a
+        # design axis (load, condition, …). Repetition alone is NOT sufficient —
+        # a repeated measurement (binary success, ternary error counts) is an
+        # outcome, not a grouping axis (GAP-001 mirror bug, post-pilot review).
+        design_nums = []
+        for f in numeric_fields:
+            if f in excluded:
+                continue
+            vals = [_parse_value(r.get(f, "")) for r in rows]
+            present = [v for v in vals if v is not None]
+            distinct = len(set(present))
+            if f.lower() in _DESIGN_NAMES and 1 < distinct < len(rows):
+                design_nums.append(f)
+                metrics["audit"]["classification"][f] = {
+                    "class": "design", "reason": "design-vocabulary name, repeats across rows",
+                    "distinct": distinct}
         group_cols = text_fields + design_nums
-        outcome_fields = [f for f in numeric_fields if f not in design_nums
-                          and f.lower() not in ("seed", "iteration", "run", "n")
-                          and len({r[f] for r in rows if (r.get(f) or "").strip()}) > 1]
+        outcome_fields = []
+        for f in numeric_fields:
+            if f in excluded or f in design_nums:
+                continue
+            vals = [_parse_value(r.get(f, "")) for r in rows]
+            present = [v for v in vals if v is not None]
+            if len(set(present)) > 1:
+                outcome_fields.append(f)
+                # sharpened reason (R1): an off-vocabulary repeating column is a
+                # visible classification decision, not silently "a measurement"
+                reason = ("distinct measurement" if len(set(present)) == len(rows)
+                          else "repeats across rows but name not in design vocabulary "
+                               "— classified outcome")
+                metrics["audit"]["classification"][f] = {
+                    "class": "outcome", "reason": reason,
+                    "distinct": len(set(present))}
 
         groups: dict[tuple, list[dict[str, str]]] = {}
+        display: dict[tuple, tuple[str, ...]] = {}
         for r in rows:
-            key = tuple(r.get(c, "") for c in group_cols)
-            groups.setdefault(key, []).append(r)
+            norm_key = []
+            disp = []
+            row_unattributable = False
+            for c in group_cols:
+                raw = (r.get(c, "") or "").strip()
+                if c in design_nums:
+                    v = _parse_value(raw)
+                    if v is None:
+                        row_unattributable = True
+                        norm_key.append(None)
+                        disp.append("(missing)")
+                        continue
+                    norm_key.append(v)      # group by VALUE, not raw string (F6)
+                    disp.append(raw)
+                elif _is_missing(raw):
+                    row_unattributable = True
+                    norm_key.append(None)
+                    disp.append("(missing)")
+                else:
+                    norm_key.append(raw)
+                    disp.append(raw)
+            if row_unattributable:
+                # a row without full group identity cannot be attributed to any
+                # condition — it is counted, but forms no (pseudo-)group (F-R3)
+                metrics["audit"]["missing_group_keys"] += 1
+                continue
+            nk = tuple(norm_key)
+            groups.setdefault(nk, []).append(r)
+            display.setdefault(nk, tuple(disp))
 
-        for gkey, grows in sorted(groups.items()):
-            gname = "__".join(f"{c}{v}" for c, v in zip(group_cols, gkey) if c)
+        for gkey, grows in sorted(groups.items(), key=lambda kv: tuple(
+                (str(x) for x in kv[0]))):
+            disp = display[gkey]
+            gname = "__".join(f"{c}{v}" for c, v in zip(group_cols, disp) if v)
             for f in outcome_fields:
                 vals = []
                 for r in grows:
                     cell = (r.get(f) or "").strip()
-                    if not cell:
-                        metrics["audit"]["missing_cells"] += 1
-                        continue
-                    vals.append(float(cell))
+                    v = _parse_value(cell)
+                    if v is None:
+                        continue  # sentinel and non-finite cells were already
+                        # counted in the per-column audit pass (F-R2: no double count)
+                    vals.append(v)
                 if not vals:
                     continue
                 stat = _mean_ci(vals)
                 key = f"{csv_path.stem}__{f}" + (f"__{gname}" if gname else "")
-                key = key.replace("-", "_").replace(".", "p")
                 metrics["metrics"][key] = {"source": src_key, "field": f,
-                                           "group": dict(zip(group_cols, gkey)), **stat}
+                                           "group": dict(zip(group_cols, disp)), **stat}
                 if stat.get("small_sample"):
                     metrics["audit"]["small_samples"].append(key)
-                safe = key.replace("_", "")
-                macro_lines.append(f"\\expandafter\\gdef\\csname pf@{safe}mean\\endcsname{{{stat['mean']:.6g}}}")
-                if stat.get("std") is not None:
-                    macro_lines.append(f"\\expandafter\\gdef\\csname pf@{safe}std\\endcsname{{{stat['std']:.6g}}}")
-                macro_lines.append(f"\\expandafter\\gdef\\csname pf@{safe}n\\endcsname{{{stat['n']}}}")
+
+    macro_lines = macro_header
+    bases = macro_base_names(list(metrics["metrics"].keys()))
+    for key, stat in metrics["metrics"].items():
+        base = bases[key]
+        macro_lines.append(f"\\expandafter\\gdef\\csname pf@{base}mean\\endcsname{{{stat['mean']:.6g}}}")
+        if stat.get("std") is not None:
+            macro_lines.append(f"\\expandafter\\gdef\\csname pf@{base}std\\endcsname{{{stat['std']:.6g}}}")
+        macro_lines.append(f"\\expandafter\\gdef\\csname pf@{base}n\\endcsname{{{stat['n']}}}")
+
+    # persist the audit even when no metrics were derivable (R4): the
+    # classification/exclusion trail is exactly what a DEGRADED diagnosis needs.
+    # Downstream nodes degrade on empty metrics identically (they test content).
+    write_json(ctx.workspace.reports_dir / "paper_metrics.json", metrics)
+    gen = ctx.workspace.paper_dir / "generated"
+    gen.mkdir(parents=True, exist_ok=True)
+    (gen / "numbers.tex").write_text("\n".join(macro_lines) + "\n", encoding="utf-8")
 
     if not metrics["metrics"]:
         return NodeOutcome(Verdict.DEGRADED, {"reason": "no numeric outcome fields found",
                                               "sources": metrics["sources"]})
 
-    write_json(ctx.workspace.reports_dir / "paper_metrics.json", metrics)
-    gen = ctx.workspace.paper_dir / "generated"
-    gen.mkdir(parents=True, exist_ok=True)
-    (gen / "numbers.tex").write_text("\n".join(macro_lines) + "\n", encoding="utf-8")
     return NodeOutcome(Verdict.PASS, {"metric_count": len(metrics["metrics"]),
                                       "small_samples": metrics["audit"]["small_samples"]})
+
+
+def _try_float(s: str) -> bool:
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
 
 
 def run_integrity_audit(ctx: NodeContext) -> NodeOutcome:

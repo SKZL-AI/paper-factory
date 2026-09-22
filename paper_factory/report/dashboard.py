@@ -11,6 +11,7 @@ import subprocess
 from pathlib import Path
 
 from ..core.util import utcnow
+from ..dag.executor import run_status_overall
 
 STATE_DIR = Path(__file__).resolve().parent.parent / "state"
 REPO = STATE_DIR.parents[1]
@@ -19,6 +20,8 @@ _BADGE = {
     "PASS": "#22c55e", "DEGRADED": "#eab308", "FAIL": "#ef4444",
     "HUMAN_REQUIRED": "#a855f7", "UNAVAILABLE": "#64748b", "NOT_RUN": "#94a3b8",
     "SKIPPED_DEPENDENCY": "#f97316", "GATE": "#3b82f6",
+    "CLOSED": "#22c55e", "FAILED": "#ef4444", "INCOMPLETE": "#f97316",
+    "EMPTY": "#64748b",
 }
 
 
@@ -111,8 +114,12 @@ def render_dashboard(workspace_reports: Path | None = None, out: Path | None = N
 
     pilot_html = ""
     if pilot:
+        # canonical overall: computed by the same aggregation the CLI uses —
+        # the stored field is never a second truth
+        p_statuses = pilot.get("statuses") or {}
+        p_overall = run_status_overall(p_statuses)
         p_dag = "".join(row([nid, _badge(state)])
-                        for nid, state in sorted((pilot.get("statuses") or {}).items()))
+                        for nid, state in sorted(p_statuses.items()))
         p_closure = "".join(row([uid, _badge(state)])
                             for uid, state in sorted((pilot.get("closure") or {}).items()))
         cm = pilot.get("claim_matrix") or {}
@@ -120,18 +127,32 @@ def render_dashboard(workspace_reports: Path | None = None, out: Path | None = N
         p_gaps = "".join(row([html.escape(g)]) for g in pilot.get("gaps", []))
         p_hr = "".join(row([html.escape(h)]) for h in pilot.get("human_required", []))
         rf = pilot.get("review_findings") or {}
+        p_notes = "".join(row([f"<code>{html.escape(k)}</code>", html.escape(v)])
+                          for k, v in sorted((pilot.get("status_notes") or {}).items()))
+        corrections = (pilot.get("post_pilot_audit") or {}).get("corrections") or []
+        p_corr = "".join(row([f"<code>{html.escape(str(c.get('field')))}</code>",
+                              _badge(str(c.get("was"))), _badge(str(c.get("now"))),
+                              html.escape(str(c.get("reason")))])
+                         for c in corrections)
+        corr_html = (f'<h3 style="color:#93c5fd">Post-Pilot-Audit-Korrekturen '
+                     f'({html.escape(str((pilot.get("post_pilot_audit") or {}).get("commit", "")))})</h3>'
+                     f"<table>{p_corr}</table>" if corrections else "")
+        notes_html = (f'<h3 style="color:#93c5fd">Status-Erklärungen</h3><table>{p_notes}</table>'
+                      if p_notes else "")
         pilot_html = f"""
 <h2>10 · REAL PILOT 01 — {html.escape(str(pilot.get('project', '')))}</h2>
 <div class="card">
  <p>Modus <code>{html.escape(str(pilot.get('input_mode')))}</code> · run
  <code>{html.escape(str(pilot.get('run_id')))}</code> · overall
- {_badge(str(pilot.get('overall')))} · baseline <code>{html.escape(str(pilot.get('baseline_head')))}</code>
+ {_badge(p_overall)} · baseline <code>{html.escape(str(pilot.get('baseline_head')))}</code>
  · Tests: {html.escape(str(pilot.get('tests')))}</p>
  <p class="muted">Closure failed on: {html.escape(str(pilot.get('closure_failed')))}
  · unresolved blocking: {html.escape(str(pilot.get('unresolved_blocking')))}
  · review findings: {html.escape(json.dumps(rf))}</p>
  <h3 style="color:#93c5fd">Pipeline P00–P37</h3><table>{p_dag}</table>
+ {notes_html}
  <h3 style="color:#93c5fd">Closure U1–U16</h3><table>{p_closure}</table>
+ {corr_html}
  <h3 style="color:#93c5fd">Claim-Status (vs. Ground Truth, blind)</h3><table>{p_claims}</table>
  <h3 style="color:#93c5fd">Gaps</h3><table>{p_gaps}</table>
  <h3 style="color:#93c5fd">HUMAN_REQUIRED</h3><table>{p_hr}</table>

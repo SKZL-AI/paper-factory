@@ -118,24 +118,56 @@ class Executor:
         self.ws.event(self.ctx.run_id, "run_report", payload={"statuses_sha256": digest})
 
 
-def run_status_overall(statuses: dict[str, Verdict]) -> str:
+def run_status_overall(statuses: dict[str, "Verdict | str"]) -> str:
+    """Canonical overall-state aggregation — the single truth for CLI and dashboard.
+
+    Precedence (fail-closed): FAILED > HUMAN_REQUIRED > INCOMPLETE > DEGRADED > CLOSED.
+    A DEGRADED node must never disappear into a blind CLOSED; an unknown node id or
+    an unknown state string is never a CLOSED either. Note on hand-maintained status
+    dicts (dashboard summaries): an ABSENT optional node contributes nothing (treated
+    like not-run), while a DEGRADED optional node stays visible — summaries should
+    therefore record optional nodes explicitly (post-pilot review B-G9).
+    """
     if not statuses:
         return "EMPTY"
-    values = set(statuses.values())
+    norm: dict[str, "Verdict | str"] = {}
+    for nid, v in statuses.items():
+        if isinstance(v, Verdict):
+            norm[nid] = v
+        else:
+            try:
+                norm[nid] = Verdict(str(v))
+            except ValueError:
+                norm[nid] = str(v)  # unknown state string — fails the closed-world check
+    if any(nid not in NODE_MAP for nid in norm):
+        return "INCOMPLETE"
+    values = set(norm.values())
     if values & {Verdict.FAIL, Verdict.INVALIDATED}:
         return "FAILED"
     if Verdict.HUMAN_REQUIRED in values:
         return "HUMAN_REQUIRED"
-    if values <= OK_STATES | {Verdict.SKIPPED_DEPENDENCY} | {Verdict.NOT_RUN}:
-        skipped_required = [
-            nid for nid, v in statuses.items()
-            if v in (Verdict.SKIPPED_DEPENDENCY, Verdict.NOT_RUN) and not NODE_MAP[nid].optional
-        ]
-        # closure with unproven invariants (DEGRADED at P35) is never "CLOSED"
-        if statuses.get("P35") not in (None, Verdict.PASS):
-            return "INCOMPLETE"
-        return "CLOSED" if not skipped_required else "INCOMPLETE"
-    return "INCOMPLETE"
+    if not values <= OK_STATES | {Verdict.SKIPPED_DEPENDENCY, Verdict.NOT_RUN}:
+        return "INCOMPLETE"
+    # a CLOSED/DEGRADED verdict requires the full required DAG to have been
+    # evaluated — absent nodes are unproven, not silent skips (reviewer B-F4)
+    missing_required = [nid for nid, n in NODE_MAP.items()
+                        if not n.optional and nid not in norm]
+    if missing_required:
+        return "INCOMPLETE"
+    skipped_required = [
+        nid for nid, v in norm.items()
+        if v in (Verdict.SKIPPED_DEPENDENCY, Verdict.NOT_RUN) and not NODE_MAP[nid].optional
+    ]
+    p35 = norm.get("P35")
+    # closure never evaluated (or required nodes never ran) -> pipeline incomplete
+    if p35 in (Verdict.SKIPPED_DEPENDENCY, Verdict.NOT_RUN) or skipped_required:
+        return "INCOMPLETE"
+    # a degraded node/closure is reported honestly, never rounded up to CLOSED
+    if Verdict.DEGRADED in values:
+        return "DEGRADED"
+    if p35 is not None and p35 is not Verdict.PASS:
+        return "INCOMPLETE"
+    return "CLOSED"
 
 
 __all__ = ["Executor", "NodeContext", "NodeOutcome", "Handler", "run_status_overall", "OK_STATES", "NODES"]

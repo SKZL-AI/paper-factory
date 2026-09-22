@@ -18,6 +18,7 @@ from ..core.util import utcnow, write_json
 from ..dag.executor import NodeContext, NodeOutcome
 from ..provenance.firewall import decide_write
 from ..provenance.origin import record_origin
+from ..statistics.metrics import macro_base_names
 
 DETERMINISTIC_BACKEND = {
     "provider_family": "paper-factory",
@@ -28,11 +29,6 @@ DETERMINISTIC_BACKEND = {
 }
 
 SECTION_ORDER = ["methods", "results", "introduction", "discussion", "abstract"]
-
-
-def _macro_for(metrics: dict, suffix: str = "") -> str | None:
-    keys = [k for k in metrics.get("metrics", {}) if "fpr" in k.lower()]
-    return keys[0] if keys else None
 
 
 def _compose_section(section: str, ctx: NodeContext) -> str:
@@ -65,11 +61,15 @@ def _compose_section(section: str, ctx: NodeContext) -> str:
                  f"Table~\\ref{{{tab_ref}}} and the generated figures summarise the "
                  "measured outcomes.")
         lines = ["\\section{Results}", "\\label{sec:results}", intro]
-        for key, m in list(metrics.get("metrics", {}).items())[:8]:
-            safe = key.replace("_", "")
+        # macro names come from the same collision-safe sanitizer the generator
+        # and the U2 binding check use — one naming truth (post-pilot review F-R0)
+        all_metrics = metrics.get("metrics", {})
+        bases = macro_base_names(list(all_metrics.keys()))
+        for key, m in list(all_metrics.items())[:8]:
+            base = bases[key]
             shown = key.replace("_", "\\_")
             lines.append(f"For \\texttt{{{shown}}} we measured a mean of "
-                         f"$\\pfget{{{safe}mean}}$ (n=$\\pfget{{{safe}n}}$).")
+                         f"$\\pfget{{{base}mean}}$ (n=$\\pfget{{{base}n}}$).")
         if not metrics.get("metrics"):
             lines.append("% no metrics available — results section stays empty rather than invented")
         return "\n".join(lines) + "\n"

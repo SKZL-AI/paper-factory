@@ -36,7 +36,7 @@
     "P28": "PASS",
     "P29": "PASS",
     "P30": "PASS",
-    "P31": "PASS",
+    "P31": "DEGRADED",
     "P32": "PASS",
     "P33": "PASS",
     "P34": "PASS",
@@ -53,14 +53,14 @@
     "U6": "PASS",
     "U7": "PASS",
     "U8": "PASS",
-    "U9": "PASS",
+    "U9": "DEGRADED",
     "U10": "PASS",
     "U11": "PASS",
     "U12": "PASS",
     "U13": "PASS",
     "U14": "PASS",
     "U15": "PASS",
-    "U16": "PASS"
+    "U16": "NOT_RUN"
   },
   "closure_failed": [
     "U5"
@@ -90,8 +90,51 @@
     "GAP-007 open",
     "GAP-008 open",
     "GAP-009 open",
-    "GAP-010 open"
+    "GAP-010 open",
+    "POST-AUDIT-1 fixed: Paperpal-Lane buchte Operator-Check als externen PASS (P31/U9/U16)",
+    "POST-AUDIT-2 fixed: U2 ohne Metrik-Provenienz-Gate (quantitativer Claim konnte P35 PASS erreichen)",
+    "POST-AUDIT-3 fixed: Dashboard-Overall war zweite Wahrheit; DEGRADED unsichtbar in Overall"
   ],
+  "status_notes": {
+    "P00": "DEGRADED — Systempakete fehlen (sudo: texlive-latex-extra graphviz qpdf poppler-utils); optionale Toolchain-Lane",
+    "P10": "DEGRADED — keine Reproduktions-Kommandos ableitbar (GPU-Runs nicht im Repo); erwartbar ehrlich",
+    "P27": "DEGRADED — 1 Finding deferred (ADV-05); Remediation sonst abgeschlossen",
+    "P31": "DEGRADED — manueller Operator-Check über Bridge, KEIN externes Paperpal-Ergebnis (Post-Pilot-Audit-Korrektur, war: PASS)",
+    "P35": "FAIL — U5: 1 unaufgelöster MAJOR-Review-Befund (ADV-05 deferred)",
+    "P36": "SKIPPED_DEPENDENCY — menschliches Final-Sign-off absichtlich nicht erreicht (hängt an P35)",
+    "P37": "SKIPPED_DEPENDENCY — externe Submission wird niemals automatisch ausgeführt (hängt an P36)"
+  },
+  "post_pilot_audit": {
+    "corrected_at": "2026-09-22",
+    "commit": "post-96b1a9c (Post-Pilot-01 Integrity Audit; 96b1a9c bleibt historischer Snapshot)",
+    "method": "Befund aus Artefakt-Provenienz; verifiziert durch Re-Run des gefixten Codes gegen eine unveraenderte KOPIE des Pilot-Workspace (Original unangetastet)",
+    "corrections": [
+      {"field": "statuses.P31", "was": "PASS", "now": "DEGRADED",
+       "reason": "Inbox-Artefakt ist ein vom Orchestrierungs-Agenten (Kimi) als Operator verfasster manueller Check (Selbstdeklaration im Artefakt), kein Paperpal-Produkt; es existiert kein Paperpal-API"},
+      {"field": "closure.U9", "was": "PASS", "now": "DEGRADED",
+       "reason": "U9 behauptete 'paperpal results delivered'; tatsaechlich nur Operator-Check ohne externe Evidenz"},
+      {"field": "closure.U16", "was": "PASS", "now": "NOT_RUN",
+       "reason": "semantic_diff.json verzeichnete external_edits=false; es gab keine externen Edits, also nichts zu reconcilen — PASS-Notiz 'external edits semantically reconciled' war vakuum"}
+    ],
+    "paperpal_evidence": {
+      "external_paperpal": false,
+      "actual_source": "interner Operator-Check, vom Agenten verfasst (nicht vom Nutzer), Selbstdeklaration im Artefakt",
+      "inbox_file": "language_check_report.txt",
+      "sha256": "206969111286e87e0294ef4d3c685bed975167b901b1d7566baf8708ed289eab"
+    },
+    "dual_review_campaign": {
+      "reviewers": "2 unabhaengige Subagenten (Widerlegungsauftrag): A=GAP-001-Statistikheuristik, B=GAP-002-False-Green/Closure",
+      "rounds": "A: 4 Runden bis JA; B: 10 Runden bis JA",
+      "verified_findings_fixed": "A: F1-F9 + F-R0-F-R5; B: F1-F5, G1-G9, H1-H3, J1-J4, K1-K5, L1-L3, M1-M5, N1-N2/O1-O2",
+      "attack_cases_total": "~80 verifizierte Angriffsrepros, alle final FAIL/blockiert",
+      "documented_limits": [
+        "einstellige Dezimalzahl / bare Integer-Claims ohne Einheit: inhärente Regex-Grenze",
+        "Referenzen innerhalb policy-gebundener generated/-Dateien sind quelltext-ungescannt (N3)",
+        "Paperpal-Deklaration ist unprüfbar extern (nur deklariert; P36-Sign-off sieht das)",
+        "Empfehlung: quantitativer Scan des gebauten PDF-Texts bei der Closure als architektonischer Endpunkt"
+      ]
+    }
+  },
   "human_required": [
     "P36 final sign-off",
     "sudo: texlive-latex-extra graphviz qpdf poppler-utils",
@@ -99,5 +142,5 @@
     "paperpal manual bridge"
   ],
   "baseline_head": "5f7dc75",
-  "tests": "128 -> 132 (+4 gap regressions)"
+  "tests": "128 -> 132 (+4 gap regressions) -> 207 (+75 post-pilot audit: false-green, paperpal, overall, dual-review hardening)"
 }

@@ -7,6 +7,7 @@ nodes but never sufficient here — closure is Paper Factory's own.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any, Callable
 
@@ -17,6 +18,11 @@ from ..dag.executor import NodeContext, NodeOutcome
 from ..provenance.firewall import is_protected
 from ..provenance.origin import origin_receipts, protected_files
 from ..reviews.framework import load_reviews, unresolved_blocking
+from ..statistics.metrics import expected_macro_entries
+from ..statistics.quantitative import (PFGET_ACCESSOR_LINE, _strip_comments,
+                                       find_pfget_uses, find_quantitative,
+                                       is_claim_section, manuscript_tex_files,
+                                       normalize_tex)
 
 Check = Callable[[NodeContext], tuple[str, str]]  # → (state, note)
 
@@ -36,14 +42,153 @@ def _u1(ctx: NodeContext) -> tuple[str, str]:
     return "PASS", f"{len(graph.claims)} claims linked"
 
 
+def _manuscript_quantitative_surface(paper: Path) -> tuple[list[str], set[str]]:
+    quantitative: list[str] = []
+    macro_uses: set[str] = set()
+    for s in manuscript_tex_files(paper):
+        rel = str(s.relative_to(paper))
+        body = normalize_tex(s.read_text(encoding="utf-8", errors="replace"))
+        macro_uses |= find_pfget_uses(body)
+        if find_quantitative(body, claim_section=is_claim_section(rel)):
+            quantitative.append(rel)
+    return quantitative, macro_uses
+
+
+_DEF_CMD = re.compile(r"\\(?:newcommand|renewcommand|def|edef|gdef|xdef|let)\b")
+_ANY_CSNAME = re.compile(r"\\csname\b")
+_GRAPHICS_RE = re.compile(
+    r"\\(?:includegraphics\s*\*?|pgfimage|pgfuseimage|includepdf|includesvg)"
+    r"\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}")
+_INPUT_RE = re.compile(r"\\(?:input|include)\s*\{([^}]*)\}"
+                       r"|\\(?:sub)?import\s*\{([^}]*)\}\s*\{([^}]*)\}")
+
+
+def _input_violations(paper: Path) -> list[str]:
+    """The manuscript may only \\input/\\include/\\import content the pipeline
+    actually guards: scanned manuscript files and the policy-bound generated/
+    directory. References into build/ (compile output — never scanned nor
+    frozen) or escaping the paper root are provenance holes (post-pilot review
+    B-L1/B-M2/B-M3).
+    """
+    violations: list[str] = []
+    for s in manuscript_tex_files(paper):
+        body = _strip_comments(s.read_text(encoding="utf-8", errors="replace"))
+        for m in _INPUT_RE.finditer(body):
+            target = (m.group(1) or m.group(2) or "").strip()
+            if not target:
+                continue
+            norm = target.replace("\\", "/")
+            parts = [p for p in norm.split("/") if p not in ("", ".")]  # B-M2
+            if norm.startswith("/") or ".." in parts:
+                violations.append(f"{s.name}: input escapes paper root: {target!r}")
+            elif parts and parts[0] == "build":
+                violations.append(f"{s.name}: input into unguarded build/: {target!r}")
+    return violations
+_PF_GDEF_LINE = re.compile(r"^\\expandafter\\gdef\\csname\s+pf@(.+?)\\endcsname\{([^}]*)\}\s*$")
+_NUMBERS_ALLOWED_PLAIN = {"\\makeatletter", "\\makeatother"}
+
+
+def _generated_policy(paper: Path) -> tuple[list[str], dict[str, str]]:
+    """generated/ is trusted, so its content is policy-bound by ALLOWLIST, not
+    by a definition-token blocklist (TeX is Turing-complete — \\let and
+    \\csname-built commands evade token lists; post-pilot review B-J1).
+
+    numbers.tex: every line must be a comment, \\makeatletter/\\makeatother, the
+    canonical \\pfget accessor, or a canonical \\expandafter\\gdef\\csname pf@…
+    \\endcsname{value} line. All pf@ definitions are returned for full binding
+    against paper_metrics.json (not just the manuscript-used subset).
+    Other generated/*.tex (e.g. tables.tex): no macro definitions at all.
+    """
+    gen = paper / "generated"
+    if not gen.exists():
+        return [], {}
+    violations: list[str] = []
+    defs: dict[str, str] = {}
+    for f in sorted(gen.glob("*.tex")):
+        raw = f.read_text(encoding="utf-8", errors="replace")
+        text = _strip_comments(raw)  # comments never carry semantics (B-J4)
+        if f.name == "numbers.tex":
+            for ln, line in enumerate(text.splitlines(), 1):
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                if stripped in _NUMBERS_ALLOWED_PLAIN:
+                    continue
+                if stripped == PFGET_ACCESSOR_LINE:
+                    continue  # the canonical accessor, compared exactly (B-K1)
+                m = _PF_GDEF_LINE.match(stripped)
+                if m:
+                    defs[m.group(1)] = m.group(2)
+                    continue
+                violations.append(f"{f.name}:{ln}: non-canonical line {stripped[:60]!r}")
+        else:
+            # other generated files (e.g. tables.tex): no macro definitions and
+            # no \csname indirection at all — TeX is Turing-complete, a token
+            # blocklist alone is evadable (post-pilot review B-K2)
+            for m in _DEF_CMD.finditer(text):
+                snippet = text[max(0, m.start() - 10):m.start() + 50].replace("\n", " ")
+                violations.append(f"{f.name}: macro definition not allowed here: …{snippet}…")
+            for m in _ANY_CSNAME.finditer(text):
+                snippet = text[max(0, m.start() - 10):m.start() + 50].replace("\n", " ")
+                violations.append(f"{f.name}: \\csname indirection not allowed here: …{snippet}…")
+    return violations, defs
+
+
 def _u2(ctx: NodeContext) -> tuple[str, str]:
     # Manuscript-level: numbers in the PAPER must derive from generated macros.
-    audit = ctx.workspace.reports_dir / "numbers_units_audit.json"
+    ws = ctx.workspace
+    audit = ws.reports_dir / "numbers_units_audit.json"
     if not audit.exists():
         return "NOT_RUN", "no numbers/units audit of the manuscript"
-    findings = json.loads(audit.read_text()).get("findings", [])
+    try:
+        findings = json.loads(audit.read_text()).get("findings", [])
+    except json.JSONDecodeError:
+        return "FAIL", "numbers_units_audit.json unreadable — audit result unverifiable"
     if findings:
         return "FAIL", f"{len(findings)} raw hand-typed numbers in manuscript"
+    metrics_path = ws.reports_dir / "paper_metrics.json"
+    metrics: dict[str, Any] = {}
+    if metrics_path.exists():
+        try:
+            metrics = json.loads(metrics_path.read_text()).get("metrics", {}) or {}
+        except json.JSONDecodeError:
+            return "FAIL", "paper_metrics.json unreadable — provenance unverifiable"
+    # generated/ allowlist policy + FULL binding of every pf@ definition
+    violations, gen_defs = _generated_policy(ws.paper_dir)
+    if violations:
+        return "FAIL", ("non-canonical content in generated/: "
+                        + "; ".join(violations[:3]))
+    input_violations = _input_violations(ws.paper_dir)
+    if input_violations:
+        return "FAIL", ("manuscript inputs into unguarded paths: "
+                        + "; ".join(input_violations[:3]))
+    if gen_defs:
+        if not metrics:
+            return "FAIL", "provenance macros defined but paper_metrics.json missing/empty"
+        # every definition must carry the derived value (unused defs included —
+        # an unused forgery today is a used forgery tomorrow; post-pilot B-J1)
+        expected_all = expected_macro_entries(metrics)
+        forged = sorted(k for k in gen_defs if k not in expected_all)
+        if forged:
+            return "FAIL", f"generated/ defines macros absent from paper_metrics.json: {forged[:5]}"
+        diverged = sorted(k for k, v in gen_defs.items() if expected_all.get(k) != v)
+        if diverged:
+            return "FAIL", f"generated/ macro values diverge from paper_metrics.json: {diverged[:5]}"
+    quantitative, macro_uses = _manuscript_quantitative_surface(ws.paper_dir)
+    # fail-closed provenance gate (post-pilot audit): a quantitative claim or a
+    # provenance macro without any derived metrics artifact can never PASS
+    if (quantitative or macro_uses) and not metrics:
+        return "FAIL", ("quantitative claims in manuscript but no derived metrics "
+                        "artifact (paper_metrics.json missing/empty) — no T0/T1 provenance")
+    if macro_uses:
+        # manuscript uses must be defined in numbers.tex and carry the derived
+        # value — a hand-written numbers.tex is forgery, not provenance (B-F3)
+        unbound = sorted(macro_uses - set(gen_defs))
+        if unbound:
+            return "FAIL", (f"manuscript macros without metric source: {unbound[:5]}"
+                            f"{'…' if len(unbound) > 5 else ''}")
+        # (value binding of the definitions themselves happened above, for ALL
+        # defs — used ones are a subset of that check)
     return "PASS", "manuscript numbers derive from generated macros"
 
 
@@ -55,13 +200,84 @@ def _u3(ctx: NodeContext) -> tuple[str, str]:
             return "NOT_RUN", f"{name} missing"
         manifest = json.loads(p.read_text())
         entries = manifest.get("figures") or manifest.get("tables") or []
+        # every artifact a manifest declares — entry outputs, per-figure files,
+        # entry-level paths, manifest-level output (dict or list forms) — must
+        # be content-pinned and hash-matching; existence alone is not binding
+        # (post-pilot review B-J2/B-L3/B-M5)
+        declared: list[Any] = []
+        m_out = manifest.get("output")
+        if isinstance(m_out, dict):
+            declared.append(m_out)
+        elif isinstance(m_out, list):
+            declared.extend(m_out)
         for e in entries:
-            out = e.get("output") or e.get("outputs") or {}
-            paths = list(out.values()) if isinstance(out, dict) else ([e["path"]] if e.get("path") else [])
-            for rel in paths:
-                if not Path(rel).exists() and not (ws.root / rel).exists():
-                    return "FAIL", f"manifest entry missing artifact: {rel}"
-    return "PASS", "figures/tables match manifests"
+            out = e.get("output") or e.get("outputs")
+            if isinstance(out, dict):
+                declared.extend(out.values())
+            elif isinstance(out, list):
+                declared.extend(out)
+            files = e.get("files") or {}
+            if isinstance(files, dict):
+                declared.extend(v for v in files.values() if isinstance(v, dict))
+            elif isinstance(files, list):
+                declared.extend(files)
+            if e.get("path"):
+                declared.append({"path": e["path"], "sha256": e.get("sha256")})
+        for d in declared:
+            if isinstance(d, str):
+                d = {"path": d}
+            rel, want = d.get("path"), d.get("sha256")
+            if not rel:
+                continue
+            if not want:
+                return "FAIL", f"manifest artifact without content pin: {rel}"
+            f = ws.root / rel
+            if not f.exists():
+                f = ws.target_root / rel
+            if not f.exists():
+                return "FAIL", f"pinned artifact missing: {rel}"
+            if sha256_file(f) != want:
+                return "FAIL", f"artifact diverged from manifest pin: {rel}"
+        inputs: dict[str, str] = dict(manifest.get("input_data_hashes") or {})
+        for e in entries:
+            inputs.update(e.get("input_data_hashes") or {})
+        for rel, want in inputs.items():
+            f = ws.root / rel
+            if not f.exists():
+                f = ws.target_root / rel
+            if not f.exists():
+                return "FAIL", f"pinned input missing: {rel}"
+            if sha256_file(f) != want:
+                return "FAIL", f"input data diverged from manifest pin: {rel}"
+        # reverse direction (post-pilot review B-M1): every figure the
+        # manuscript references must be declared+pinned in the figures manifest
+        if name == "figures_manifest.json":
+            pinned = set()
+            for d in declared:
+                if isinstance(d, str):
+                    d = {"path": d}
+                if d.get("path"):
+                    pinned.add(str(d["path"]))
+            for s in manuscript_tex_files(ws.paper_dir):
+                body = _strip_comments(s.read_text(encoding="utf-8", errors="replace"))
+                for m in _GRAPHICS_RE.finditer(body):
+                    target = m.group(1).strip().lstrip("./")
+                    candidates = {f"paper/{target}",
+                                  *(f"paper/{target}.{ext}" for ext in ("pdf", "png", "svg"))}
+                    if not candidates & pinned:
+                        return "FAIL", (f"manuscript figure not declared/pinned in "
+                                        f"figures manifest: {target!r} (in {s.name})")
+        # reverse existence (B-O2): a generated tables.tex without a manifest
+        # pin is unbound content in a trusted directory
+        if name == "tables_manifest.json":
+            tables_tex = ws.paper_dir / "generated" / "tables.tex"
+            if tables_tex.exists():
+                pinned_paths = {str(d.get("path")) for d in declared
+                                if isinstance(d, dict) and d.get("path")}
+                if "paper/generated/tables.tex" not in pinned_paths:
+                    return "FAIL", ("generated/tables.tex exists but is not declared "
+                                    "and pinned in tables_manifest.json")
+    return "PASS", "figures/tables match manifests (existence + content hashes)"
 
 
 def _u4(ctx: NodeContext) -> tuple[str, str]:
@@ -324,9 +540,16 @@ def _u9(ctx: NodeContext) -> tuple[str, str]:
     if not state.exists():
         return "NOT_RUN", "paperpal state missing"
     data = json.loads(state.read_text())
-    if data.get("inbox_items"):
-        return "PASS", "paperpal results delivered"
-    return "HUMAN_REQUIRED", "paperpal manual bridge pending"
+    if not data.get("inbox_items"):
+        return "HUMAN_REQUIRED", "paperpal manual bridge pending"
+    ev = data.get("evidence_class")
+    if ev == "external_paperpal_declared":
+        return "PASS", "external paperpal results delivered (declared provenance)"
+    if ev == "operator_check":
+        return "DEGRADED", "manual operator check only — no external Paperpal evidence"
+    # fail-closed: pre-audit state files recorded inbox items without any
+    # provenance classification — provenance must be re-established by a human
+    return "HUMAN_REQUIRED", "inbox items without provenance classification"
 
 
 def _u10(ctx: NodeContext) -> tuple[str, str]:
@@ -425,10 +648,17 @@ def _u16(ctx: NodeContext) -> tuple[str, str]:
     data = json.loads(state.read_text())
     if not data.get("inbox_items"):
         return "NOT_RUN", "no external paperpal edits"
+    if data.get("evidence_class") != "external_paperpal_declared":
+        # an operator check rewrites nothing external — there is nothing to
+        # reconcile, and claiming reconciliation would be fabricated evidence
+        return "NOT_RUN", "no external edits — operator check needs no reconciliation"
     diff = ctx.workspace.reports_dir / "semantic_diff.json"
     if not diff.exists():
         return "FAIL", "external edits without semantic reconciliation"
-    return "PASS", "external edits semantically reconciled"
+    diff_data = json.loads(diff.read_text())
+    if diff_data.get("external_edits"):
+        return "PASS", "external edits semantically reconciled"
+    return "PASS", "external check without prose edits; numbers/claims re-validated"
 
 
 U_CHECKS: dict[str, tuple[str, Check]] = {
