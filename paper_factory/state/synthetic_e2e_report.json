@@ -1,7 +1,7 @@
 {
-  "collected_at": "2026-09-22T00:16:49Z",
+  "collected_at": "2026-09-22T09:31:09Z",
   "exit_code": 0,
-  "summary_line": "63 passed in 37.15s",
+  "summary_line": "128 passed in 44.48s",
   "tests": [
     {
       "name": "test_doctor_runs_without_error[claude]",
@@ -13,19 +13,19 @@
       "name": "test_doctor_runs_without_error[codex]",
       "class": "tests.test_adapters",
       "state": "PASS",
-      "time_s": 0.17
+      "time_s": 0.12
     },
     {
       "name": "test_doctor_runs_without_error[kimi]",
       "class": "tests.test_adapters",
       "state": "PASS",
-      "time_s": 1.18
+      "time_s": 1.23
     },
     {
       "name": "test_doctor_runs_without_error[pi]",
       "class": "tests.test_adapters",
       "state": "PASS",
-      "time_s": 0.4
+      "time_s": 0.42
     },
     {
       "name": "test_doctor_runs_without_error[litellm]",
@@ -43,7 +43,7 @@
       "name": "test_installed_harnesses_are_present[claude]",
       "class": "tests.test_adapters",
       "state": "PASS",
-      "time_s": 0.1
+      "time_s": 0.11
     },
     {
       "name": "test_installed_harnesses_are_present[codex]",
@@ -55,13 +55,13 @@
       "name": "test_installed_harnesses_are_present[kimi]",
       "class": "tests.test_adapters",
       "state": "PASS",
-      "time_s": 1.18
+      "time_s": 1.22
     },
     {
       "name": "test_installed_harnesses_are_present[pi]",
       "class": "tests.test_adapters",
       "state": "PASS",
-      "time_s": 0.4
+      "time_s": 0.44
     },
     {
       "name": "test_opencode_unavailable_not_error",
@@ -97,7 +97,7 @@
       "name": "test_real_capabilities_match_probe",
       "class": "tests.test_adapters",
       "state": "PASS",
-      "time_s": 0.17
+      "time_s": 0.18
     },
     {
       "name": "test_invoke_mocked_receipt_hashes",
@@ -151,25 +151,25 @@
       "name": "test_01_code_only",
       "class": "tests.test_e2e_synthetic",
       "state": "PASS",
-      "time_s": 4.51
+      "time_s": 4.91
     },
     {
       "name": "test_02_data_only",
       "class": "tests.test_e2e_synthetic",
       "state": "PASS",
-      "time_s": 3.72
+      "time_s": 4.41
     },
     {
       "name": "test_03_draft_assisted",
       "class": "tests.test_e2e_synthetic",
       "state": "PASS",
-      "time_s": 2.44
+      "time_s": 2.72
     },
     {
       "name": "test_04_mixed_evidence",
       "class": "tests.test_e2e_synthetic",
       "state": "PASS",
-      "time_s": 12.77
+      "time_s": 16.93
     },
     {
       "name": "test_05_chat_ingestion",
@@ -205,19 +205,19 @@
       "name": "test_10_provider_failure_classified",
       "class": "tests.test_e2e_synthetic",
       "state": "PASS",
-      "time_s": 0.06
+      "time_s": 0.07
     },
     {
       "name": "test_11_alternative_provider_resume",
       "class": "tests.test_e2e_synthetic",
       "state": "PASS",
-      "time_s": 1.79
+      "time_s": 1.91
     },
     {
       "name": "test_12_same_family_review_marked_degraded",
       "class": "tests.test_e2e_synthetic",
       "state": "PASS",
-      "time_s": 2.35
+      "time_s": 2.44
     },
     {
       "name": "test_13_forbidden_final_prose_origin_blocked",
@@ -229,7 +229,7 @@
       "name": "test_14_paperpal_absence_human_required",
       "class": "tests.test_e2e_synthetic",
       "state": "PASS",
-      "time_s": 4.62
+      "time_s": 4.82
     },
     {
       "name": "test_15_clean_bundle_rebuild",
@@ -289,7 +289,7 @@
       "name": "test_table_plan_and_generation",
       "class": "tests.test_figures_tables_manuscript",
       "state": "PASS",
-      "time_s": 0.0
+      "time_s": 0.01
     },
     {
       "name": "test_manuscript_architecture_and_idempotency",
@@ -300,6 +300,396 @@
     {
       "name": "test_section_check",
       "class": "tests.test_figures_tables_manuscript",
+      "state": "PASS",
+      "time_s": 0.01
+    },
+    {
+      "name": "test_h1_large_file_with_secret_fails",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.15
+    },
+    {
+      "name": "test_h1_secret_spanning_chunk_boundary_fails",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.03
+    },
+    {
+      "name": "test_h1_clean_large_file_passes",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.18
+    },
+    {
+      "name": "test_h1_symlink_inside_tree_fails_closed",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_h1_symlink_escape_fails_closed",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_h1_utf16_secret_detected[utf-16-le]",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_h1_utf16_secret_detected[utf-16-be]",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_h1_utf16_secret_across_chunk_boundary",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.32
+    },
+    {
+      "name": "test_h1_degraded_invariant_blocks_closure_pass",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_h2_unmodified_freeze_passes",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_h2_main_tex_mutation_fails",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_h2_section_mutation_fails",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_h2_new_section_after_freeze_fails",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_h2_deleted_frozen_file_fails",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_h2_bundle_divergence_fails",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_h2_bundle_matching_freeze_passes",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_h3_u8_follows_pointer_not_lexicographic_order",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_h3_u8_fail_of_active_bundle_fails_despite_stale_pass",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_h3_u8_scan_hash_tamper_fails",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_h3_u8_wrong_scanned_root_fails",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_h3_u8_missing_pointer_is_not_run",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_h3_export_persists_active_bundle_pointer",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_h4_load_reviews_surfaces_invalid",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_h4_u5_fails_on_invalid_review",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_h4_remediation_fails_closed_on_invalid_review",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_p20_chain_runs_structure_check_and_fails_on_placeholders",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.01
+    },
+    {
+      "name": "test_p20_chain_passes_on_clean_manuscript",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.01
+    },
+    {
+      "name": "test_r2_f1_mixed_ascii_then_utf16_secret_fails",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.01
+    },
+    {
+      "name": "test_r2_f2_aligned_binary_with_ascii_secret_fails",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_r2_f3_utf16_with_trailing_surrogate_fails",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_r2_f4_entropy_assignment_detected_in_binary_file",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_r2_f5_token_growing_across_boundary_reported_once",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.03
+    },
+    {
+      "name": "test_r2_f6_missing_scan_root_fails_closed",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_r2_f7_special_file_fails_closed",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_r2_f9_allowlist_prefix_is_not_a_bypass",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_r2_c1_u6_fails_when_bundle_manuscript_missing",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_r2_m1_u6_bundle_addition_fails",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_r2_m2_u8_degenerate_or_unsafe_bundle_fails[]",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_r2_m2_u8_degenerate_or_unsafe_bundle_fails[.]",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_r2_m2_u8_degenerate_or_unsafe_bundle_fails[/etc]",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_r2_m2_u8_degenerate_or_unsafe_bundle_fails[release/../../etc]",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_r2_m3_u8_missing_hash_pin_fails",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_r2_m3_u8_scan_without_scanned_root_fails",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_r2_m3_u8_missing_status_fails",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_r2_m4_unknown_invariant_state_blocks_closure",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_r2_m5_u6_symlink_bundle_escape_fails",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_r2_m6_review_shaped_novelty_attack_file_is_not_hidden",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_r2_symlink_added_after_freeze_fails",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_r2_export_same_second_parks_without_collision",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.01
+    },
+    {
+      "name": "test_r3_utf16_short_secret_no_density_escape",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_r3_utf16_secret_straddling_chunk_fails",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.33
+    },
+    {
+      "name": "test_r3_utf32_short_secret_no_escape",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_r3_bracketed_entropy_value_fails",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_r3_n2_bundle_symlink_fails",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_r3_n3_frozen_symlink_path_content_is_pinned",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_r3_n3_bundle_copy_at_symlink_path_diverges",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.01
+    },
+    {
+      "name": "test_r3_n4_export_skips_dangling_symlink_without_crash",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_r3_n5_pointer_bundle_outside_release_fails",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_r4_b1_missing_symlink_copy_fails",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.01
+    },
+    {
+      "name": "test_r4_b2_excluded_path_present_in_bundle_fails",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.01
+    },
+    {
+      "name": "test_r4_b3_forged_novelty_shape_does_not_hide_broken_review",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.0
+    },
+    {
+      "name": "test_r5_n2_symlink_target_chat_filtered",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.01
+    },
+    {
+      "name": "test_r5_n1_chat_named_internal_symlink_no_false_fail",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.01
+    },
+    {
+      "name": "test_r5_u8_full_bundle_manifest_pins_everything",
+      "class": "tests.test_release_hardening",
+      "state": "PASS",
+      "time_s": 0.01
+    },
+    {
+      "name": "test_r5_u8_build_outputs_must_be_pinned",
+      "class": "tests.test_release_hardening",
       "state": "PASS",
       "time_s": 0.01
     },
@@ -383,7 +773,8 @@
     }
   ],
   "stdout_tail": [
-    "...............................................................          [100%]",
-    "63 passed in 37.15s"
+    "........................................................................ [ 56%]",
+    "........................................................                 [100%]",
+    "128 passed in 44.48s"
   ]
 }
