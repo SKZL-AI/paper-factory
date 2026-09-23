@@ -36,7 +36,11 @@ def run_research_reconstruction(ctx: NodeContext) -> NodeOutcome:
 
 def _review_from_reports(ctx: NodeContext, review_id: str, reviewer: str,
                          sources: list[tuple[str, str]]) -> NodeOutcome:
-    """Fold deterministic audit findings into a structured review."""
+    """Fold deterministic audit findings into a structured review.
+
+    The fold preserves the machine-actionable structure (kind, claim_refs,
+    details such as value/span/doi) — dropping it was the first break in the
+    finding → action → post-condition chain (GAP-004)."""
     findings: list[Finding] = []
     i = 0
     for report_name, category in sources:
@@ -46,13 +50,34 @@ def _review_from_reports(ctx: NodeContext, review_id: str, reviewer: str,
         data = json.loads(path.read_text())
         for f in data.get("findings", []):
             i += 1
+            kind = f.get("kind")
+            details = {k: v for k, v in f.items()
+                       if k not in ("severity", "note", "kind", "draft", "claim_id")}
+            if f.get("severity") is None:
+                # fail closed (reviewer A-G8): a finding without severity must
+                # not slide under the U5 threshold as a silent MINOR
+                severity = Severity.MAJOR
+                details["severity_defaulted"] = True
+            else:
+                severity = Severity(f["severity"])
+            statement = f.get("note") or kind or "finding"
+            if kind == "number_mismatch" and f.get("value") is not None:
+                # identify the concrete number, not a generic class label
+                statement = (f"draft number {f['value']} in {f.get('draft', '?')}: "
+                             f"{statement} (nearest derived: {f.get('true_value')} "
+                             f"via {f.get('closest_metric', '?')})")
+            elif kind == "unsupported_claim" and f.get("claim_id"):
+                statement = f"{f['claim_id']}: {statement}"
             findings.append(Finding(
                 finding_id=f"{review_id}-F{i:02d}", reviewer=reviewer,
-                severity=Severity(f.get("severity", "MINOR")),
+                severity=severity,
                 category=category,
-                statement=f.get("note") or f.get("kind", "finding"),
+                statement=statement,
                 evidence_refs=[f.get("draft", "")] if f.get("draft") else [],
+                claim_refs=[f["claim_id"]] if f.get("claim_id") else [],
                 affected_section=f.get("draft"),
+                kind=kind,
+                details=details,
             ))
     report = ReviewReport(review_id=review_id, reviewer=reviewer,
                           reviewer_family="deterministic", findings=findings)
@@ -65,7 +90,8 @@ def _review_from_reports(ctx: NodeContext, review_id: str, reviewer: str,
 def run_methods_review(ctx: NodeContext) -> NodeOutcome:
     return _review_from_reports(ctx, "P23-methods", "methods_reviewer",
                                 [("reproducibility.json", "methods"),
-                                 ("integrity_audit.json", "methods")])
+                                 ("integrity_audit.json", "methods"),
+                                 ("claims_audit.json", "methods")])
 
 
 def run_statistics_review(ctx: NodeContext) -> NodeOutcome:

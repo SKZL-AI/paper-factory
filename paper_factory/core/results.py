@@ -46,6 +46,15 @@ class Disposition(str, enum.Enum):
     NOT_APPLICABLE = "NOT_APPLICABLE"
     ACCEPTED_LIMITATION = "ACCEPTED_LIMITATION"
     AUTHOR_DECISION = "AUTHOR_DECISION"
+    DEFERRED = "DEFERRED"  # concrete action identified, needs writer/human
+    UNRESOLVED = "UNRESOLVED"  # remediation attempted, post-condition not met
+    INVALID_REMEDIATION_ARTIFACT = "INVALID_REMEDIATION_ARTIFACT"  # broken binding
+
+
+# dispositions that legitimately close a CRITICAL/MAJOR finding; everything
+# else (None, DEFERRED, UNRESOLVED, INVALID_REMEDIATION_ARTIFACT) blocks closure
+CLOSED_DISPOSITIONS = {Disposition.RESOLVED, Disposition.NOT_APPLICABLE,
+                       Disposition.ACCEPTED_LIMITATION, Disposition.AUTHOR_DECISION}
 
 
 class EvidenceTier(str, enum.Enum):

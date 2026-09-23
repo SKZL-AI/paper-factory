@@ -99,12 +99,14 @@ def _strip_comments(text: str) -> str:
     return "\n".join(lines)
 
 
-def normalize_tex(text: str) -> str:
+def normalize_tex(text: str, strip_comments: bool = True) -> str:
     """Strip comments and normalize spacing/unicode lookalikes.
 
     Comment stripping is \\url/\\verb-aware; an inline comment must not split a
-    macro call from its argument (post-pilot review B-H2)."""
-    body = _strip_comments(text)
+    macro call from its argument (post-pilot review B-H2). strip_comments=False
+    is for text that is NOT LaTeX (e.g. markdown draft claims, where `%` is a
+    literal percent sign, not a comment marker)."""
+    body = _strip_comments(text) if strip_comments else text
     body = _LATEX_PERCENT_MACRO.sub("%", body)
     body = _LATEX_SPACING.sub("", body)
     body = body.replace(_UNICODE_PERCENT, "%").replace(_UNICODE_TIMES, "x")
@@ -130,21 +132,25 @@ def find_pfget_uses(text: str) -> set[str]:
     return set(_RE_PFGET.findall(text)) | set(_RE_RAW_CSNAME.findall(text))
 
 
-def manuscript_tex_files(paper: Path) -> list[Path]:
+def manuscript_tex_files(paper: Path, include_generated: bool = False) -> list[Path]:
     """All manuscript .tex under paper/, recursively — excluding the top-level
-    build/ and generated/ directories (those carry raw values legitimately).
+    build/ directory (and generated/ unless include_generated=True; raw values
+    are legitimate there for number scanning, but generated/captions.tex IS
+    printed prose for claim-presence checks — remediation passes True).
     The exclusion is TOP-LEVEL only: a nested sections/build/ or
     sections/generated/ directory is manuscript content (post-pilot review
-    B-G6). Symlinks escaping the paper root are never followed into."""
+    B-G6). Symlinks escaping the paper root are never followed into; in-paper
+    symlinks resolve to their target content (U2/B1 surface parity)."""
     if not paper.exists():
         return []
     root = paper.resolve()
+    excluded = {"build"} if include_generated else {"build", "generated"}
     out = []
     for p in sorted(paper.rglob("*")):
         if p.suffix.lower() != ".tex" or not p.is_file():
             continue
         rel_parts = p.relative_to(paper).parts
-        if rel_parts[0] in ("build", "generated"):
+        if rel_parts[0] in excluded:
             continue
         if not p.resolve().is_relative_to(root):
             continue  # symlink escape — never scan outside the paper root

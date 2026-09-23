@@ -47,6 +47,7 @@ def run_claim_graph(ctx: NodeContext) -> NodeOutcome:
 
     n = 0
     unsupported = 0
+    audit_findings: list[dict] = []
     for draft in sorted(root.glob("draft/*.md")) + sorted(root.glob("draft/*.tex")):
         text = draft.read_text(encoding="utf-8", errors="replace")
         for cand in _extract_candidates(text):
@@ -70,6 +71,14 @@ def run_claim_graph(ctx: NodeContext) -> NodeOutcome:
                     break
             if status == ClaimStatus.UNSUPPORTED:
                 unsupported += 1
+                # claim-bound finding: remediation may only retire claims it can
+                # point to (GAP-004) — the unbound global sweep is gone
+                audit_findings.append({
+                    "severity": "MAJOR", "kind": "unsupported_claim",
+                    "claim_id": cid, "draft": str(draft.relative_to(root)),
+                    "excerpt": cand[:160],
+                    "note": note or "claim unsupported by artifacts",
+                })
             graph.claims.append(Claim(
                 claim_id=cid, type="empirical",
                 statement=cand[:500], status=status,
@@ -78,6 +87,8 @@ def run_claim_graph(ctx: NodeContext) -> NodeOutcome:
                 **({"source_note": note} if False else {}),
             ))
     save_claims(ctx.workspace.claims_dir / "claims.yaml", graph)
+    write_json(ctx.workspace.reports_dir / "claims_audit.json",
+               {"audited_at": utcnow(), "findings": audit_findings})
     detail = {"claims": len(graph.claims), "unsupported": unsupported}
     if unsupported:
         # honest: claims exist that no artifact carries — pipeline continues,

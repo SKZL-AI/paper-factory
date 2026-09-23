@@ -47,7 +47,14 @@ class ClaimGraph(BaseModel):
 def load_claims(path: Path) -> ClaimGraph:
     if not path.exists():
         return ClaimGraph()
-    return ClaimGraph(**(yaml.safe_load(path.read_text(encoding="utf-8")) or {}))
+    graph = ClaimGraph(**(yaml.safe_load(path.read_text(encoding="utf-8")) or {}))
+    ids = [c.claim_id for c in graph.claims]
+    dupes = sorted({i for i in ids if ids.count(i) > 1})
+    if dupes:
+        # fail closed (reviewer A-G1): a duplicate id makes by_id() last-wins and
+        # can shadow a VERIFIED claim behind an UNSUPPORTED twin
+        raise ValueError(f"claims.yaml contains duplicate claim_ids: {dupes}")
+    return graph
 
 
 def save_claims(path: Path, graph: ClaimGraph) -> None:

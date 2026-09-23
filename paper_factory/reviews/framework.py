@@ -8,7 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from ..core.results import Disposition, Severity
+from ..core.results import CLOSED_DISPOSITIONS, Disposition, Severity
 from ..core.util import utcnow, write_json
 
 
@@ -21,6 +21,8 @@ class Finding(BaseModel):
     evidence_refs: list[str] = Field(default_factory=list)
     claim_refs: list[str] = Field(default_factory=list)
     affected_section: str | None = None
+    kind: str | None = None  # machine-actionable finding type (e.g. number_mismatch)
+    details: dict[str, Any] = Field(default_factory=dict)  # value/span/doi/… binding data
     disposition: Disposition | None = None
     disposition_reason: str | None = None
     resolved_by: str | None = None
@@ -73,10 +75,22 @@ def load_reviews(reviews_dir: Path) -> tuple[list[ReviewReport], list[dict[str, 
 
 
 def unresolved_blocking(reviews: list[ReviewReport]) -> list[Finding]:
-    """CRITICAL/MAJOR findings without a disposition block closure."""
+    """CRITICAL/MAJOR findings without a closing disposition block closure.
+
+    Closed-set semantics (GAP-004): only RESOLVED / NOT_APPLICABLE /
+    ACCEPTED_LIMITATION / AUTHOR_DECISION close a finding. DEFERRED,
+    UNRESOLVED and INVALID_REMEDIATION_ARTIFACT are honest open states and
+    keep blocking. A closing disposition ALSO needs provenance (reviewer
+    A-G3): without resolved_by + disposition_reason it is an assertion, not
+    a closure, and blocks like an undisposed finding.
+    """
     out = []
     for r in reviews:
         for f in r.findings:
-            if f.severity in (Severity.CRITICAL, Severity.MAJOR) and f.disposition is None:
-                out.append(f)
+            if f.severity not in (Severity.CRITICAL, Severity.MAJOR):
+                continue
+            if f.disposition in CLOSED_DISPOSITIONS:
+                if f.resolved_by and f.disposition_reason:
+                    continue  # legitimately closed, with provenance
+            out.append(f)
     return out

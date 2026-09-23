@@ -158,7 +158,7 @@ def _frozen_workspace(ctx: NodeContext) -> Workspace:
 
 def _mk_pointer(ws: Workspace, bundle_name: str) -> None:
     write_json(ws.reports_dir / "current_release.json", {
-        "paper_id": bundle_name, "status": "PASS", "bundle": f"release/{bundle_name}",
+        "paper_id": bundle_name, "export_status": "PASS", "bundle": f"release/{bundle_name}",
         "secret_scan": f"release/{bundle_name}/secret_scan.json",
         "secret_scan_sha256": None, "exported_at": "2026-09-22T00:00:00Z",
         "run_id": "r"})
@@ -255,7 +255,7 @@ def _mk_full_pointer(ws: Workspace, bundle: Path, status: str = "PASS") -> None:
     files = {p.relative_to(bundle).as_posix(): sha256_file(p)
              for p in sorted(bundle.rglob("*")) if p.is_file() and not p.is_symlink()}
     write_json(ws.reports_dir / "current_release.json", {
-        "paper_id": bundle.name, "status": status,
+        "paper_id": bundle.name, "export_status": status,
         "bundle": f"release/{bundle.name}",
         "secret_scan": f"release/{bundle.name}/secret_scan.json",
         "secret_scan_sha256": sha256_file(scan),
@@ -320,7 +320,7 @@ def test_h3_export_persists_active_bundle_pointer(tmp_path):
     outcome = run_clean_export(ctx)
     assert outcome.verdict == Verdict.PASS, outcome.detail
     pointer = read_json(ws.reports_dir / "current_release.json")
-    assert pointer["status"] == "PASS"
+    assert pointer["export_status"] == "PASS"
     scan_path = ws.root / pointer["secret_scan"]
     assert scan_path.exists()
     assert sha256_file(scan_path) == pointer["secret_scan_sha256"]
@@ -512,7 +512,7 @@ def test_r2_m2_u8_degenerate_or_unsafe_bundle_fails(tmp_path, bad):
     ctx = _ctx(tmp_path)
     ws = ctx.workspace
     write_json(ws.reports_dir / "current_release.json", {
-        "paper_id": "x", "status": "PASS", "bundle": bad,
+        "paper_id": "x", "export_status": "PASS", "bundle": bad,
         "secret_scan": "release/x/secret_scan.json",
         "secret_scan_sha256": "0" * 64, "exported_at": "2026-09-22T00:00:00Z",
         "run_id": "r"})
@@ -525,7 +525,7 @@ def test_r2_m3_u8_missing_hash_pin_fails(tmp_path):
     ws = ctx.workspace
     _mk_bundle(ws, "demo", "PASS")
     write_json(ws.reports_dir / "current_release.json", {
-        "paper_id": "demo", "status": "PASS", "bundle": "release/demo",
+        "paper_id": "demo", "export_status": "PASS", "bundle": "release/demo",
         "secret_scan": "release/demo/secret_scan.json",
         "secret_scan_sha256": None,  # pin stripped after export
         "exported_at": "2026-09-22T00:00:00Z", "run_id": "r"})
@@ -762,7 +762,7 @@ def test_r3_n5_pointer_bundle_outside_release_fails(tmp_path):
                       "scanned_files": 1, "findings": [], "errors": [],
                       "symlinks": [], "encoding_fallbacks": []})
     write_json(ws.reports_dir / "current_release.json", {
-        "paper_id": "x", "status": "PASS", "bundle": "reports",
+        "paper_id": "x", "export_status": "PASS", "bundle": "reports",
         "secret_scan": "reports/fake_scan.json",
         "secret_scan_sha256": sha256_file(scan),
         "exported_at": "2026-09-22T00:00:00Z", "run_id": "r"})

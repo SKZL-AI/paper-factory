@@ -471,8 +471,8 @@ def _u8(ctx: NodeContext) -> tuple[str, str]:
     if not pointer_path.exists():
         return "NOT_RUN", "no active release bundle (P33 has not exported)"
     pointer = json.loads(pointer_path.read_text())
-    if pointer.get("status") != "PASS":
-        return "FAIL", f"active release export did not pass (status={pointer.get('status')!r})"
+    if pointer.get("export_status") != "PASS":
+        return "FAIL", f"active release export did not pass (export_status={pointer.get('export_status')!r})"
     bundle_rel = pointer.get("bundle", "")
     if not bundle_rel.startswith("release/"):
         return "FAIL", f"bundle path outside release/ in pointer: {bundle_rel!r}"
@@ -703,6 +703,17 @@ def run_global_closure(ctx: NodeContext) -> NodeOutcome:
               "degraded": degraded, "not_run": not_run, "human_required": human,
               "unknown_states": unknown}
     write_json(ctx.workspace.reports_dir / "global_closure.json", report)
+    outcome = (Verdict.FAIL if failed else Verdict.HUMAN_REQUIRED if human
+               else Verdict.DEGRADED if (degraded or not_run) else Verdict.PASS)
+    # B3: the release pointer must not claim a bare "PASS" while closure fails —
+    # stamp the closure outcome onto the active bundle pointer (P33 runs before
+    # P35 by design, so the pointer is completed here, where the truth exists)
+    pointer_path = ctx.workspace.reports_dir / "current_release.json"
+    if pointer_path.exists():
+        pointer = json.loads(pointer_path.read_text(encoding="utf-8"))
+        pointer["closure_overall"] = outcome.value
+        pointer["closure_at"] = report["closed_at"]
+        write_json(pointer_path, pointer)
     if failed:
         return NodeOutcome(Verdict.FAIL, {"failed": failed, "not_run": not_run})
     if human:

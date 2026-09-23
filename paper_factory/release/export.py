@@ -131,7 +131,7 @@ def run_clean_export(ctx: NodeContext) -> NodeOutcome:
     bundle_files = {p.relative_to(rel).as_posix(): sha256_file(p)
                     for p in sorted(rel.rglob("*")) if p.is_file() and not p.is_symlink()}
     write_json(ws.reports_dir / "current_release.json", {
-        "paper_id": pid, "status": "PASS",
+        "paper_id": pid, "export_status": "PASS",
         "bundle": f"release/{pid}",
         "secret_scan": f"release/{pid}/secret_scan.json",
         "secret_scan_sha256": sha256_file(scan_path),
@@ -183,7 +183,7 @@ def run_clean_rebuild(ctx: NodeContext) -> NodeOutcome:
     pointer_path = ws.reports_dir / "current_release.json"
     if pointer_path.exists():
         pointer = read_json(pointer_path)
-        if pointer.get("status") == "PASS" and pointer.get("bundle") == f"release/{pid}":
+        if pointer.get("export_status") == "PASS" and pointer.get("bundle") == f"release/{pid}":
             files = pointer.setdefault("bundle_files", {})
             for p in sorted(build.rglob("*")):
                 if p.is_file() and not p.is_symlink():

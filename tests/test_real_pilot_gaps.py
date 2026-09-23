@@ -1215,3 +1215,680 @@ def test_gap_exit_release_stub_fails_closed(tmp_path):
     out = _json.loads(proc.stdout)
     assert out["release"] == "NOT_RUN"
     assert proc.returncode == EXIT_INCOMPLETE
+
+
+# ---------------------------------------------------------------------------
+# GAP-004: remediation integrity — a finding is RESOLVED only when its own
+# concrete post-condition is verified. Global sweeps and vacuous
+# post-conditions ("no unsupported claims remain") are gone.
+# ---------------------------------------------------------------------------
+
+from paper_factory.claims.builder import run_claim_graph
+from paper_factory.claims.graph import (Claim, ClaimGraph, load_claims,
+                                        save_claims)
+from paper_factory.core.results import ClaimStatus, Disposition, Severity
+from paper_factory.release.closure import _u5
+from paper_factory.reviews.framework import (Finding, ReviewReport,
+                                             load_reviews, save_review,
+                                             unresolved_blocking)
+from paper_factory.reviews.remediation import run_remediation
+from paper_factory.reviews.runners import run_methods_review
+
+
+def _g4_finding(fid: str, kind=None, category="methods", claim_refs=None,
+                details=None, statement="finding", severity="MAJOR") -> Finding:
+    return Finding(finding_id=fid, reviewer="test", severity=Severity(severity),
+                   category=category, statement=statement, kind=kind,
+                   claim_refs=claim_refs or [], details=details or {})
+
+
+def _g4_review(ctx, findings, review_id="T27-review"):
+    save_review(ctx.workspace.reviews_dir,
+                ReviewReport(review_id=review_id, reviewer="test", findings=findings))
+
+
+def _g4_claims(ctx, *claims: Claim):
+    ctx.workspace.claims_dir.mkdir(parents=True, exist_ok=True)
+    save_claims(ctx.workspace.claims_dir / "claims.yaml", ClaimGraph(claims=list(claims)))
+
+
+def test_gap004_pilot_vacuous_resolution_repro(tmp_path):
+    """Exact pilot shape: P23-methods-F01 (number_mismatch) was RESOLVED via
+    'no unsupported claims remain' with retired=[] — a post-condition the
+    action never influenced. That must be impossible now."""
+    ctx = _ctx(tmp_path)
+    _g4_claims(ctx, Claim(claim_id="C001", statement="supported claim",
+                          status=ClaimStatus.EVIDENCE_FOUND, evidence=["E1"]))
+    _g4_review(ctx, [_g4_finding(
+        "P23-methods-F01", kind="number_mismatch",
+        statement="draft number 0.17 within metric range but off every derived metric",
+        details={"draft": "draft/manuscript.tex", "value": 0.17,
+                 "closest_metric": "M1", "true_value": 0.2085757256})])
+    outcome = run_remediation(ctx)
+    reviews, _ = load_reviews(ctx.workspace.reviews_dir)
+    f = reviews[0].findings[0]
+    assert f.disposition != Disposition.RESOLVED, "vacuous resolution is back"
+    assert f.disposition == Disposition.DEFERRED
+    assert "0.17" in (f.disposition_reason or ""), "reason must bind the concrete number"
+    # the claim graph was NOT touched as a side effect
+    graph = load_claims(ctx.workspace.claims_dir / "claims.yaml")
+    assert graph.claims[0].status == ClaimStatus.EVIDENCE_FOUND
+    assert outcome.verdict == Verdict.DEGRADED
+
+
+def test_gap004_noop_action_never_resolves(tmp_path):
+    """Old behavior retired [] claims and still RESOLVED — a no-op action can
+    never satisfy a finding-specific post-condition."""
+    ctx = _ctx(tmp_path)
+    _g4_claims(ctx)
+    _g4_review(ctx, [_g4_finding(f"F{i:02d}", kind="number_mismatch",
+                                 details={"draft": "draft/m.tex", "value": 1.23 + i,
+                                          "true_value": 2.0, "closest_metric": "M"})
+                     for i in range(3)])
+    outcome = run_remediation(ctx)
+    reviews, _ = load_reviews(ctx.workspace.reviews_dir)
+    assert all(f.disposition == Disposition.DEFERRED for f in reviews[0].findings)
+    log = _json.loads((ctx.workspace.reports_dir / "remediation_log.json").read_text())
+    assert len(log["entries"]) == 3
+    for e in log["entries"]:
+        assert e["post_condition"], "every entry needs a finding-specific post-condition"
+        assert e["verification"] is not None
+
+
+def test_gap004_bound_unsupported_claim_resolves(tmp_path):
+    """Positive control: a finding bound to claim C001 IS auto-remediable —
+    retire exactly C001, verify per-claim before/after."""
+    ctx = _ctx(tmp_path)
+    _g4_claims(ctx,
+               Claim(claim_id="C001", statement="40% faster lookup",
+                     status=ClaimStatus.UNSUPPORTED),
+               Claim(claim_id="C002", statement="other claim",
+                     status=ClaimStatus.UNSUPPORTED))
+    _g4_review(ctx, [_g4_finding("F01", kind="unsupported_claim", claim_refs=["C001"],
+                                 category="statistics",
+                                 details={"excerpt": "40% faster lookup"})])
+    outcome = run_remediation(ctx)
+    reviews, _ = load_reviews(ctx.workspace.reviews_dir)
+    f = reviews[0].findings[0]
+    assert f.disposition == Disposition.RESOLVED
+    assert f.resolved_by
+    graph = load_claims(ctx.workspace.claims_dir / "claims.yaml")
+    by_id = graph.by_id()
+    assert by_id["C001"].status == ClaimStatus.RETIRED
+    assert by_id["C002"].status == ClaimStatus.UNSUPPORTED, "no global sweep"
+    log = _json.loads((ctx.workspace.reports_dir / "remediation_log.json").read_text())
+    v = log["entries"][0]["verification"]
+    assert v["claims"]["C001"]["before"] == "UNSUPPORTED"
+    assert v["claims"]["C001"]["after"] == "RETIRED"
+    assert outcome.verdict == Verdict.PASS
+
+
+def test_gap004_unbound_claim_finding_defers(tmp_path):
+    ctx = _ctx(tmp_path)
+    _g4_claims(ctx, Claim(claim_id="C001", statement="x", status=ClaimStatus.UNSUPPORTED))
+    _g4_review(ctx, [_g4_finding("F01", kind="unsupported_claim", category="statistics")])
+    outcome = run_remediation(ctx)
+    reviews, _ = load_reviews(ctx.workspace.reviews_dir)
+    assert reviews[0].findings[0].disposition == Disposition.DEFERRED
+    graph = load_claims(ctx.workspace.claims_dir / "claims.yaml")
+    assert graph.claims[0].status == ClaimStatus.UNSUPPORTED, "unbound must not retire"
+    assert outcome.verdict == Verdict.DEGRADED
+
+
+def test_gap004_claim_ref_missing_from_graph_is_invalid(tmp_path):
+    ctx = _ctx(tmp_path)
+    _g4_claims(ctx, Claim(claim_id="C001", statement="x", status=ClaimStatus.UNSUPPORTED))
+    _g4_review(ctx, [_g4_finding("F01", kind="unsupported_claim", claim_refs=["C999"],
+                                 category="methods")])
+    outcome = run_remediation(ctx)
+    reviews, _ = load_reviews(ctx.workspace.reviews_dir)
+    assert reviews[0].findings[0].disposition == Disposition.INVALID_REMEDIATION_ARTIFACT
+    assert outcome.verdict == Verdict.FAIL, "broken evidence chain must fail closed"
+
+
+def test_gap004_verified_claim_not_retired(tmp_path):
+    """A finding claiming 'unsupported' against a VERIFIED claim is a real
+    conflict — never silently retire verified evidence."""
+    ctx = _ctx(tmp_path)
+    _g4_claims(ctx, Claim(claim_id="C001", statement="x", status=ClaimStatus.VERIFIED,
+                          evidence=["E1"]))
+    _g4_review(ctx, [_g4_finding("F01", kind="unsupported_claim", claim_refs=["C001"],
+                                 category="statistics", details={"excerpt": "x"})])
+    outcome = run_remediation(ctx)
+    reviews, _ = load_reviews(ctx.workspace.reviews_dir)
+    assert reviews[0].findings[0].disposition == Disposition.UNRESOLVED
+    graph = load_claims(ctx.workspace.claims_dir / "claims.yaml")
+    assert graph.claims[0].status == ClaimStatus.VERIFIED
+    assert outcome.verdict == Verdict.DEGRADED
+
+
+def test_gap004_false_citation_bound_resolution(tmp_path, monkeypatch):
+    """Citation remediation verifies the SPECIFIC key is gone — not just
+    'some rebuild happened'."""
+    ctx = _ctx(tmp_path)
+    _g4_claims(ctx)
+    ctx.workspace.paper_dir.mkdir(parents=True, exist_ok=True)
+    bib = ctx.workspace.paper_dir / "references.bib"
+    bib.write_text("@article{x, doi={10.9999/fake.bloom.2024}}\n", encoding="utf-8")
+    _g4_review(ctx, [_g4_finding("F01", kind="false_citation", category="citation",
+                                 details={"doi": "10.9999/fake.bloom.2024"})])
+
+    import paper_factory.literature.verify as verify
+
+    def _rebuild_drops_key(ctx_):
+        bib.write_text("@article{ok, doi={10.1/real}}\n", encoding="utf-8")
+        return None
+
+    monkeypatch.setattr(verify, "build_references", _rebuild_drops_key)
+    monkeypatch.setattr(verify, "_audit_entries", lambda ctx_, entries: ([], [], None))
+    outcome = run_remediation(ctx)
+    reviews, _ = load_reviews(ctx.workspace.reviews_dir)
+    assert reviews[0].findings[0].disposition == Disposition.RESOLVED
+    assert outcome.verdict == Verdict.PASS
+
+
+def test_gap004_false_citation_surviving_key_is_unresolved(tmp_path, monkeypatch):
+    ctx = _ctx(tmp_path)
+    _g4_claims(ctx)
+    ctx.workspace.paper_dir.mkdir(parents=True, exist_ok=True)
+    bib = ctx.workspace.paper_dir / "references.bib"
+    bib.write_text("@article{x, doi={10.9999/fake.bloom.2024}}\n", encoding="utf-8")
+    _g4_review(ctx, [_g4_finding("F01", kind="false_citation", category="citation",
+                                 details={"doi": "10.9999/fake.bloom.2024"})])
+
+    import paper_factory.literature.verify as verify
+    monkeypatch.setattr(verify, "build_references", lambda ctx_: None)  # no-op rebuild
+    monkeypatch.setattr(verify, "_audit_entries", lambda ctx_, entries: ([], [], None))
+    outcome = run_remediation(ctx)
+    reviews, _ = load_reviews(ctx.workspace.reviews_dir)
+    assert reviews[0].findings[0].disposition == Disposition.UNRESOLVED
+    assert outcome.verdict == Verdict.DEGRADED
+
+
+def test_gap004_u5_closed_set_semantics(tmp_path):
+    cases = [(None, True), (Disposition.DEFERRED, True),
+             (Disposition.UNRESOLVED, True),
+             (Disposition.INVALID_REMEDIATION_ARTIFACT, True),
+             (Disposition.RESOLVED, False),
+             (Disposition.AUTHOR_DECISION, False),
+             (Disposition.ACCEPTED_LIMITATION, False)]
+    for i, (disp, blocks) in enumerate(cases):
+        ctx = _ctx(tmp_path / f"case{i}")
+        f = _g4_finding(f"F-{disp}", severity="MAJOR")
+        f.disposition = disp
+        if disp in (Disposition.RESOLVED, Disposition.AUTHOR_DECISION,
+                    Disposition.ACCEPTED_LIMITATION):
+            f.resolved_by = "human"
+            f.disposition_reason = "documented decision"
+        _g4_review(ctx, [f], review_id=f"R-{i}")
+        state, _ = _u5(ctx)
+        assert (state == "FAIL") == blocks, (disp, state)
+
+
+def test_gap004_closing_disposition_needs_provenance(tmp_path):
+    """A-G3: AUTHOR_DECISION without resolved_by/reason is an assertion, not a
+    closure — it must block like an undisposed finding."""
+    for i, (by, reason, blocks) in enumerate([
+            (None, None, True), ("human", None, True), (None, "why", True),
+            ("human", "documented decision", False)]):
+        ctx = _ctx(tmp_path / f"prov{i}")
+        f = _g4_finding(f"F{i}", severity="CRITICAL")
+        f.disposition = Disposition.AUTHOR_DECISION
+        f.resolved_by = by
+        f.disposition_reason = reason
+        _g4_review(ctx, [f], review_id=f"RP-{i}")
+        state, _ = _u5(ctx)
+        assert (state == "FAIL") == blocks, (by, reason, state)
+
+
+def test_gap004_builder_emits_bound_unsupported_findings(tmp_path):
+    """The unsupported-claim enforcement path moves from an unbound global
+    sweep to a finding bound to the claim id."""
+    draft = tmp_path / "draft"
+    draft.mkdir()
+    (draft / "paper.md").write_text(
+        "Our index achieves 40% faster lookup than the baseline.\n", encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    run_claim_graph(ctx)
+    audit = _json.loads((ctx.workspace.reports_dir / "claims_audit.json").read_text())
+    bound = [f for f in audit["findings"]
+             if f["kind"] == "unsupported_claim" and f.get("claim_id")]
+    assert bound, "builder must emit claim-bound findings for unsupported claims"
+    run_methods_review(ctx)
+    reviews, _ = load_reviews(ctx.workspace.reviews_dir)
+    folded = [f for r in reviews for f in r.findings if f.kind == "unsupported_claim"]
+    assert folded and folded[0].claim_refs == [bound[0]["claim_id"]]
+
+
+def test_gap004_folding_preserves_structure(tmp_path):
+    """The review fold must not strip kind/details — that data loss was the
+    first break in the finding->action->post-condition chain."""
+    ctx = _ctx(tmp_path)
+    ctx.workspace.reports_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.reports_dir / "integrity_audit.json").write_text(_json.dumps({
+        "findings": [{"severity": "MAJOR", "kind": "number_mismatch",
+                      "draft": "draft/m.tex", "value": 0.17,
+                      "closest_metric": "M1", "true_value": 0.2086,
+                      "note": "draft number within metric range"}],
+    }), encoding="utf-8")
+    run_methods_review(ctx)
+    reviews, _ = load_reviews(ctx.workspace.reviews_dir)
+    f = [f_ for r in reviews for f_ in r.findings][0]
+    assert f.kind == "number_mismatch"
+    assert f.details["value"] == 0.17
+    assert f.details["true_value"] == 0.2086
+    assert "0.17" in f.statement, "statement must identify the concrete number"
+
+
+def test_gap004_legacy_finding_without_kind_defers_safely(tmp_path):
+    """Old-shape findings (no kind/details, e.g. historical pilot artifacts)
+    get an honest DEFERRED — never the old vacuous RESOLVED."""
+    ctx = _ctx(tmp_path)
+    _g4_claims(ctx)
+    _g4_review(ctx, [_g4_finding("P23-methods-F01", category="methods",
+                                 statement="draft number within metric range but off "
+                                           "every derived metric")])
+    outcome = run_remediation(ctx)
+    reviews, _ = load_reviews(ctx.workspace.reviews_dir)
+    assert reviews[0].findings[0].disposition == Disposition.DEFERRED
+    assert outcome.verdict == Verdict.DEGRADED
+
+
+# ---------------------------------------------------------------------------
+# GAP-004 review round 1: reviewer A (G1-G8) + reviewer B (B1-B3) findings
+# ---------------------------------------------------------------------------
+
+def test_gap004_b1_claim_retired_but_still_printed_defers(tmp_path):
+    """Reviewer B-B1 (MAJOR): retiring the claim in the graph while the
+    manuscript still prints it must NOT resolve the finding."""
+    ctx = _ctx(tmp_path)
+    claim_text = "Our method outperforms all baselines by 42%."
+    _g4_claims(ctx, Claim(claim_id="C001", statement=claim_text,
+                          status=ClaimStatus.UNSUPPORTED))
+    paper = ctx.workspace.paper_dir / "sections"
+    paper.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.paper_dir / "main.tex").write_text(
+        "\\documentclass{article}\n", encoding="utf-8")
+    (paper / "results.tex").write_text(claim_text + "\n", encoding="utf-8")
+    _g4_review(ctx, [_g4_finding("F01", kind="unsupported_claim", claim_refs=["C001"],
+                                 category="statistics",
+                                 details={"excerpt": claim_text})])
+    outcome = run_remediation(ctx)
+    reviews, _ = load_reviews(ctx.workspace.reviews_dir)
+    f = reviews[0].findings[0]
+    assert f.disposition == Disposition.DEFERRED, f.disposition
+    assert "still printed" in (f.disposition_reason or "")
+    # the graph retirement is honest bookkeeping and stays — but blocked
+    graph = load_claims(ctx.workspace.claims_dir / "claims.yaml")
+    assert graph.by_id()["C001"].status == ClaimStatus.RETIRED
+    state, _ = _u5(ctx)
+    assert state == "FAIL"
+    assert outcome.verdict == Verdict.DEGRADED
+
+
+def test_gap004_b1_claim_gone_from_manuscript_resolves(tmp_path):
+    ctx = _ctx(tmp_path)
+    claim_text = "Our method outperforms all baselines by 42%."
+    _g4_claims(ctx, Claim(claim_id="C001", statement=claim_text,
+                          status=ClaimStatus.UNSUPPORTED))
+    paper = ctx.workspace.paper_dir / "sections"
+    paper.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.paper_dir / "main.tex").write_text(
+        "\\documentclass{article}\n", encoding="utf-8")
+    (paper / "results.tex").write_text("Clean prose without the claim.\n",
+                                       encoding="utf-8")
+    _g4_review(ctx, [_g4_finding("F01", kind="unsupported_claim", claim_refs=["C001"],
+                                 category="statistics",
+                                 details={"excerpt": claim_text})])
+    outcome = run_remediation(ctx)
+    reviews, _ = load_reviews(ctx.workspace.reviews_dir)
+    assert reviews[0].findings[0].disposition == Disposition.RESOLVED
+    # B2: the verification reads the persisted artifact
+    graph = load_claims(ctx.workspace.claims_dir / "claims.yaml")
+    assert graph.by_id()["C001"].status == ClaimStatus.RETIRED
+    assert outcome.verdict == Verdict.PASS
+
+
+def test_gap004_g1_duplicate_claim_ids_fail_closed(tmp_path):
+    ctx = _ctx(tmp_path)
+    ctx.workspace.claims_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.claims_dir / "claims.yaml").write_text(
+        "claims:\n"
+        "- {claim_id: C001, statement: a, status: VERIFIED, evidence: [E1]}\n"
+        "- {claim_id: C001, statement: b, status: UNSUPPORTED}\n", encoding="utf-8")
+    with _pytest.raises(ValueError, match="duplicate claim_id"):
+        load_claims(ctx.workspace.claims_dir / "claims.yaml")
+    state, note = _u5(ctx)  # no reviews → NOT_RUN; sanity that _u5 still works
+    assert state == "NOT_RUN"
+
+
+def test_gap004_g4_citation_substring_no_wedge(tmp_path, monkeypatch):
+    """Reviewer A-G4: removing doi 10.9999/fake must not wedge on the
+    substring-similar 10.9999/fake.longer entry that legitimately stays."""
+    ctx = _ctx(tmp_path)
+    ctx.workspace.paper_dir.mkdir(parents=True, exist_ok=True)
+    bib = ctx.workspace.paper_dir / "references.bib"
+    bib.write_text("@article{a, doi={10.9999/fake}}\n@article{b, doi={10.9999/fake.longer}}\n",
+                   encoding="utf-8")
+    _g4_review(ctx, [_g4_finding("F01", kind="false_citation", category="citation",
+                                 details={"doi": "10.9999/fake"})])
+
+    import paper_factory.literature.verify as verify
+
+    def _rebuild(ctx_):
+        bib.write_text("@article{b, doi={10.9999/fake.longer}}\n", encoding="utf-8")
+
+    monkeypatch.setattr(verify, "build_references", _rebuild)
+    monkeypatch.setattr(verify, "_audit_entries", lambda ctx_, entries: ([], [], None))
+    outcome = run_remediation(ctx)
+    reviews, _ = load_reviews(ctx.workspace.reviews_dir)
+    assert reviews[0].findings[0].disposition == Disposition.RESOLVED
+    assert outcome.verdict == Verdict.PASS
+
+
+def test_gap004_g5_stale_citation_finding_not_applicable(tmp_path):
+    """A-G5: a finding about a citation that was never present is stale —
+    NOT_APPLICABLE with provenance, never a fabricated 'removed' success."""
+    ctx = _ctx(tmp_path)
+    ctx.workspace.paper_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.paper_dir / "references.bib").write_text(
+        "@article{ok, doi={10.1/real}}\n", encoding="utf-8")
+    _g4_review(ctx, [_g4_finding("F01", kind="false_citation", category="citation",
+                                 details={"doi": "10.0000/never-present"})])
+    outcome = run_remediation(ctx)
+    reviews, _ = load_reviews(ctx.workspace.reviews_dir)
+    f = reviews[0].findings[0]
+    assert f.disposition == Disposition.NOT_APPLICABLE
+    assert f.resolved_by and "not present" in (f.disposition_reason or "")
+    assert outcome.verdict == Verdict.PASS
+
+
+def test_gap004_g6_excerpt_mismatch_is_invalid(tmp_path):
+    """A-G6: a finding whose excerpt does not match the bound claim is a
+    broken binding, not something to retire."""
+    ctx = _ctx(tmp_path)
+    _g4_claims(ctx, Claim(claim_id="C001", statement="completely different claim.",
+                          status=ClaimStatus.UNSUPPORTED))
+    _g4_review(ctx, [_g4_finding("F01", kind="unsupported_claim", claim_refs=["C001"],
+                                 category="statistics",
+                                 details={"excerpt": "40 percent faster lookup"})])
+    outcome = run_remediation(ctx)
+    reviews, _ = load_reviews(ctx.workspace.reviews_dir)
+    assert reviews[0].findings[0].disposition == Disposition.INVALID_REMEDIATION_ARTIFACT
+    graph = load_claims(ctx.workspace.claims_dir / "claims.yaml")
+    assert graph.by_id()["C001"].status == ClaimStatus.UNSUPPORTED
+    assert outcome.verdict == Verdict.FAIL
+
+
+def test_gap004_g7_log_is_a_ledger_not_overwritten(tmp_path):
+    ctx = _ctx(tmp_path)
+    _g4_claims(ctx, Claim(claim_id="C001", statement="x", status=ClaimStatus.UNSUPPORTED))
+    _g4_review(ctx, [_g4_finding("F01", kind="unsupported_claim", claim_refs=["C001"],
+                                 category="statistics", details={"excerpt": "x"})])
+    run_remediation(ctx)
+    log1 = _json.loads((ctx.workspace.reports_dir / "remediation_log.json").read_text())
+    assert len(log1["entries"]) == 1
+    # second pass: finding already RESOLVED → no new entries → log untouched
+    run_remediation(ctx)
+    log2 = _json.loads((ctx.workspace.reports_dir / "remediation_log.json").read_text())
+    assert len(log2["entries"]) == 1, "resume must not erase the ledger"
+    # a second finding later appends instead of replacing
+    _g4_review(ctx, [_g4_finding("F02", kind="number_mismatch",
+                                 details={"draft": "d.tex", "value": 1.0,
+                                          "true_value": 2.0, "closest_metric": "M"})],
+               review_id="T27-review2")
+    run_remediation(ctx)
+    log3 = _json.loads((ctx.workspace.reports_dir / "remediation_log.json").read_text())
+    assert len(log3["entries"]) == 2
+
+
+def test_gap004_g8_missing_severity_defaults_closed(tmp_path):
+    """A-G8: an audit finding without severity folds as MAJOR (visible at the
+    U5 threshold), never as an invisible MINOR."""
+    ctx = _ctx(tmp_path)
+    ctx.workspace.reports_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.reports_dir / "integrity_audit.json").write_text(_json.dumps({
+        "findings": [{"kind": "number_mismatch", "draft": "d.tex", "value": 1.0,
+                      "true_value": 2.0, "closest_metric": "M"}],
+    }), encoding="utf-8")
+    run_methods_review(ctx)
+    reviews, _ = load_reviews(ctx.workspace.reviews_dir)
+    f = [f_ for r in reviews for f_ in r.findings][0]
+    assert f.severity == Severity.MAJOR
+    assert f.details.get("severity_defaulted") is True
+
+
+def test_gap004_b3_closure_stamps_release_pointer(tmp_path):
+    """Reviewer B-B3: the release pointer must carry the closure outcome, not
+    a bare export PASS, once P35 has run."""
+    from paper_factory.release.closure import run_global_closure
+
+    ctx = _ctx(tmp_path)
+    ctx.workspace.reports_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.reports_dir / "current_release.json").write_text(_json.dumps({
+        "paper_id": "p", "export_status": "PASS", "bundle": "release/p"}),
+        encoding="utf-8")
+    outcome = run_global_closure(ctx)  # everything missing → FAIL/NOT_RUN mix
+    pointer = _json.loads(
+        (ctx.workspace.reports_dir / "current_release.json").read_text())
+    assert pointer["export_status"] == "PASS"
+    assert pointer.get("closure_overall") == outcome.verdict.value
+    assert pointer["closure_overall"] != "PASS"
+
+
+def test_gap004_b3_u8_requires_export_status(tmp_path):
+    """U8 reads export_status (renamed from the misleading 'status'); a pointer
+    without it fails closed."""
+    ctx = _ctx(tmp_path)
+    ctx.workspace.reports_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.reports_dir / "current_release.json").write_text(_json.dumps({
+        "paper_id": "p", "bundle": "release/p"}), encoding="utf-8")
+    from paper_factory.release.closure import _u8
+    state, note = _u8(ctx)
+    assert state == "FAIL", (state, note)
+
+
+# ---------------------------------------------------------------------------
+# GAP-004 review round 2 (reviewer B B1-rest + C1, reviewer A N1/N3/N4)
+# ---------------------------------------------------------------------------
+
+def _b1_case(tmp_path, claim_text: str, manuscript_text: str,
+             generated: bool = False):
+    ctx = _ctx(tmp_path)
+    _g4_claims(ctx, Claim(claim_id="C001", statement=claim_text,
+                          status=ClaimStatus.UNSUPPORTED))
+    sub = "generated" if generated else "sections"
+    d = ctx.workspace.paper_dir / sub
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "results.tex").write_text(manuscript_text + "\n", encoding="utf-8")
+    _g4_review(ctx, [_g4_finding("F01", kind="unsupported_claim", claim_refs=["C001"],
+                                 category="statistics",
+                                 details={"excerpt": claim_text})])
+    outcome = run_remediation(ctx)
+    reviews, _ = load_reviews(ctx.workspace.reviews_dir)
+    return outcome, reviews[0].findings[0]
+
+
+def test_gap004_b1r2_latex_escape_evasion_blocked(tmp_path):
+    # statement from a markdown draft; manuscript prints the LaTeX-escaped form
+    _, f = _b1_case(tmp_path, "The mass_inv estimator wins by 42%.",
+                    "The mass\\_inv estimator wins by 42\\%.")
+    assert f.disposition == Disposition.DEFERRED, f.disposition_reason
+
+
+def test_gap004_b1r2_case_evasion_blocked(tmp_path):
+    _, f = _b1_case(tmp_path, "the estimator outperforms every baseline by 42%.",
+                    "THE ESTIMATOR OUTPERFORMS EVERY BASELINE BY 42\\%.")
+    assert f.disposition == Disposition.DEFERRED
+
+
+def test_gap004_b1r2_tilde_and_font_evasion_blocked(tmp_path):
+    _, f = _b1_case(tmp_path, "The method cuts the cost by half in all runs.",
+                    "The method cuts the cost by~half in \\textbf{all runs}.")
+    assert f.disposition == Disposition.DEFERRED
+
+
+def test_gap004_b1r2_generated_caption_counts_as_printed(tmp_path):
+    # generated/captions.tex is protected prose; the exclusion is build/ only
+    _, f = _b1_case(tmp_path, "The estimator wins by 42% in every configuration.",
+                    "The estimator wins by 42\\% in every configuration.",
+                    generated=True)
+    assert f.disposition == Disposition.DEFERRED
+
+
+def test_gap004_b1r2_long_claim_tail_print_caught(tmp_path):
+    claim = ("The estimator outperforms every baseline by 42% " +
+             "in each of the twelve configurations we measured " * 4 +
+             "and the gap never closes.")
+    assert len(claim) > 240
+    tail = claim[100:]  # a substantial verbatim tail of the long claim
+    _, f = _b1_case(tmp_path, claim, "Results. " + tail)
+    assert f.disposition == Disposition.DEFERRED
+
+
+def test_gap004_n1_claim_finding_without_excerpt_defers(tmp_path):
+    """A-N1: excerpt-less claim findings can no longer retire blind."""
+    ctx = _ctx(tmp_path)
+    _g4_claims(ctx, Claim(claim_id="C001", statement="some claim",
+                          status=ClaimStatus.UNSUPPORTED))
+    _g4_review(ctx, [_g4_finding("F01", kind="unsupported_claim", claim_refs=["C001"],
+                                 category="statistics")])
+    outcome = run_remediation(ctx)
+    reviews, _ = load_reviews(ctx.workspace.reviews_dir)
+    assert reviews[0].findings[0].disposition == Disposition.DEFERRED
+    graph = load_claims(ctx.workspace.claims_dir / "claims.yaml")
+    assert graph.by_id()["C001"].status == ClaimStatus.UNSUPPORTED
+    assert outcome.verdict == Verdict.DEGRADED
+
+
+def test_gap004_n3_doi_case_insensitive(tmp_path, monkeypatch):
+    """DOIs are case-insensitive: 10.9999/FAKE in the bib must match a finding
+    for 10.9999/fake — not be waved through as stale."""
+    ctx = _ctx(tmp_path)
+    ctx.workspace.paper_dir.mkdir(parents=True, exist_ok=True)
+    bib = ctx.workspace.paper_dir / "references.bib"
+    bib.write_text("@article{x, doi={10.9999/FAKE}}\n", encoding="utf-8")
+    _g4_review(ctx, [_g4_finding("F01", kind="false_citation", category="citation",
+                                 details={"doi": "10.9999/fake"})])
+
+    import paper_factory.literature.verify as verify
+    monkeypatch.setattr(verify, "build_references", lambda ctx_: None)  # no-op
+    monkeypatch.setattr(verify, "_audit_entries", lambda ctx_, entries: ([], [], None))
+    outcome = run_remediation(ctx)
+    reviews, _ = load_reviews(ctx.workspace.reviews_dir)
+    f = reviews[0].findings[0]
+    assert f.disposition == Disposition.UNRESOLVED  # real finding, removal failed
+    assert f.disposition != Disposition.NOT_APPLICABLE
+    assert outcome.verdict == Verdict.DEGRADED
+
+
+def test_gap004_n4_final_citation_audit_carries_offline_flag(tmp_path, monkeypatch):
+    ctx = _ctx(tmp_path)
+    ctx.workspace.paper_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.paper_dir / "references.bib").write_text(
+        "@article{x, doi={10.9999/fake}}\n", encoding="utf-8")
+    _g4_review(ctx, [_g4_finding("F01", kind="false_citation", category="citation",
+                                 details={"doi": "10.9999/fake"})])
+
+    import paper_factory.literature.verify as verify
+    monkeypatch.setattr(verify, "build_references", lambda ctx_: None)
+    monkeypatch.setattr(verify, "_audit_entries", lambda ctx_, entries: ([], [], None))
+    run_remediation(ctx)
+    audit = _json.loads(
+        (ctx.workspace.reports_dir / "citation_audit_final.json").read_text())
+    assert audit["offline"] is True  # ctx fixture runs offline
+    assert audit["post_remediation"] is True
+
+
+def test_gap004_c1_p34_pins_build_outputs(tmp_path, monkeypatch):
+    """Reviewer B-C1 (MAJOR): after the export_status rename, P34 must still
+    pin its build outputs into bundle_files — otherwise U8 always fails on
+    unpinned build/ files and no clean pipeline can ever close."""
+    from paper_factory.release import export as export_mod
+
+    ctx = _ctx(tmp_path)
+    pid = "testpaper"
+    bundle = ctx.workspace.release_dir / pid
+    paper = bundle / "paper"
+    paper.mkdir(parents=True)
+    (paper / "main.tex").write_text("\\documentclass{article}\\begin{document}x\\end{document}\n",
+                                    encoding="utf-8")
+    ctx.workspace.reports_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.reports_dir / "current_release.json").write_text(_json.dumps({
+        "paper_id": pid, "export_status": "PASS", "bundle": f"release/{pid}",
+        "bundle_files": {"paper/main.tex": "abc"}}), encoding="utf-8")
+    # PDFlatex may be absent in CI — the pin logic is what we test, not TeX
+    monkeypatch.setattr(export_mod.shutil, "which", lambda name: "/usr/bin/pdflatex")
+
+    def _fake_run(cmd, **kw):
+        build = bundle / "build"
+        build.mkdir(exist_ok=True)
+        (build / "main.pdf").write_bytes(b"%PDF-1.4 fake")
+        (build / "main.aux").write_text("\\relax\n", encoding="utf-8")
+        return export_mod.subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(export_mod.subprocess, "run", _fake_run)
+    monkeypatch.setattr(export_mod, "_paper_id", lambda ctx_: pid)
+    outcome = export_mod.run_clean_rebuild(ctx)
+    assert outcome.verdict == Verdict.PASS, outcome.detail
+    pointer = _json.loads(
+        (ctx.workspace.reports_dir / "current_release.json").read_text())
+    assert "build/main.pdf" in pointer["bundle_files"]
+    assert "build/main.aux" in pointer["bundle_files"]
+    assert pointer["bundle_files"]["paper/main.tex"] == "abc"  # export pins kept
+
+
+def test_gap004_p1_nested_build_dir_is_manuscript_surface(tmp_path):
+    """Reviewer B-P1: sections/build/x.tex is printable via \\input — the
+    presence surface must match the U2 surface (top-level build/ only)."""
+    ctx = _ctx(tmp_path)
+    claim = "The estimator wins by 42% in every configuration."
+    _g4_claims(ctx, Claim(claim_id="C001", statement=claim, status=ClaimStatus.UNSUPPORTED))
+    d = ctx.workspace.paper_dir / "sections" / "build"
+    d.mkdir(parents=True)
+    (d / "x.tex").write_text(claim + "\n", encoding="utf-8")
+    _g4_review(ctx, [_g4_finding("F01", kind="unsupported_claim", claim_refs=["C001"],
+                                 category="statistics", details={"excerpt": claim})])
+    run_remediation(ctx)
+    reviews, _ = load_reviews(ctx.workspace.reviews_dir)
+    assert reviews[0].findings[0].disposition == Disposition.DEFERRED
+
+
+def test_gap004_p1_inpaper_symlink_followed(tmp_path):
+    """B-P1 n2: an in-paper symlink is manuscript surface (U2 parity)."""
+    ctx = _ctx(tmp_path)
+    claim = "The estimator wins by 42% in every configuration."
+    _g4_claims(ctx, Claim(claim_id="C001", statement=claim, status=ClaimStatus.UNSUPPORTED))
+    paper = ctx.workspace.paper_dir
+    (paper / "sections").mkdir(parents=True)
+    target = paper / "build"
+    target.mkdir()
+    (target / "x.tex").write_text(claim + "\n", encoding="utf-8")
+    (paper / "sections" / "link.tex").symlink_to("../build/x.tex")
+    _g4_review(ctx, [_g4_finding("F01", kind="unsupported_claim", claim_refs=["C001"],
+                                 category="statistics", details={"excerpt": claim})])
+    run_remediation(ctx)
+    reviews, _ = load_reviews(ctx.workspace.reviews_dir)
+    assert reviews[0].findings[0].disposition == Disposition.DEFERRED
+
+
+def test_gap004_p1_escaping_symlink_never_read(tmp_path):
+    """An escaping symlink is never followed (guard parity with U2/freeze) —
+    and must not crash the remediation."""
+    ctx = _ctx(tmp_path)
+    claim = "The estimator wins by 42% in every configuration."
+    _g4_claims(ctx, Claim(claim_id="C001", statement=claim, status=ClaimStatus.UNSUPPORTED))
+    paper = ctx.workspace.paper_dir
+    (paper / "sections").mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.tex").write_text(claim + "\n", encoding="utf-8")
+    (paper / "sections" / "evil.tex").symlink_to(str(outside / "secret.tex"))
+    _g4_review(ctx, [_g4_finding("F01", kind="unsupported_claim", claim_refs=["C001"],
+                                 category="statistics", details={"excerpt": claim})])
+    outcome = run_remediation(ctx)  # must not raise, must not read outside
+    reviews, _ = load_reviews(ctx.workspace.reviews_dir)
+    # content lives outside the manuscript: not our finding to block on here
+    # (the escape itself is pinned by the freeze manifest / U6)
+    assert reviews[0].findings[0].disposition == Disposition.RESOLVED
+    assert outcome.verdict == Verdict.PASS
