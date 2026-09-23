@@ -24,6 +24,7 @@ class Claim(BaseModel):
     external_support: list[dict[str, str]] = Field(default_factory=list)
     contradictions: list[dict[str, str]] = Field(default_factory=list)
     risk: dict[str, str] = Field(default_factory=dict)
+    source: str | None = None  # draft path(+section) the claim was extracted from
 
     @model_validator(mode="after")
     def _check_linkage(self) -> "Claim":

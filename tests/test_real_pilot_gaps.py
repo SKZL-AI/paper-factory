@@ -1892,3 +1892,357 @@ def test_gap004_p1_escaping_symlink_never_read(tmp_path):
     # (the escape itself is pinned by the freeze manifest / U6)
     assert reviews[0].findings[0].disposition == Disposition.RESOLVED
     assert outcome.verdict == Verdict.PASS
+
+
+# ---------------------------------------------------------------------------
+# GAP-005: claim <-> evidence sharpness — no LaTeX fragments as claims, no
+# generic evidence_ledger placeholder as primary proof (U1 fail-closed)
+# ---------------------------------------------------------------------------
+
+from paper_factory.release.closure import _u1
+
+_PILOT_LIKE_DRAFT = r"""Adam and decoupled weight decay separate gradient transformation from regularization semantics, achieving 12% lower drift.
+\hypertarget{2-experimental-program}{%
+\section{Experimental Program}}
+Thus the historical MMAV configuration is lower-loss in all 9/9 matched cells, with a seed-robust 0.9 improvement.
+43\linewidth}@{}}\n\toprule\noalign{}
+Claim & Current status & Safe interpretation \\
+"""
+
+
+def _g5_claim(cid, status, evidence, ctype="empirical"):
+    return Claim(claim_id=cid, statement="s", status=status, evidence=evidence,
+                 type=ctype)
+
+
+def test_gap005_latex_fragments_are_not_claims(tmp_path):
+    """Pilot repro: \\hypertarget/\\section lines and table-row fragments were
+    extracted as claims (C002/C004/C006/C007). Only real sentences survive."""
+    draft = tmp_path / "draft"
+    draft.mkdir()
+    (draft / "paper.tex").write_text(_PILOT_LIKE_DRAFT, encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    run_claim_graph(ctx)
+    graph = load_claims(ctx.workspace.claims_dir / "claims.yaml")
+    statements = [c.statement for c in graph.claims]
+    assert len(graph.claims) == 2, statements  # the two real sentences only
+    assert not any("hypertarget" in s or "\\" in s.split(" ")[0] or "&" in s
+                   for s in statements), statements
+
+
+def test_gap005_claim_records_source_path(tmp_path):
+    draft = tmp_path / "draft"
+    draft.mkdir()
+    (draft / "paper.md").write_text(
+        "Our method achieves 12% lower latency than baseline.\n", encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    run_claim_graph(ctx)
+    graph = load_claims(ctx.workspace.claims_dir / "claims.yaml")
+    assert graph.claims and graph.claims[0].source
+    assert "draft/paper.md" in graph.claims[0].source
+
+
+def test_gap005_builder_binds_concrete_metric_ids(tmp_path):
+    """EVIDENCE_FOUND must name the concrete metrics, not 'evidence_ledger'."""
+    draft = tmp_path / "draft"
+    draft.mkdir()
+    (draft / "paper.md").write_text(
+        "Our method achieves 12% lower latency than baseline.\n", encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    ctx.workspace.reports_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.reports_dir / "paper_metrics.json").write_text(_json.dumps({
+        "metrics": {"M1": {"field": "latency_ms", "mean": 42.0, "n": 3},
+                    "M2": {"field": "accuracy", "mean": 0.9, "n": 3}},
+        "sources": [], "audit": {}}), encoding="utf-8")
+    run_claim_graph(ctx)
+    graph = load_claims(ctx.workspace.claims_dir / "claims.yaml")
+    assert len(graph.claims) == 1
+    ev = graph.claims[0].evidence
+    assert ev == ["M1"], ev  # the latency metric, not the accuracy one
+    assert "evidence_ledger" not in ev
+
+
+def test_gap005_placeholder_evidence_fails_u1(tmp_path):
+    ctx = _ctx(tmp_path)
+    _g4_claims(ctx, _g5_claim("C001", ClaimStatus.EVIDENCE_FOUND, ["evidence_ledger"]))
+    state, note = _u1(ctx)
+    assert state == "FAIL", note
+    assert "placeholder" in note or "unresolvable" in note
+
+
+def test_gap005_dangling_evidence_ref_fails_u1(tmp_path):
+    ctx = _ctx(tmp_path)
+    _g4_claims(ctx, _g5_claim("C001", ClaimStatus.VERIFIED, ["E999"]))
+    state, note = _u1(ctx)
+    assert state == "FAIL", note
+
+
+def test_gap005_metric_key_and_ledger_id_resolve_u1(tmp_path):
+    ctx = _ctx(tmp_path)
+    ctx.workspace.reports_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.reports_dir / "paper_metrics.json").write_text(_json.dumps({
+        "metrics": {"M1": {"field": "latency_ms", "mean": 42.0}}}), encoding="utf-8")
+    ctx.workspace.evidence_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.evidence_dir / "evidence_ledger.jsonl").write_text(
+        _json.dumps({"evidence_id": "E001", "tier": "T0", "path": "results/x.csv"}) + "\n",
+        encoding="utf-8")
+    _g4_claims(ctx,
+               _g5_claim("C001", ClaimStatus.EVIDENCE_FOUND, ["M1"]),
+               _g5_claim("C002", ClaimStatus.VERIFIED, ["E001"]))
+    state, note = _u1(ctx)
+    assert state == "PASS", note
+
+
+def test_gap005_file_path_evidence_resolves_u1(tmp_path):
+    ctx = _ctx(tmp_path)
+    (tmp_path / "results").mkdir()
+    (tmp_path / "results" / "x.csv").write_text("a,b\n1,2\n", encoding="utf-8")
+    _g4_claims(ctx, _g5_claim("C001", ClaimStatus.EVIDENCE_FOUND, ["results/x.csv"]))
+    state, note = _u1(ctx)
+    assert state == "PASS", note
+
+
+def test_gap005_evidence_found_without_any_evidence_fails(tmp_path):
+    ctx = _ctx(tmp_path)
+    _g4_claims(ctx, _g5_claim("C001", ClaimStatus.EVIDENCE_FOUND, []))
+    state, note = _u1(ctx)
+    assert state == "FAIL", note
+
+
+# ---------------------------------------------------------------------------
+# GAP-005 review round 1: E1 (evidence scope), E2 (extraction recall),
+# F3 (type bypass), F4 (cue order), F5/E3 (ledger integrity)
+# ---------------------------------------------------------------------------
+
+def test_gap005_e1_absolute_path_evidence_fails(tmp_path):
+    ctx = _ctx(tmp_path)
+    _g4_claims(ctx, _g5_claim("C001", ClaimStatus.VERIFIED, ["/etc/hostname"]))
+    state, note = _u1(ctx)
+    assert state == "FAIL", note
+
+
+def test_gap005_e1_pipeline_bookkeeping_is_not_evidence(tmp_path):
+    ctx = _ctx(tmp_path)
+    ctx.workspace.reports_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.reports_dir / "paper_metrics.json").write_text(
+        _json.dumps({"metrics": {}}), encoding="utf-8")
+    _g4_claims(ctx, _g5_claim(
+        "C001", ClaimStatus.VERIFIED, [".paper-factory/reports/paper_metrics.json"]))
+    state, note = _u1(ctx)
+    assert state == "FAIL", note
+
+
+def test_gap005_e1_symlink_escape_evidence_fails(tmp_path):
+    # target root is tmp_path/"proj"; the symlink points OUTSIDE of it
+    proj = tmp_path / "proj"
+    ctx = _ctx(proj)
+    (proj / "results").mkdir(parents=True)
+    outside = tmp_path / "outside.txt"
+    outside.write_text("x\n", encoding="utf-8")
+    link = proj / "results" / "out.csv"
+    link.symlink_to(outside)
+    _g4_claims(ctx, _g5_claim("C001", ClaimStatus.VERIFIED, ["results/out.csv"]))
+    state, note = _u1(ctx)
+    assert state == "FAIL", note
+
+
+def test_gap005_e2_float_caption_claim_extracted(tmp_path):
+    """Canonical float shape must not swallow the caption's claim."""
+    draft = tmp_path / "draft"
+    draft.mkdir()
+    (draft / "paper.tex").write_text(
+        "\\begin{table}\n\\begin{tabular}{lr}\na & 1\\\\\n\\end{tabular}\n"
+        "\\caption{Our estimator achieves 12% lower latency than the baseline.}\n"
+        "\\end{table}\n", encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    run_claim_graph(ctx)
+    graph = load_claims(ctx.workspace.claims_dir / "claims.yaml")
+    assert len(graph.claims) == 1
+    assert "lower latency" in graph.claims[0].statement
+
+
+def test_gap005_e2_itemize_and_leading_macro_claims_extracted(tmp_path):
+    draft = tmp_path / "draft"
+    draft.mkdir()
+    (draft / "paper.tex").write_text(
+        "\\begin{itemize}\n\\item \\textbf{We observe 15% lower energy} under load.\n"
+        "\\end{itemize}\n", encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    run_claim_graph(ctx)
+    graph = load_claims(ctx.workspace.claims_dir / "claims.yaml")
+    assert len(graph.claims) == 1, [c.statement for c in graph.claims]
+
+
+def test_gap005_f3_type_field_is_no_sharpness_bypass(tmp_path):
+    """A 'methodological' claim carrying placeholder evidence still fails —
+    but a non-empirical claim with NO evidence asserted is out of U1 scope."""
+    ctx = _ctx(tmp_path / "a")
+    _g4_claims(ctx, _g5_claim("C001", ClaimStatus.EVIDENCE_FOUND,
+                              ["evidence_ledger"], ctype="methodological"))
+    state, note = _u1(ctx)
+    assert state == "FAIL", note
+    ctx2 = _ctx(tmp_path / "b")
+    _g4_claims(ctx2, _g5_claim("C001", ClaimStatus.EVIDENCE_FOUND, [],
+                               ctype="conceptual"))
+    state2, _ = _u1(ctx2)
+    assert state2 == "PASS", state2
+
+
+def test_gap005_f4_significance_needs_test_artifact_first(tmp_path):
+    """'significantly faster' must not bind a latency metric while skipping
+    the statistical-test requirement."""
+    draft = tmp_path / "draft"
+    draft.mkdir()
+    (draft / "paper.md").write_text(
+        "Our index is significantly faster by 40% under load.\n", encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    ctx.workspace.reports_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.reports_dir / "paper_metrics.json").write_text(_json.dumps({
+        "metrics": {"M1": {"field": "latency_ms", "mean": 42.0}}}), encoding="utf-8")
+    run_claim_graph(ctx)
+    graph = load_claims(ctx.workspace.claims_dir / "claims.yaml")
+    assert graph.claims[0].status == ClaimStatus.UNSUPPORTED, graph.claims[0]
+    # with a test artifact present, the claim binds BOTH test and latency metrics
+    (ctx.workspace.reports_dir / "paper_metrics.json").write_text(_json.dumps({
+        "metrics": {"M1": {"field": "latency_ms", "mean": 42.0},
+                    "T1": {"field": "welch_test_pvalue", "mean": 0.03}}}), encoding="utf-8")
+    run_claim_graph(ctx)
+    graph = load_claims(ctx.workspace.claims_dir / "claims.yaml")
+    c = graph.claims[0]
+    assert c.status == ClaimStatus.EVIDENCE_FOUND
+    assert set(c.evidence) == {"M1", "T1"}
+
+
+def test_gap005_f5_nondict_ledger_line_fails_clean(tmp_path):
+    ctx = _ctx(tmp_path)
+    ctx.workspace.evidence_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.evidence_dir / "evidence_ledger.jsonl").write_text(
+        '["not", "a", "dict"]\n', encoding="utf-8")
+    _g4_claims(ctx, _g5_claim("C001", ClaimStatus.VERIFIED, ["E001"]))
+    state, note = _u1(ctx)
+    assert state == "FAIL"
+    assert "not an object" in note
+
+
+def test_gap005_e3_duplicate_ledger_ids_fail(tmp_path):
+    ctx = _ctx(tmp_path)
+    ctx.workspace.evidence_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.evidence_dir / "evidence_ledger.jsonl").write_text(
+        '{"evidence_id": "E001", "tier": "T0"}\n'
+        '{"evidence_id": "E001", "tier": "T3"}\n', encoding="utf-8")
+    _g4_claims(ctx, _g5_claim("C001", ClaimStatus.VERIFIED, ["E001"]))
+    state, note = _u1(ctx)
+    assert state == "FAIL"
+    assert "duplicate" in note
+
+
+def test_gap005_e2_caption_optarg_and_nested_braces(tmp_path):
+    """B round 2: \\caption[short]{…} and captions with inner font braces must
+    not silently drop the claim."""
+    draft = tmp_path / "draft"
+    draft.mkdir()
+    (draft / "paper.tex").write_text(
+        "\\begin{table}\n\\caption[Short]{Our estimator achieves 42\\% lower "
+        "latency than \\textbf{all} baselines overall.}\n\\end{table}\n",
+        encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    run_claim_graph(ctx)
+    graph = load_claims(ctx.workspace.claims_dir / "claims.yaml")
+    assert len(graph.claims) == 1, [c.statement for c in graph.claims]
+    assert "lower latency" in graph.claims[0].statement
+
+
+def test_gap005_na_real_evidence_ledger_filename_resolves(tmp_path):
+    """A N-A: a concrete file named evidence_ledger.csv is legitimate evidence;
+    only the bare placeholder token is vague."""
+    ctx = _ctx(tmp_path)
+    (tmp_path / "results").mkdir()
+    (tmp_path / "results" / "evidence_ledger.csv").write_text("a\n1\n",
+                                                              encoding="utf-8")
+    _g4_claims(ctx, _g5_claim("C001", ClaimStatus.EVIDENCE_FOUND,
+                              ["results/evidence_ledger.csv"]))
+    state, note = _u1(ctx)
+    assert state == "PASS", note
+
+
+def test_gap005_nb_cite_token_symmetry_in_presence_check(tmp_path):
+    """A N-B (MINOR): draft cleaning turns \\cite{...} into CITE; the
+    manuscript presence check must fold cites identically, else a verbatim
+    printed claim evades the B1 check."""
+    ctx = _ctx(tmp_path)
+    draft = tmp_path / "draft"
+    draft.mkdir()
+    (draft / "paper.md").write_text(
+        "We achieve 42% lower latency than \\cite{baseline2020} in every "
+        "configuration tested here.\n", encoding="utf-8")
+    run_claim_graph(ctx)
+    graph = load_claims(ctx.workspace.claims_dir / "claims.yaml")
+    assert len(graph.claims) == 1
+    claim = graph.claims[0]
+    assert claim.status == ClaimStatus.UNSUPPORTED  # no metrics seeded
+    # the manuscript prints the same sentence as LaTeX
+    paper = ctx.workspace.paper_dir / "sections"
+    paper.mkdir(parents=True, exist_ok=True)
+    (paper / "results.tex").write_text(
+        "We achieve 42\\% lower latency than \\cite{baseline2020} in every "
+        "configuration tested here.\n", encoding="utf-8")
+    run_methods_review(ctx)  # folds claims_audit -> finding with claim_refs
+    outcome = run_remediation(ctx)
+    reviews, _ = load_reviews(ctx.workspace.reviews_dir)
+    f = [f_ for r in reviews for f_ in r.findings
+         if f_.kind == "unsupported_claim"][0]
+    assert f.disposition == Disposition.DEFERRED, (f.disposition, f.disposition_reason)
+    assert "still printed" in (f.disposition_reason or "")
+    assert outcome.verdict == Verdict.DEGRADED
+
+
+def test_gap005_nc_hint_word_boundaries(tmp_path):
+    """A N-C: 'specificity' must not satisfy the test-artifact hint 'ci';
+    a real test field must."""
+    draft = tmp_path / "draft"
+    draft.mkdir()
+    (draft / "paper.md").write_text(
+        "The effect is significant at 0.01 across all seeds.\n", encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    ctx.workspace.reports_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.reports_dir / "paper_metrics.json").write_text(_json.dumps({
+        "metrics": {"M1": {"field": "specificity", "mean": 0.9}}}), encoding="utf-8")
+    run_claim_graph(ctx)
+    graph = load_claims(ctx.workspace.claims_dir / "claims.yaml")
+    assert graph.claims[0].status == ClaimStatus.UNSUPPORTED
+    (ctx.workspace.reports_dir / "paper_metrics.json").write_text(_json.dumps({
+        "metrics": {"M1": {"field": "specificity", "mean": 0.9},
+                    "T1": {"field": "welch_test_pvalue", "mean": 0.03}}}), encoding="utf-8")
+    run_claim_graph(ctx)
+    graph = load_claims(ctx.workspace.claims_dir / "claims.yaml")
+    assert graph.claims[0].status == ClaimStatus.EVIDENCE_FOUND
+    assert graph.claims[0].evidence == ["T1"]
+
+
+@_pytest.mark.parametrize("macro", [
+    "\\cite{x21}", "\\ref{fig:a}", "$x_{1}$", "\\url{http://x/y}",
+])
+def test_gap005_e2_caption_with_brace_macros_extracted(tmp_path, macro):
+    """B round 3: a caption carrying a brace-macro must not strand the claim."""
+    draft = tmp_path / "draft"
+    draft.mkdir()
+    (draft / "paper.tex").write_text(
+        "\\begin{table}\n\\caption{We improve accuracy by 42\\% over " + macro +
+        " baselines overall.}\n\\end{table}\n", encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    run_claim_graph(ctx)
+    graph = load_claims(ctx.workspace.claims_dir / "claims.yaml")
+    assert len(graph.claims) == 1, (macro, [c.statement for c in graph.claims])
+
+
+def test_gap005_braceless_noop_command_at_sentence_start(tmp_path):
+    """B round 4 MINOR: \\noindent/\\par before a sentence must not drop it."""
+    draft = tmp_path / "draft"
+    draft.mkdir()
+    (draft / "paper.tex").write_text(
+        "\\noindent We improve accuracy by 42\\% over every baseline tested.\n",
+        encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    run_claim_graph(ctx)
+    graph = load_claims(ctx.workspace.claims_dir / "claims.yaml")
+    assert len(graph.claims) == 1, [c.statement for c in graph.claims]

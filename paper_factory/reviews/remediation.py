@@ -164,6 +164,10 @@ def _presence_stream(text: str, is_latex: bool = True) -> str:
     side: draft statements are markdown/plain text, where `%` is a literal
     percent sign — LaTeX comment stripping would amputate the statement."""
     body = normalize_tex(text, strip_comments=is_latex)
+    # fold refs/cites to the same tokens the draft-side cleaner uses, so a
+    # claim carried over verbatim matches on both sides (reviewer A N-B)
+    body = re.sub(r"\\cite\w*(?:\[[^]]*\])*\{[^}]*\}", " CITE ", body)
+    body = re.sub(r"\\(?:page|eq|auto)?ref\{[^}]*\}", " REF ", body)
     body = (body.replace("\\_", "_").replace("\\&", "&").replace("\\#", "#")
                 .replace("~", " "))
     body = re.sub(r"\\[a-zA-Z]+\*?", "", body)  # commands carry no claim text

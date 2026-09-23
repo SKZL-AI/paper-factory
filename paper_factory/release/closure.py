@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ..claims.graph import load_claims
-from ..core.results import Verdict
+from ..core.results import ClaimStatus, Verdict
 from ..core.util import read_jsonl, sha256_file, utcnow, write_json
 from ..dag.executor import NodeContext, NodeOutcome
 from ..provenance.firewall import is_protected
@@ -39,7 +39,77 @@ def _u1(ctx: NodeContext) -> tuple[str, str]:
     unsupported = [c.claim_id for c in graph.unsupported_final_claims()]
     if unsupported:
         return "FAIL", f"final empirical claims unsupported/contradicted/proposed: {unsupported}"
+    # sharpness (GAP-005): a claim that asserts evidence must name resolvable
+    # artifacts — metric keys, ledger evidence ids, or existing files. A generic
+    # 'evidence_ledger' placeholder or a dangling reference is not provenance.
+    ws = ctx.workspace
+    metric_keys: set[str] = set()
+    metrics_path = ws.reports_dir / "paper_metrics.json"
+    if metrics_path.exists():
+        metric_keys = set(json.loads(metrics_path.read_text()).get("metrics", {}))
+    ledger_ids: set[str] = set()
+    ledger_path = ws.evidence_dir / "evidence_ledger.jsonl"
+    if ledger_path.exists():
+        for line in ledger_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                return "FAIL", f"evidence ledger unreadable line: {line[:60]!r}"
+            if not isinstance(entry, dict):
+                return "FAIL", f"evidence ledger line is not an object: {line[:60]!r}"
+            eid = entry.get("evidence_id")
+            if eid:
+                if eid in ledger_ids:
+                    return "FAIL", f"evidence ledger duplicate id: {eid}"
+                ledger_ids.add(eid)
+    vague: list[str] = []
+    dangling: list[str] = []
+    for c in graph.claims:
+        # sharpness binds every claim that CARRIES evidence refs (any type —
+        # the type field is untrusted input, reviewer A-F3); empirical claims
+        # in asserting states additionally MUST carry evidence
+        asserting = c.status in (ClaimStatus.VERIFIED, ClaimStatus.EVIDENCE_FOUND,
+                                 ClaimStatus.PARTIAL)
+        if not c.evidence:
+            if c.type == "empirical" and asserting:
+                vague.append(f"{c.claim_id}(empty)")
+            continue
+        for ref in c.evidence:
+            if ref in metric_keys or ref in ledger_ids:
+                continue
+            if ref.strip() == "evidence_ledger":
+                # the bare placeholder token, exactly — a real file named
+                # results/evidence_ledger.csv is legitimate evidence (A N-A)
+                vague.append(f"{c.claim_id}(placeholder)")
+            elif _resolve_evidence_path(ws, ref) is not None:
+                continue  # concrete artifact inside the target project
+            else:
+                dangling.append(f"{c.claim_id}→{ref}")
+    if vague or dangling:
+        return "FAIL", (f"claims with placeholder/unresolvable evidence: "
+                        f"vague={vague} dangling={dangling}")
     return "PASS", f"{len(graph.claims)} claims linked"
+
+
+def _resolve_evidence_path(ws, ref: str) -> Path | None:
+    """A file-path evidence ref resolves only if it is a relative path that
+    stays inside the TARGET PROJECT (never absolute, never .., never the
+    pipeline's own .paper-factory bookkeeping — reviewer B-E1)."""
+    p = Path(ref)
+    if not ref or p.is_absolute() or not p.parts or ".." in p.parts:
+        return None
+    root = ws.target_root.resolve()
+    resolved = (ws.target_root / p).resolve()
+    try:
+        rel = resolved.relative_to(root)
+    except ValueError:
+        return None
+    if rel.parts and rel.parts[0] == ".paper-factory":
+        return None  # self-referential bookkeeping is not evidence
+    return resolved if resolved.is_file() else None
 
 
 def _manuscript_quantitative_surface(paper: Path) -> tuple[list[str], set[str]]:
