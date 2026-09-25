@@ -2246,3 +2246,441 @@ def test_gap005_braceless_noop_command_at_sentence_start(tmp_path):
     run_claim_graph(ctx)
     graph = load_claims(ctx.workspace.claims_dir / "claims.yaml")
     assert len(graph.claims) == 1, [c.statement for c in graph.claims]
+
+
+# ---------------------------------------------------------------------------
+# GAP-003: contextual number-to-metric binding in the integrity audit.
+# No more 0.5x-2x range gate over ALL metrics (pilot: ~20/44 false positives);
+# a number is only flagged when a context/claim binding names the metric.
+# ---------------------------------------------------------------------------
+
+from paper_factory.statistics.metrics import run_integrity_audit
+
+
+def _g3_ctx(tmp_path, metrics: dict, draft_text: str, name="paper.tex"):
+    ctx = _ctx(tmp_path)
+    ctx.workspace.reports_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.reports_dir / "paper_metrics.json").write_text(_json.dumps({
+        "metrics": metrics, "sources": [], "audit": {}}), encoding="utf-8")
+    draft = tmp_path / "draft"
+    draft.mkdir()
+    (draft / name).write_text(draft_text, encoding="utf-8")
+    run_integrity_audit(ctx)
+    audit = _json.loads(
+        (ctx.workspace.reports_dir / "integrity_audit.json").read_text())
+    return audit["findings"]
+
+
+_FPR_METRICS = {
+    "EXP__fpr__load0p50": {"field": "fpr", "mean": 0.0117, "n": 3,
+                           "group": {"load": "0.50"}},
+    "EXP__fpr__load0p90": {"field": "fpr", "mean": 0.0146333, "n": 3,
+                           "group": {"load": "0.90"}},
+    "EXP__fpr__load0p95": {"field": "fpr", "mean": 0.0201, "n": 3,
+                           "group": {"load": "0.95"}},
+}
+
+
+def test_gap003_true_positive_alias_and_group_bound(tmp_path):
+    """The synthetic planted defect must STILL be caught — via the alias
+    'false-positive rate' and the group context '90% load'."""
+    findings = _g3_ctx(tmp_path, _FPR_METRICS,
+                       "The filter's false-positive rate climbs steeply, "
+                       "reaching 0.021 at 90% load.\n")
+    mm = [f for f in findings if f["kind"] == "number_mismatch"]
+    assert len(mm) == 1, findings
+    f = mm[0]
+    assert abs(f["value"] - 0.021) < 1e-9
+    # contextually bound: ONLY the load=0.90 metric is the comparison target
+    assert f["bound_metrics"] == ["EXP__fpr__load0p90"]
+    assert abs(f["expected"]["EXP__fpr__load0p90"] - 0.0146333) < 1e-9
+
+
+def test_gap003_group_context_number_is_not_a_result(tmp_path):
+    """'at 90% load' names the design point — the 90 must not be flagged."""
+    findings = _g3_ctx(tmp_path, _FPR_METRICS,
+                       "At 90% load the false-positive rate reaches 0.0146.\n")
+    assert not [f for f in findings if f["kind"] == "number_mismatch"], findings
+
+
+def test_gap003_layout_numbers_never_flagged(tmp_path):
+    """Pilot FP class: \\linewidth column specs inside table environments."""
+    tex = ("\\begin{tabularx}{\\linewidth}{@{}p{0.23\\linewidth}p{0.17\\linewidth}X@{}}\n"
+           "\\toprule Family & Construction \\\\\n\\midrule a & b \\\\\n"
+           "\\bottomrule\n\\end{tabularx}\n")
+    metrics = {"M1": {"field": "loss", "mean": 0.18, "n": 3, "group": {}}}
+    findings = _g3_ctx(tmp_path, metrics, tex)
+    assert not [f for f in findings if f["kind"] == "number_mismatch"], findings
+
+
+def test_gap003_threshold_semantics_not_equality(tmp_path):
+    """Pilot FP class: a frozen decision threshold is not a measured value."""
+    findings = _g3_ctx(tmp_path,
+                       {"M1": {"field": "nll", "mean": 0.0613, "n": 1, "group": {}}},
+                       "The program froze $0.069$ nats as a project decision "
+                       "threshold before the analyses ran.\n")
+    assert not [f for f in findings if f["kind"] == "number_mismatch"], findings
+
+
+def test_gap003_window_spread_claim_not_equality(tmp_path):
+    """Pilot FP class: 'losses lie within a 0.0360-nat window' is a spread
+    statement, not a mean claim."""
+    findings = _g3_ctx(tmp_path,
+                       {"M1": {"field": "nll", "mean": 6.5126, "n": 1, "group": {}}},
+                       "All eight final validation losses lie within a "
+                       "0.0360-nat window, below the frozen threshold.\n")
+    assert not [f for f in findings if f["kind"] == "number_mismatch"], findings
+
+
+def test_gap003_unbound_number_is_informational_not_major(tmp_path):
+    """No context binding → no invented assignment. A result-ish unbound
+    number becomes a MINOR unverifiable note, never a MAJOR mismatch."""
+    findings = _g3_ctx(tmp_path, _FPR_METRICS,
+                       "The approach reaches 0.55 on the hidden split, a "
+                       "marked improvement.\n")
+    assert not [f for f in findings if f["kind"] == "number_mismatch"]
+    info = [f for f in findings if f["kind"] == "unverifiable_number"]
+    assert info and info[0]["severity"] == "MINOR"
+
+
+def test_gap003_counts_are_not_metric_means(tmp_path):
+    """'9/9 matched cells', '3 seeds', '18 configurations' — counts never
+    bind to metric means."""
+    findings = _g3_ctx(tmp_path,
+                       {"M1": {"field": "nll", "mean": 9.5, "n": 1, "group": {}}},
+                       "The configuration is lower-loss in all 9/9 matched "
+                       "cells, across 3 seeds and 18 configurations.\n")
+    assert not [f for f in findings if f["kind"] == "number_mismatch"], findings
+
+
+def test_gap003_percent_scaling_bound(tmp_path):
+    """Percent numbers compare scale-aware: 2.2% ~ 0.022 metric, not 2.2."""
+    metrics = {"M1": {"field": "fpr", "mean": 0.022, "n": 3, "group": {}}}
+    ok = _g3_ctx(tmp_path, metrics,
+                 "The false-positive rate improves to 2.2% under load.\n")
+    assert not [f for f in ok if f["kind"] == "number_mismatch"], ok
+    bad = _g3_ctx(tmp_path / "b", metrics,
+                  "The false-positive rate improves to 4.9% under load.\n")
+    mm = [f for f in bad if f["kind"] == "number_mismatch"]
+    assert len(mm) == 1 and abs(mm[0]["value"] - 4.9) < 1e-9, bad
+
+
+def test_gap003_ratio_claim_binds_to_ratio_metric(tmp_path):
+    """Load-bearing FN class from the pilot: a '2.9x' claim must be checked
+    when a ratio metric binds — and must not invent a binding when none exists."""
+    ratio_metrics = {"M1": {"field": "energy_ratio", "mean": 2.52, "n": 1,
+                            "group": {}}}
+    bad = _g3_ctx(tmp_path, ratio_metrics,
+                  "The corrected step energy is 2.9x lower than the reference.\n")
+    mm = [f for f in bad if f["kind"] == "number_mismatch"]
+    assert len(mm) == 1 and abs(mm[0]["value"] - 2.9) < 1e-9, bad
+    # no ratio metric anywhere -> informational, not a MAJOR
+    plain = _g3_ctx(tmp_path / "b",
+                    {"M2": {"field": "nll", "mean": 6.5, "n": 1, "group": {}}},
+                    "The corrected step energy is 2.9x lower than the reference.\n")
+    assert not [f for f in plain if f["kind"] == "number_mismatch"], plain
+
+
+def test_gap003_pvalue_expression_not_a_result_number(tmp_path):
+    """The 0.01 in 'significant at the 0.01 level' is a p-value threshold,
+    never a metric value."""
+    findings = _g3_ctx(tmp_path,
+                       {"M1": {"field": "fpr", "mean": 0.013, "n": 3, "group": {}}},
+                       "The false-positive rate drop is significant at the "
+                       "0.01 level.\n")
+    assert not [f for f in findings if f["kind"] == "number_mismatch"], findings
+
+
+def test_gap003_range_claim_checked_against_group_minmax(tmp_path):
+    """A bound range claim '(lo to hi)' compares against the group's observed
+    min/max — wrong ranges are caught, right ranges pass."""
+    findings = _g3_ctx(tmp_path, _FPR_METRICS,
+                       "The false-positive rate across loads lies between "
+                       "0.0117 and 0.0201 in all runs.\n")
+    assert not [f for f in findings if f["kind"] == "number_mismatch"], findings
+    bad = _g3_ctx(tmp_path / "b", _FPR_METRICS,
+                  "The false-positive rate across loads lies between "
+                  "0.0117 and 0.0340 in all runs.\n")
+    mm = [f for f in bad if f["kind"] == "number_mismatch"]
+    assert len(mm) == 1 and mm[0]["value"] == [0.0117, 0.0340], bad
+
+
+# ---------------------------------------------------------------------------
+# GAP-003 review round 1: S1-S3 (reviewer B MAJORs), S4/S5, F-A/F-C/F-E/F-F
+# ---------------------------------------------------------------------------
+
+def test_gap003_s1_number_binds_nearest_metric(tmp_path):
+    """B-S1 (MAJOR): a wrong latency must not be whitewashed by an incidental
+    loss metric with a coincidentally matching value."""
+    metrics = {"L": {"field": "latency", "mean": 1.0, "n": 3, "group": {}},
+               "N": {"field": "nll", "mean": 5.0, "n": 3, "group": {}}}
+    bad = _g3_ctx(tmp_path, metrics,
+                  "Our system reaches a latency of 5.0 in production while "
+                  "the loss stays stable.\n")
+    mm = [f for f in bad if f["kind"] == "number_mismatch"]
+    assert len(mm) == 1, bad
+    assert mm[0]["bound_metrics"] == ["L"]
+    ok = _g3_ctx(tmp_path / "b", metrics,
+                 "Our system reaches a latency of 1.0 in production while "
+                 "the loss stays stable.\n")
+    assert not [f for f in ok if f["kind"] == "number_mismatch"], ok
+
+
+def test_gap003_s2_anchor_needs_dimension_name(tmp_path):
+    """B-S2 + A F-A: 'The fpr is 0.90.' is a RESULT, not a design anchor —
+    the exemption needs the dimension word ('load') in the sentence."""
+    bad = _g3_ctx(tmp_path, _FPR_METRICS, "The fpr is 0.90.\n")
+    mm = [f for f in bad if f["kind"] == "number_mismatch"]
+    assert len(mm) == 1, bad
+    ok = _g3_ctx(tmp_path / "b", _FPR_METRICS,
+                 "The fpr is 0.0201 at 95% load.\n")
+    assert not [f for f in ok if f["kind"] == "number_mismatch"], ok
+
+
+def test_gap003_s2_no_x100_anchor(tmp_path):
+    """A F-A: 0.009 is not an anchor of the 0.90 design point (no ×100)."""
+    bad = _g3_ctx(tmp_path, _FPR_METRICS, "The fpr is 0.009 at 90% load.\n")
+    mm = [f for f in bad if f["kind"] == "number_mismatch"]
+    assert len(mm) == 1, bad
+
+
+def test_gap003_s3_comparative_keyword_needs_proximity(tmp_path):
+    """B-S3 (MAJOR): a comparative word far from the number does not
+    downgrade the level check to MINOR."""
+    metrics = {"L": {"field": "latency", "mean": 1.0, "n": 3, "group": {}}}
+    bad = _g3_ctx(tmp_path, metrics,
+                  "The latency spread across configs reaches 0.5 in our "
+                  "production setup today.\n")
+    mm = [f for f in bad if f["kind"] == "number_mismatch"]
+    assert len(mm) == 1, bad
+    # close comparative keyword → derived semantics honoured (diff metric)
+    diff_metrics = {"D": {"field": "latency_diff", "mean": 0.1, "n": 3, "group": {}}}
+    bad2 = _g3_ctx(tmp_path / "b", diff_metrics,
+                   "The latency differs from the reference by 0.5 in every "
+                   "configuration tested.\n")
+    mm2 = [f for f in bad2 if f["kind"] == "number_mismatch"]
+    assert len(mm2) == 1 and mm2[0]["bound_metrics"] == ["D"], bad2
+
+
+def test_gap003_s4_alias_word_boundary(tmp_path):
+    """B-S4/A F-B: 'gloss' must not bind the 'loss' alias."""
+    metrics = {"N": {"field": "nll", "mean": 6.5, "n": 3, "group": {}}}
+    findings = _g3_ctx(tmp_path, metrics,
+                       "The gloss finish improves the look by 20% in photos.\n")
+    assert not [f for f in findings if f["kind"] == "number_mismatch"], findings
+
+
+def test_gap003_s5_unverifiable_capped(tmp_path):
+    """B-S5: unverifiable_number notes dedupe and cap per draft."""
+    sentences = " ".join(f"The system reaches 0.{10 + i} in trial number {i}."
+                         for i in range(20))
+    findings = _g3_ctx(tmp_path, _FPR_METRICS, sentences + "\n")
+    info = [f for f in findings if f["kind"] == "unverifiable_number"
+            and f.get("value") is not None]
+    assert 0 < len(info) <= 10, len(info)
+
+
+def test_gap003_fc_vs_does_not_split_sentence(tmp_path):
+    """A F-C: 'vs.' keeps the sentence together — the baseline number stays
+    in the bound context."""
+    metrics = {"F1": {"field": "fpr", "mean": 0.021, "n": 3,
+                      "group": {"system": "ours"}},
+               "F2": {"field": "fpr", "mean": 0.050, "n": 3,
+                      "group": {"system": "baseline"}}}
+    findings = _g3_ctx(tmp_path, metrics,
+                       "Our fpr is 0.021 vs. 0.050 for the baseline system.\n")
+    assert not [f for f in findings if f["kind"] == "number_mismatch"], findings
+
+
+def test_gap003_fe_deferral_reason_uses_expected(tmp_path):
+    """A F-E: the remediation deferral reason must carry the derived
+    value(s), never 'None'."""
+    ctx = _ctx(tmp_path)
+    _g4_claims(ctx)
+    _g4_review(ctx, [_g4_finding(
+        "F01", kind="number_mismatch",
+        details={"draft": "draft/p.tex", "value": 0.021,
+                 "bound_metrics": ["EXP__fpr__load0p90"],
+                 "expected": {"EXP__fpr__load0p90": 0.0146333}})])
+    run_remediation(ctx)
+    reviews, _ = load_reviews(ctx.workspace.reviews_dir)
+    reason = reviews[0].findings[0].disposition_reason or ""
+    assert "0.0146333" in reason and "None" not in reason, reason
+    assert "EXP__fpr__load0p90" in reason
+
+
+def test_gap003_ff_significance_merges_adjacent_hits(tmp_path):
+    """A F-F: 'significant (p < 0.05)' is ONE finding, not two."""
+    findings = _g3_ctx(tmp_path, {},
+                       "The drop is significant (p < 0.05) across seeds.\n")
+    sig = [f for f in findings if f["kind"] == "significance_without_test"]
+    assert len(sig) == 1, sig
+
+
+# ---------------------------------------------------------------------------
+# GAP-003 review round 2: R1 (decoy anchor), R2 (universal quantifier),
+# R4 (plural alias), R5 (cap marker)
+# ---------------------------------------------------------------------------
+
+def test_gap003_r1_exceptive_marker_disqualifies_decoy_anchor(tmp_path):
+    """B-R1 (MAJOR): 'Latency, unlike the loss, reaches 5.0' — the number
+    belongs to latency, not to the closer 'loss'."""
+    metrics = {"L": {"field": "latency", "mean": 1.0, "n": 3, "group": {}},
+               "N": {"field": "nll", "mean": 5.0, "n": 3, "group": {}}}
+    bad = _g3_ctx(tmp_path, metrics,
+                  "Latency, unlike the loss, reaches 5.0 in production "
+                  "every day.\n")
+    mm = [f for f in bad if f["kind"] == "number_mismatch"]
+    assert len(mm) == 1, bad
+    assert mm[0]["bound_metrics"] == ["L"]
+
+
+def test_gap003_r2_universal_quantifier_disables_anchor(tmp_path):
+    """B-R2 (MAJOR): 'reaches 0.90 at every load' claims the value for ALL
+    design points — no point-anchor exemption, and it must hold everywhere."""
+    bad = _g3_ctx(tmp_path, _FPR_METRICS,
+                  "The fpr reaches 0.0201 at every load we measured.\n")
+    mm = [f for f in bad if f["kind"] == "number_mismatch"]
+    assert len(mm) == 1, bad  # 0.0201 holds only at 0.95, not at 0.50/0.90
+    # a value that genuinely holds at every load passes... construct that world
+    uniform = {"M1": {"field": "fpr", "mean": 0.02, "n": 3, "group": {"load": "0.50"}},
+               "M2": {"field": "fpr", "mean": 0.02, "n": 3, "group": {"load": "0.90"}}}
+    ok = _g3_ctx(tmp_path / "b", uniform,
+                 "The fpr reaches 0.02 at every load we measured.\n")
+    assert not [f for f in ok if f["kind"] == "number_mismatch"], ok
+
+
+def test_gap003_r4_plural_alias_binds(tmp_path):
+    """B-R4: 'losses' binds the 'loss' alias."""
+    metrics = {"N": {"field": "nll", "mean": 6.5, "n": 3, "group": {}}}
+    ok = _g3_ctx(tmp_path, metrics,
+                 "The losses reach 6.4 across seeds in this configuration.\n")
+    assert not [f for f in ok if f["kind"] == "number_mismatch"], ok
+    bad = _g3_ctx(tmp_path / "b", metrics,
+                  "The losses reach 7.9 across seeds in this configuration.\n")
+    assert len([f for f in bad if f["kind"] == "number_mismatch"]) == 1, bad
+
+
+def test_gap003_r5_cap_overflow_leaves_marker(tmp_path):
+    """B-R5: suppressed unverifiable notes leave one visible marker."""
+    sentences = " ".join(f"The system reaches 0.{10 + i} in trial number {i}."
+                         for i in range(25))
+    findings = _g3_ctx(tmp_path, _FPR_METRICS, sentences + "\n")
+    info = [f for f in findings if f["kind"] == "unverifiable_number"]
+    markers = [f for f in info if f.get("value") is None]
+    assert markers and "suppressed" in markers[0]["note"], info
+    assert len(info) <= 11  # 10 emitted + 1 marker
+
+
+def test_gap003_w1_long_exceptive_markers(tmp_path):
+    """B-W1: 'rather than'/'as opposed to' must disqualify the decoy anchor
+    even though they are longer than 12 chars."""
+    metrics = {"L": {"field": "latency", "mean": 1.0, "n": 3, "group": {}},
+               "N": {"field": "nll", "mean": 5.0, "n": 3, "group": {}}}
+    for i, marker in enumerate(("rather than the", "as opposed to the")):
+        bad = _g3_ctx(tmp_path / f"w{i}", metrics,
+                      f"Latency, {marker} loss, reaches 5.0 in production "
+                      "every day.\n")
+        mm = [f for f in bad if f["kind"] == "number_mismatch"]
+        assert len(mm) == 1 and mm[0]["bound_metrics"] == ["L"], (marker, bad)
+
+
+def test_gap003_w2_result_number_is_never_the_anchor(tmp_path):
+    """B-W2: a RESULT number equal to the design value is not exempted —
+    only the mention ADJACENT to the dimension word is."""
+    bad = _g3_ctx(tmp_path, _FPR_METRICS,
+                  "In every single one of our test configurations at load "
+                  "0.90, the fpr reaches 0.90.\n")
+    mm = [f for f in bad if f["kind"] == "number_mismatch"]
+    assert len(mm) == 1, bad
+    # the adjacent mention still exempts (control)
+    ok = _g3_ctx(tmp_path / "b", _FPR_METRICS,
+                 "The fpr is 0.0201 at 95% load.\n")
+    assert not [f for f in ok if f["kind"] == "number_mismatch"], ok
+    # 'per' as distributive universal
+    bad2 = _g3_ctx(tmp_path / "c", _FPR_METRICS,
+                   "The fpr reaches 0.0201 per load we measured.\n")
+    assert len([f for f in bad2 if f["kind"] == "number_mismatch"]) == 1, bad2
+
+
+def test_gap003_w3_verb_distance_negation(tmp_path):
+    """B-W3: 'does not reach a latency of 5.0' is a true negation, not a
+    contradiction."""
+    metrics = {"L": {"field": "latency", "mean": 1.0, "n": 3, "group": {}}}
+    ok = _g3_ctx(tmp_path, metrics,
+                  "The system does not reach a latency of 5.0 in production.\n")
+    assert not [f for f in ok if f["kind"] == "number_mismatch"], ok
+    # positive control still catches the wrong value
+    bad = _g3_ctx(tmp_path / "b", metrics,
+                  "The system does reach a latency of 5.0 in production.\n")
+    assert len([f for f in bad if f["kind"] == "number_mismatch"]) == 1, bad
+
+
+def test_gap003_x1_result_at_design_point_not_exempt(tmp_path):
+    """B-X1: 'The fpr is 0.90 at 0.90 load.' — the first number is a RESULT,
+    only the '0.90' argument of 'load' is the design mention."""
+    bad = _g3_ctx(tmp_path, _FPR_METRICS,
+                  "The fpr is 0.90 at 0.90 load in our setup.\n")
+    mm = [f for f in bad if f["kind"] == "number_mismatch"]
+    assert len(mm) == 1, bad
+
+
+def test_gap003_x2_false_negation_caught(tmp_path):
+    """B-X2: a negation of the TRUE value is a false claim — evaluate it."""
+    metrics = {"L": {"field": "latency", "mean": 5.0, "n": 3, "group": {}}}
+    bad = _g3_ctx(tmp_path, metrics,
+                  "The system does not reach a latency of 5.0 in production.\n")
+    mm = [f for f in bad if f["kind"] == "number_mismatch"]
+    assert len(mm) == 1, bad
+    # true negation stays clean
+    ok = _g3_ctx(tmp_path / "b",
+                 {"L": {"field": "latency", "mean": 1.0, "n": 3, "group": {}}},
+                 "The system does not reach a latency of 5.0 in production.\n")
+    assert not [f for f in ok if f["kind"] == "number_mismatch"], ok
+
+
+def test_gap003_x3_cap_negation_polarity(tmp_path):
+    """B-X3: 'never exceeds 5.0' claims metric <= 5.0 — violated when the
+    derived value is 9.0, true when it is 1.0."""
+    ok = _g3_ctx(tmp_path,
+                 {"L": {"field": "latency", "mean": 1.0, "n": 3, "group": {}}},
+                 "The latency never exceeds 5.0 in our measurements.\n")
+    assert not [f for f in ok if f["kind"] == "number_mismatch"], ok
+    bad = _g3_ctx(tmp_path / "b",
+                  {"L": {"field": "latency", "mean": 9.0, "n": 3, "group": {}}},
+                  "The latency never exceeds 5.0 in our measurements.\n")
+    assert len([f for f in bad if f["kind"] == "number_mismatch"]) == 1, bad
+
+
+def test_gap003_y1_result_before_at_load_not_exempt(tmp_path):
+    """B-Y1: 'The fpr is 0.90 at load 0.90.' — the predicate number before
+    'at load' is a RESULT, not the design argument."""
+    bad = _g3_ctx(tmp_path, _FPR_METRICS,
+                  "The fpr is 0.90 at load 0.90 in our setup.\n")
+    mm = [f for f in bad if f["kind"] == "number_mismatch"]
+    assert len(mm) == 1, bad
+    # word order with the argument first stays clean
+    ok = _g3_ctx(tmp_path / "b", _FPR_METRICS,
+                 "The fpr at 0.90 load reaches 0.0146 in our setup.\n")
+    assert not [f for f in ok if f["kind"] == "number_mismatch"], ok
+
+
+def test_gap003_y3_positive_polarity_idioms(tmp_path):
+    """B-Y3: 'stays below 5.0' is a floor claim — true for 1.0, violated
+    for 9.0; 'stays above 5.0' mirrors."""
+    ok = _g3_ctx(tmp_path,
+                 {"L": {"field": "latency", "mean": 1.0, "n": 3, "group": {}}},
+                 "The latency stays below 5.0 in all our tests.\n")
+    assert not [f for f in ok if f["kind"] == "number_mismatch"], ok
+    bad = _g3_ctx(tmp_path / "b",
+                  {"L": {"field": "latency", "mean": 9.0, "n": 3, "group": {}}},
+                  "The latency stays below 5.0 in all our tests.\n")
+    assert len([f for f in bad if f["kind"] == "number_mismatch"]) == 1, bad
+    ok2 = _g3_ctx(tmp_path / "c",
+                  {"L": {"field": "latency", "mean": 9.0, "n": 3, "group": {}}},
+                  "The latency stays above 5.0 in all our tests.\n")
+    assert not [f for f in ok2 if f["kind"] == "number_mismatch"], ok2
+    bad2 = _g3_ctx(tmp_path / "d",
+                   {"L": {"field": "latency", "mean": 1.0, "n": 3, "group": {}}},
+                   "The latency stays above 5.0 in all our tests.\n")
+    assert len([f for f in bad2 if f["kind"] == "number_mismatch"]) == 1, bad2

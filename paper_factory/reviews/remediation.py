@@ -107,11 +107,20 @@ def run_remediation(ctx: NodeContext) -> NodeOutcome:
             elif kind == "number_mismatch":
                 d = f.details
                 loc = d.get("draft") or f.affected_section or "?"
+                expected = d.get("expected")
+                if isinstance(expected, dict):
+                    exp_txt = ", ".join(f"{k.split('__')[-1]}={v}"
+                                        for k, v in list(expected.items())[:3])
+                else:
+                    exp_txt = str(expected if expected is not None
+                                  else d.get("true_value", "?"))
+                bound_txt = ", ".join(str(b)[:60] for b in (d.get("bound_metrics") or [])) \
+                    or str(d.get("closest_metric") or "?")
                 f.disposition = Disposition.DEFERRED
                 f.disposition_reason = (
                     f"correcting draft number {d.get('value')} at {loc} requires an "
                     f"allowed writer (U15 forbids auto-editing protected prose); derived "
-                    f"value is {d.get('true_value')} (nearest: {d.get('closest_metric', '?')})")
+                    f"value(s): {exp_txt} (bound: {bound_txt})")
                 entry.update(
                     action="defer",
                     post_condition=f"{loc} no longer asserts {d.get('value')} at that location",
