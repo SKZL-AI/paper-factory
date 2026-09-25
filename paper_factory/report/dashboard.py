@@ -112,8 +112,7 @@ def render_dashboard(workspace_reports: Path | None = None, out: Path | None = N
     else:
         hoh_html = f"<p>{_badge('NOT_RUN')} no live HoH evidence recorded</p>"
 
-    pilot_html = ""
-    if pilot:
+    def _pilot_card(pilot: dict, section: str, title: str) -> str:
         # canonical overall: computed by the same aggregation the CLI uses —
         # the stored field is never a second truth
         p_statuses = pilot.get("statuses") or {}
@@ -139,13 +138,16 @@ def render_dashboard(workspace_reports: Path | None = None, out: Path | None = N
                      f"<table>{p_corr}</table>" if corrections else "")
         notes_html = (f'<h3 style="color:#93c5fd">Status-Erklärungen</h3><table>{p_notes}</table>'
                       if p_notes else "")
-        pilot_html = f"""
-<h2>10 · REAL PILOT 01 — {html.escape(str(pilot.get('project', '')))}</h2>
+        claims_html = (f'<h3 style="color:#93c5fd">Claim-Status</h3><table>{p_claims}</table>'
+                       if p_claims else "")
+        return f"""
+<h2>{section} · {html.escape(title)} — {html.escape(str(pilot.get('project', '')))}</h2>
 <div class="card">
  <p>Modus <code>{html.escape(str(pilot.get('input_mode')))}</code> · run
  <code>{html.escape(str(pilot.get('run_id')))}</code> · overall
  {_badge(p_overall)} · baseline <code>{html.escape(str(pilot.get('baseline_head')))}</code>
  · Tests: {html.escape(str(pilot.get('tests')))}</p>
+ <p class="muted">{html.escape(str(pilot.get('headline', '')))}</p>
  <p class="muted">Closure failed on: {html.escape(str(pilot.get('closure_failed')))}
  · unresolved blocking: {html.escape(str(pilot.get('unresolved_blocking')))}
  · review findings: {html.escape(json.dumps(rf))}</p>
@@ -153,10 +155,20 @@ def render_dashboard(workspace_reports: Path | None = None, out: Path | None = N
  {notes_html}
  <h3 style="color:#93c5fd">Closure U1–U16</h3><table>{p_closure}</table>
  {corr_html}
- <h3 style="color:#93c5fd">Claim-Status (vs. Ground Truth, blind)</h3><table>{p_claims}</table>
+ {claims_html}
  <h3 style="color:#93c5fd">Gaps</h3><table>{p_gaps}</table>
  <h3 style="color:#93c5fd">HUMAN_REQUIRED</h3><table>{p_hr}</table>
 </div>"""
+
+    pilot_html = ""
+    if pilot:
+        pilot_html += _pilot_card(pilot, "10", "REAL PILOT 01")
+    rerun = _load("real_pilot_01_rerun_summary.json")
+    if rerun:
+        pilot_html += _pilot_card(rerun, "11", "REAL PILOT 01 — RE-RUN (post GAP-003/004/005/010/006)")
+    pilot02 = _load("real_pilot_02_summary.json")
+    if pilot02:
+        pilot_html += _pilot_card(pilot02, "12", "REAL PILOT 02 — TSCG-2.0")
 
     doc = f"""<!DOCTYPE html>
 <html lang="de"><head><meta charset="utf-8"><title>PAPER FACTORY — Dashboard</title>
