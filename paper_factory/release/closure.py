@@ -17,7 +17,7 @@ from ..core.util import read_jsonl, sha256_file, utcnow, write_json
 from ..dag.executor import NodeContext, NodeOutcome
 from ..provenance.firewall import is_protected
 from ..provenance.origin import origin_receipts, protected_files
-from ..reviews.framework import load_reviews, unresolved_blocking
+from ..reviews.framework import dedupe_key, load_reviews, unresolved_blocking
 from ..statistics.metrics import expected_macro_entries
 from ..statistics.quantitative import (PFGET_ACCESSOR_LINE, _strip_comments,
                                        find_pfget_uses, find_quantitative,
@@ -378,7 +378,9 @@ def _u5(ctx: NodeContext) -> tuple[str, str]:
         return "NOT_RUN", "no reviews recorded"
     blocking = unresolved_blocking(reviews)
     if blocking:
-        return "FAIL", f"{len(blocking)} unresolved CRITICAL/MAJOR findings"
+        unique = len({dedupe_key(f) for f in blocking})
+        return "FAIL", (f"{len(blocking)} unresolved CRITICAL/MAJOR findings "
+                        f"({unique} unique)")
     return "PASS", f"{len(reviews)} reviews, none blocking"
 
 

@@ -74,6 +74,42 @@ def load_reviews(reviews_dir: Path) -> tuple[list[ReviewReport], list[dict[str, 
     return out, invalid
 
 
+def _canon(v: Any) -> Any:
+    """Hashable canonical form for dedupe identity parts (reviewer A D1):
+    range findings carry value=[lo,hi]; sequences become sorted string tuples."""
+    if isinstance(v, (list, tuple, set)):
+        return tuple(sorted(str(x) for x in v))
+    if isinstance(v, dict):
+        return tuple(sorted((str(k), str(x)) for k, x in v.items()))
+    return v
+
+
+def dedupe_key(f: Finding) -> tuple:
+    """Canonical identity of the UNDERLYING ISSUE (GAP-010): finding type +
+    claim/evidence identity + scientific surface — never the prose string.
+    The same integrity finding folded into P23/P24/P25 shares one key;
+    reviewer roles/provenance are preserved on the Finding objects. Fully
+    unbound findings fall back to a statement hash so distinct issues never
+    collapse (reviewer A D4)."""
+    d = f.details or {}
+    span = d.get("span")
+    identity = (
+        _canon(d.get("value")) if d.get("value") is not None else None,
+        d.get("doi") or d.get("key"),
+        tuple(sorted(f.claim_refs)),
+        tuple(span) if isinstance(span, list) else None,
+        tuple(sorted(str(b) for b in (d.get("bound_metrics") or []))),
+    )
+    if not any(identity):
+        import hashlib
+
+        norm = " ".join(f.statement.lower().split())
+        identity = ("stmt:" + hashlib.sha256(norm.encode()).hexdigest()[:16],)
+    return (f.kind or f.category,
+            f.affected_section or d.get("draft"),
+            identity)
+
+
 def unresolved_blocking(reviews: list[ReviewReport]) -> list[Finding]:
     """CRITICAL/MAJOR findings without a closing disposition block closure.
 

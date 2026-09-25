@@ -21,7 +21,7 @@ from ..core.results import (CLOSED_DISPOSITIONS, ClaimStatus, Disposition, Sever
 from ..core.util import sha256_file, utcnow, write_json
 from ..dag.executor import NodeContext, NodeOutcome
 from ..statistics.quantitative import manuscript_tex_files, normalize_tex
-from .framework import Finding, load_reviews, save_review
+from .framework import Finding, dedupe_key, load_reviews, save_review
 
 
 def compute_freeze_manifest(paper: Path) -> dict[str, str]:
@@ -86,14 +86,63 @@ def run_remediation(ctx: NodeContext) -> NodeOutcome:
     graph = load_claims(claims_path)
     entries: list[dict] = []
     counts = {"resolved": 0, "deferred": 0, "unresolved": 0, "invalid": 0,
-              "not_applicable": 0}
+              "not_applicable": 0, "duplicates": 0}
 
+    # GAP-010: the same underlying issue folded into several reviewer reports
+    # is remediated ONCE; the disposition then propagates to every duplicate
+    # (reviewer roles stay intact on the Finding objects)
+    pending: list[Finding] = []
     for review in reviews:
         for f in review.findings:
             if f.severity not in (Severity.CRITICAL, Severity.MAJOR):
                 continue
             if f.disposition in CLOSED_DISPOSITIONS:
                 continue  # already closed (incl. human AUTHOR_DECISION)
+            pending.append(f)
+
+    # G1 (reviewer B): the anti-forgery excerpt↔statement check runs over ALL
+    # claim-kind findings BEFORE deduplication — a forged duplicate must never
+    # inherit a clean representative's RESOLVED. Missing refs or mismatched
+    # excerpts are INVALID here; missing excerpts stay DEFERRED via the main
+    # path (N1 rule).
+    by_id = graph.by_id()
+    for f in list(pending):
+        kind = f.kind or _classify_legacy(f)
+        if kind not in _CLAIM_KINDS or not f.claim_refs:
+            continue
+        excerpt = " ".join(normalize_tex(str(f.details.get("excerpt") or ""),
+                                         strip_comments=False).split())
+        missing = [c for c in f.claim_refs if c not in by_id]
+        mismatched = []
+        if excerpt:
+            for cid in f.claim_refs:
+                if cid in by_id:
+                    stmt = " ".join(normalize_tex(by_id[cid].statement,
+                                                  strip_comments=False).split())
+                    if excerpt not in stmt and stmt not in excerpt:
+                        mismatched.append(cid)
+        if missing or mismatched:
+            f.disposition = Disposition.INVALID_REMEDIATION_ARTIFACT
+            f.disposition_reason = (f"broken claim binding (missing={missing}, "
+                                    f"excerpt_mismatch={mismatched})")
+            entries.append({"finding_id": f.finding_id, "kind": kind,
+                            "action": "none", "at": utcnow(),
+                            "reviewer_prose_copied": False,
+                            "post_condition": "finding excerpt matches bound claims",
+                            "verification": {"result": "invalid",
+                                             "missing": missing,
+                                             "mismatched": mismatched}})
+            counts["invalid"] += 1
+            pending.remove(f)
+
+    representatives: dict[tuple, Finding] = {}
+    duplicates: list[tuple[tuple, Finding]] = []
+    for f in pending:
+        k = dedupe_key(f)
+        if k in representatives:
+            duplicates.append((k, f))
+        else:
+            representatives[k] = f
             kind = f.kind or _classify_legacy(f)
             entry = {"finding_id": f.finding_id, "kind": kind, "category": f.category,
                      "severity": f.severity.value, "at": utcnow(),
@@ -136,6 +185,17 @@ def run_remediation(ctx: NodeContext) -> NodeOutcome:
                 counts["deferred"] += 1
             entries.append(entry)
 
+    for k, f in duplicates:
+        rep = representatives[k]
+        f.disposition = rep.disposition
+        f.disposition_reason = rep.disposition_reason
+        f.resolved_by = rep.resolved_by
+        entries.append({"finding_id": f.finding_id, "action": "duplicate",
+                        "duplicate_of": rep.finding_id, "at": utcnow(),
+                        "reviewer_prose_copied": False,
+                        "disposition": rep.disposition.value if rep.disposition else None})
+        counts["duplicates"] += 1
+
     if entries:
         for review in reviews:
             save_review(ws.reviews_dir, review)
@@ -162,7 +222,8 @@ def run_remediation(ctx: NodeContext) -> NodeOutcome:
                                  "deferred": counts["deferred"],
                                  "unresolved": counts["unresolved"],
                                  "invalid": counts["invalid"],
-                                 "not_applicable": counts["not_applicable"]})
+                                 "not_applicable": counts["not_applicable"],
+                                 "duplicates": counts["duplicates"]})
 
 
 def _presence_stream(text: str, is_latex: bool = True) -> str:

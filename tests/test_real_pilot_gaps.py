@@ -2684,3 +2684,165 @@ def test_gap003_y3_positive_polarity_idioms(tmp_path):
                    {"L": {"field": "latency", "mean": 1.0, "n": 3, "group": {}}},
                    "The latency stays above 5.0 in all our tests.\n")
     assert len([f for f in bad2 if f["kind"] == "number_mismatch"]) == 1, bad2
+
+
+# ---------------------------------------------------------------------------
+# GAP-010: review finding dedupe — same underlying issue folded into P23/P24/
+# P25 is remediated ONCE, disposition propagated, reviewer roles preserved.
+# GAP-006: JSONL history parsing — journal entries without a 'text' field
+# (note/state/job_id) must yield real previews, not 50 empty strings.
+# ---------------------------------------------------------------------------
+
+from paper_factory.context.mining import run_context_mining
+from paper_factory.reviews.runners import (run_adversarial_review,
+                                           run_methods_review,
+                                           run_statistics_review)
+
+
+def test_gap010_duplicate_findings_remediated_once(tmp_path):
+    """The same number_mismatch folded into three reviewer reports must be
+    remediated once and dispositioned everywhere — not three independent
+    entries with three outcomes."""
+    ctx = _ctx(tmp_path)
+    _g4_claims(ctx)
+    detail = {"draft": "draft/p.tex", "value": 0.021,
+              "bound_metrics": ["M1"], "expected": {"M1": 0.0146}}
+    for rid, reviewer in (("P23-methods", "methods_reviewer"),
+                          ("P24-statistics", "statistics_reviewer"),
+                          ("P25-adversarial", "adversarial_reviewer_2")):
+        save_review(ctx.workspace.reviews_dir, ReviewReport(
+            review_id=rid, reviewer=reviewer,
+            findings=[_g4_finding(f"{rid}-F01", kind="number_mismatch",
+                                  category="methods", details=detail)]))
+    outcome = run_remediation(ctx)
+    log = _json.loads((ctx.workspace.reports_dir / "remediation_log.json").read_text())
+    acted = [e for e in log["entries"] if e.get("action") != "duplicate"]
+    dupes = [e for e in log["entries"] if e.get("action") == "duplicate"]
+    assert len(acted) == 1, log["entries"]
+    assert len(dupes) == 2, log["entries"]
+    reviews, _ = load_reviews(ctx.workspace.reviews_dir)
+    dispositions = {f.finding_id: f.disposition for r in reviews for f in r.findings}
+    assert len(set(dispositions.values())) == 1  # one issue, one outcome
+    assert all(d == Disposition.DEFERRED for d in dispositions.values())
+    # reviewer provenance stays intact
+    assert {r.reviewer for r in reviews} == {"methods_reviewer", "statistics_reviewer",
+                                             "adversarial_reviewer_2"}
+    assert outcome.verdict == Verdict.DEGRADED
+
+
+def test_gap010_different_issues_not_deduped(tmp_path):
+    """Same kind but different scientific surface = different issues."""
+    ctx = _ctx(tmp_path)
+    _g4_claims(ctx)
+    for i, val in enumerate((0.021, 0.033)):
+        _g4_review(ctx, [_g4_finding(f"R-F{i}", kind="number_mismatch",
+                                     category="methods",
+                                     details={"draft": "draft/p.tex", "value": val,
+                                              "bound_metrics": ["M1"],
+                                              "expected": {"M1": 0.01}})],
+                   review_id=f"R{i}")
+    run_remediation(ctx)
+    log = _json.loads((ctx.workspace.reports_dir / "remediation_log.json").read_text())
+    acted = [e for e in log["entries"] if e.get("action") != "duplicate"]
+    assert len(acted) == 2, log["entries"]
+
+
+def test_gap010_u5_counts_unique_issues(tmp_path):
+    """U5's note should surface the unique-issue count, not 3x noise."""
+    ctx = _ctx(tmp_path)
+    detail = {"draft": "draft/p.tex", "value": 0.021, "bound_metrics": ["M1"],
+              "expected": {"M1": 0.0146}}
+    for rid in ("A", "B", "C"):
+        _g4_review(ctx, [_g4_finding(f"{rid}-F01", kind="number_mismatch",
+                                     category="methods", details=detail)],
+                   review_id=rid)
+    state, note = _u5(ctx)
+    assert state == "FAIL"
+    assert "1 unique" in note, note
+
+
+def test_gap006_jsonl_journal_entries_yield_previews(tmp_path):
+    """Pilot repro: R_JOB_STATE_JOURNAL.jsonl — 187 chronology entries, all
+    with empty preview. Journal-shaped lines must render real text."""
+    hist = tmp_path / "history"
+    hist.mkdir()
+    (hist / "journal.jsonl").write_text(
+        '{"job_id": "laneB_idx623", "note": "Registrierung: Lauf vom 2026-08-01, '
+        'MUON_MATRIX_ADAMW_VECTOR bestätigt", "state": "DONE", "ts": "2026-08-06T16:49:44"}\n'
+        '{"job_id": "laneB_idx624", "log": "/var/log/run.log", "state": "RUNNING", '
+        '"ts": "2026-08-06T16:50:01"}\n', encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    ctx.workspace.reports_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.reports_dir / "intake_report.json").write_text(_json.dumps({
+        "inputs": {"chats": [{"path": "history/journal.jsonl"}]}}), encoding="utf-8")
+    outcome = run_context_mining(ctx)
+    summary = _json.loads(
+        (ctx.workspace.context_dir / "context_summary.json").read_text())
+    chron = summary["chronology"]
+    assert len(chron) == 2
+    assert all(c["preview"].strip() for c in chron), chron
+    assert "MUON_MATRIX" in chron[0]["preview"]
+    assert "laneB_idx624" in chron[1]["preview"]  # scalar-field fallback
+    assert outcome.verdict == Verdict.PASS
+
+
+def test_gap010_range_list_value_does_not_crash(tmp_path):
+    """A-D1/D2 (MAJOR): GAP-003 range findings carry value=[lo,hi] — the
+    dedupe key must canonicalize sequences, never TypeError."""
+    ctx = _ctx(tmp_path)
+    _g4_claims(ctx)
+    detail = {"draft": "draft/p.tex", "value": [0.02, 0.03],
+              "bound_metrics": ["M1"], "expected": {"min": 0.01, "max": 0.02}}
+    _g4_review(ctx, [_g4_finding("F01", kind="number_mismatch",
+                                 category="methods", details=detail)])
+    outcome = run_remediation(ctx)  # must not raise TypeError
+    assert outcome.verdict == Verdict.DEGRADED
+    state, _ = _u5(ctx)
+    assert state == "FAIL"  # DEFERRED blocks — no crash, no mask
+
+
+def test_gap010_forged_excerpt_duplicate_not_resolved(tmp_path):
+    """B-G1 (MAJOR): the G6 excerpt check runs over ALL claim findings before
+    dedupe — a forged excerpt in a duplicate must not inherit RESOLVED."""
+    ctx = _ctx(tmp_path)
+    claim_text = "Our method outperforms all baselines by 42%."
+    _g4_claims(ctx, Claim(claim_id="C001", statement=claim_text,
+                          status=ClaimStatus.UNSUPPORTED))
+    # clean representative (alphabetically first review id)
+    _g4_review(ctx, [_g4_finding("F01", kind="unsupported_claim",
+                                 claim_refs=["C001"], category="statistics",
+                                 details={"excerpt": claim_text})],
+               review_id="a_rev")
+    # forged duplicate — same dedupe key, poisoned excerpt
+    _g4_review(ctx, [_g4_finding("F02", kind="unsupported_claim",
+                                 claim_refs=["C001"], category="statistics",
+                                 details={"excerpt": "completely different text"})],
+               review_id="z_rev")
+    outcome = run_remediation(ctx)
+    assert outcome.verdict == Verdict.FAIL  # INVALID propagates to verdict
+    reviews, _ = load_reviews(ctx.workspace.reviews_dir)
+    by_id = {f.finding_id: f for r in reviews for f in r.findings}
+    assert by_id["F02"].disposition == Disposition.INVALID_REMEDIATION_ARTIFACT
+    assert by_id["F01"].disposition == Disposition.RESOLVED  # clean one resolved
+
+
+def test_gap010_unbound_findings_stay_unique_by_statement(tmp_path):
+    """A-D4: two unbound findings with different statements must not collapse
+    into '1 unique' in the U5 note."""
+    ctx = _ctx(tmp_path)
+    for i in range(2):
+        f = _g4_finding(f"F{i}", kind=None, category="methods",
+                        statement=f"distinct issue number {i} with no binding")
+        _g4_review(ctx, [f], review_id=f"R{i}")
+    state, note = _u5(ctx)
+    assert state == "FAIL"
+    assert "2 unique" in note, note
+
+
+def test_gap006_preview_fallback_never_lifts_secret_keys(tmp_path):
+    """A-D7: the scalar-field fallback must not render token/secret-like keys."""
+    from paper_factory.context.mining import _message_text
+    out = _message_text({"job_id": "J-42", "state": "failed",
+                         "token": "sk-abc123-secret", "api_key": "xyz"})
+    assert "sk-abc123-secret" not in out and "xyz" not in out
+    assert "J-42" in out and "failed" in out

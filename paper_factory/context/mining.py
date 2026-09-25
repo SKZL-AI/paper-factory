@@ -37,6 +37,30 @@ def _read_jsonl_messages(path: Path) -> list[dict[str, Any]]:
     return msgs
 
 
+_TEXT_KEYS = ("text", "content", "message", "note", "summary", "title", "body")
+_SENSITIVE_KEY = re.compile(
+    r"token|secret|password|api[_-]?key|credential|auth|cookie|session", re.I)
+
+
+def _message_text(m: dict[str, Any]) -> str:
+    """Best-effort visible text of a JSONL record. Chat messages carry
+    text/content/message; research journals carry note/summary; job-state
+    lines (GAP-006: R_JOB_STATE_JOURNAL) carry neither — fall back to a
+    compact rendering of their short scalar fields instead of an empty
+    preview."""
+    for k in _TEXT_KEYS:
+        v = m.get(k)
+        if isinstance(v, str) and v.strip():
+            return v
+    parts = []
+    for k, v in m.items():
+        if k in ("ts", "timestamp") or _SENSITIVE_KEY.search(str(k)):
+            continue  # reviewer A D7: never lift credential-shaped keys
+        if isinstance(v, (str, int, float, bool)) and len(str(v)) <= 80:
+            parts.append(f"{k}={v}")
+    return "; ".join(parts)
+
+
 def _read_text_messages(path: Path) -> list[dict[str, Any]]:
     text = path.read_text(encoding="utf-8", errors="replace")
     return [{"role": "document", "text": chunk} for chunk in re.split(r"\n\s*\n", text) if chunk.strip()]
@@ -76,7 +100,7 @@ def run_context_mining(ctx: NodeContext) -> NodeOutcome:
         src = {"path": rel, "sha256": sha256_file(path), "messages": len(msgs)}
         extracted["sources"].append(src)
         for m in msgs:
-            text = str(m.get("text", ""))
+            text = _message_text(m)
             ts = m.get("ts") or m.get("timestamp")
             if ts:
                 extracted["chronology"].append({"ts": ts, "source": rel,
