@@ -2846,3 +2846,54 @@ def test_gap006_preview_fallback_never_lifts_secret_keys(tmp_path):
                          "token": "sk-abc123-secret", "api_key": "xyz"})
     assert "sk-abc123-secret" not in out and "xyz" not in out
     assert "J-42" in out and "failed" in out
+
+
+# ---------------------------------------------------------------------------
+# GAP-2 (real pilot 2): DEGRADED metrics/tables nodes still emit VALID empty
+# generated/*.tex — the scaffold references them unconditionally; venue
+# compliance must fail for principled reasons (no bib), never 'file not found'
+# ---------------------------------------------------------------------------
+
+from paper_factory.manuscript.scaffold import run_manuscript_architecture
+from paper_factory.release.closure import _generated_policy
+from paper_factory.tables.build import run_table_generation
+from paper_factory.venue.compliance import run_venue_compliance
+
+
+def test_gap2_degraded_statistics_emits_valid_empty_numbers_tex(tmp_path):
+    ctx = _ctx(tmp_path)  # no results/ directory
+    outcome = run_statistics(ctx)
+    assert outcome.verdict == Verdict.DEGRADED
+    numbers = ctx.workspace.paper_dir / "generated" / "numbers.tex"
+    assert numbers.exists()
+    text = numbers.read_text(encoding="utf-8")
+    assert "empty by design" in text
+    from paper_factory.statistics.quantitative import PFGET_ACCESSOR_LINE
+    assert PFGET_ACCESSOR_LINE in text
+    violations, defs = _generated_policy(ctx.workspace.paper_dir)
+    assert not violations, violations
+    assert defs == {}, "empty numbers.tex must define zero pf@ macros"
+
+
+def test_gap2_degraded_tables_emit_valid_empty_tables_tex(tmp_path):
+    ctx = _ctx(tmp_path)  # no plan, no metrics
+    outcome = run_table_generation(ctx)
+    assert outcome.verdict == Verdict.DEGRADED
+    tables = ctx.workspace.paper_dir / "generated" / "tables.tex"
+    assert tables.exists()
+    assert "empty by design" in tables.read_text(encoding="utf-8")
+
+
+def test_gap2_manuscript_compiles_with_empty_generated(tmp_path):
+    """The pilot-2 failure mode is gone: scaffold + empty generated files must
+    compile; bib_exists may still fail — that one is principled."""
+    ctx = _ctx(tmp_path)
+    run_statistics(ctx)          # DEGRADED → empty numbers.tex
+    run_table_generation(ctx)    # DEGRADED → empty tables.tex
+    run_manuscript_architecture(ctx)
+    outcome = run_venue_compliance(ctx)
+    report = _json.loads(
+        (ctx.workspace.reports_dir / "venue_compliance.json").read_text())
+    assert report["checks"]["compiles"]["pass"], report["checks"]["compiles"]
+    assert "bib_exists" in report["failed"]  # honest, principled failure
+    assert outcome.verdict == Verdict.FAIL  # still FAIL — but for the real reason
