@@ -44,8 +44,10 @@ Jeder Eintrag: Befund · Herkunft · Severity · geplante Richtung.
 
 ## System / Environment
 
-- Fehlende Systempakete (HUMAN_REQUIRED, sudo): `texlive-latex-extra`,
-  `graphviz`, `qpdf`, `poppler-utils` — P32/P33 degradieren ehrlich.
+- ~~Fehlende Systempakete (HUMAN_REQUIRED, sudo)~~ — ERLEDIGT 2026-09-30:
+  `texlive-latex-extra` (war schon da), `graphviz`, `qpdf`, `poppler-utils`
+  installiert; doctor meldet pdflatex/xelatex/dot/qpdf/pdftotext = present.
+  Einzig `latexmk` fehlt noch (optional — export.py hat pdflatex-Fallback).
 - 1 Test ehrlich umgebungsbedingt NOT_RUN (`tests/test_e2e_synthetic.py:302`,
   HoH-Receipt-Verzeichnis nicht auf dieser Maschine).
 - Paperpal: manuelle Outbox/Inbox-Bridge (kein offizielles API/MCP) — P31 ist
