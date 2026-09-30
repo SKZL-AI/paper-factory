@@ -1,12 +1,17 @@
 """P09 Statistics: derive paper metrics from raw artifacts, never hand-typed.
 
-Chain: raw (results/*.csv) → normalized → analysis → paper_metrics.json →
+Chain: raw (results|runs|data|fixtures/*.csv|*.tsv|*.sqlite + config
+inputs.paths — GAP-012) → normalized → analysis → paper_metrics.json →
 LaTeX macros (paper/generated/numbers.tex). Also computes the statistical
 audit facts (n, std, CI, missing data) that reviews and closure rely on.
+SQLite stores are never mutated: plain stores open mode=ro+immutable; a store
+with a live WAL/journal is read via a private tempdir copy (a stale snapshot
+from immutable=1 would silently misreport committed data).
 """
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import math
 import re
@@ -79,7 +84,6 @@ def macro_base_names(keys: list[str]) -> dict[str, str]:
     by_base: dict[str, list[str]] = {}
     for k in keys:
         by_base.setdefault(sanitize(k), []).append(k)
-    import hashlib
     for base, ks in by_base.items():
         if len(ks) == 1:
             bases[ks[0]] = base
@@ -121,9 +125,9 @@ def expected_macro_entries(metrics: dict[str, Any]) -> dict[str, str]:
     return entries
 
 
-def _load_csv(path: Path) -> tuple[list[str], list[dict[str, str]], list[str]]:
+def _load_csv(path: Path, delimiter: str = ",") -> tuple[list[str], list[dict[str, str]], list[str]]:
     with open(path, newline="", encoding="utf-8-sig") as fh:  # -sig strips BOM (reviewer F5)
-        reader = csv.DictReader(fh)
+        reader = csv.DictReader(fh, delimiter=delimiter)
         raw_fields = list(reader.fieldnames or [])
         stripped = [f.strip() for f in raw_fields]
         warnings = []
@@ -144,22 +148,208 @@ def k_is_str(row: dict) -> bool:
     return all(isinstance(k, str) for k in row)
 
 
+# GAP-012 (real pilot 2): metrics are not results/-conventional. Data lives in
+# runs/, data/, fixtures/ and in SQLite stores — discover all of it, read-only,
+# with the same classification pipeline as CSV.
+_DATA_DIRS = ("results", "runs", "data", "fixtures")
+_SQLITE_EXT = {".sqlite", ".db", ".sqlite3"}
+_SQLITE_ROW_CAP = 200_000
+
+
+def _within(path: Path, root: Path) -> bool:
+    return path == root or root in path.parents
+
+
+def _data_source_files(root: Path, extra_paths: list[str]) -> tuple[list[tuple[str, Path]],
+                                                                      list[dict]]:
+    """Discover data sources under the conventional dirs + config paths.
+    Configured paths are scope-guarded (reviewer A-D4 / B-D2): absolute paths,
+    '..' escapes and symlinks whose RESOLVED target leaves target_root are
+    rejected with a visible exclusion, never read. Discovery itself never
+    returns a file that resolves outside the root."""
+    resolved_root = root.resolve()
+    dirs = [d for d in _DATA_DIRS if (root / d).is_dir()]
+    exclusions: list[dict] = []
+    for p in extra_paths:
+        cand = Path(p)
+        if cand.is_absolute() or ".." in cand.parts:
+            exclusions.append({"inputs_path": p,
+                               "reason": "absolute or escaping path — rejected "
+                                         "(scope guard)"})
+            continue
+        if not (root / p).is_dir():
+            exclusions.append({"inputs_path": p, "reason": "not a directory"})
+            continue
+        if not _within((root / p).resolve(), resolved_root):
+            exclusions.append({"inputs_path": p,
+                               "reason": "symlink escapes target root — rejected "
+                                         "(scope guard)"})
+            continue
+        dirs.append(p)
+    out: list[tuple[str, Path]] = []
+    seen_ingested: set[Path] = set()   # overlapping configured dirs ('.') never double-read
+    seen_excluded: set[Path] = set()   # exclusion noise dedupe (B-F2)
+    for d in dict.fromkeys(dirs):
+        for p in sorted((root / d).rglob("*")):
+            rel = p.relative_to(root).as_posix()
+            if p.is_symlink():
+                if not _within(p.resolve(), resolved_root):
+                    exclusions.append({"source": rel,
+                                       "reason": "symlink escapes target root — "
+                                                 "rejected (scope guard)"})
+                # symlinked directories are not traversed by rglob — make that
+                # visible instead of silently skipping a whole data tree (A-N2);
+                # same visibility for in-root symlinked FILES (A-R3 NIT)
+                elif p.is_dir():
+                    exclusions.append({"source": rel,
+                                       "reason": "symlinked directory not traversed "
+                                                 "(in-root target) — explicit, not silent"})
+                else:
+                    exclusions.append({"source": rel,
+                                       "reason": "symlinked file not read "
+                                                 "(in-root target) — explicit, not silent"})
+                continue
+            if not p.is_file():
+                continue
+            rp = p.resolve()
+            # two dedupe tiers (A-R4-F2): seen_excluded silences repeat
+            # exclusions for the same file; seen_ingested only marks files
+            # that ACTUALLY became sources — a file first met via an excluded
+            # (hidden/escaping) path must still be ingestible via a later,
+            # admissible configured alias instead of vanishing silently.
+            if rp in seen_ingested:
+                continue
+            if not _within(rp, resolved_root):
+                if rp not in seen_excluded:
+                    seen_excluded.add(rp)
+                    exclusions.append({"source": rel,
+                                       "reason": "resolves outside target root — "
+                                                 "rejected (scope guard)"})
+                continue
+            # hidden/tooling trees are never research data (B-D1 MAJOR): with
+            # inputs.paths=['.'] the workspace state store .paper-factory/
+            # (runs.sqlite bookkeeping!) would otherwise be ingested as
+            # 'evidence' — self-referential provenance. Same for .git/.venv.
+            if any(part.startswith(".") for part in p.relative_to(root).parts):
+                if rp not in seen_excluded:
+                    seen_excluded.add(rp)
+                    exclusions.append({"source": rel,
+                                       "reason": "hidden/tooling path (e.g. .paper-factory "
+                                                 "state, .git) — not a data source"})
+                continue
+            seen_ingested.add(rp)
+            suf = p.suffix.lower()
+            if suf in (".csv", ".tsv"):
+                out.append(("csv", p))
+            elif suf in _SQLITE_EXT:
+                out.append(("sqlite", p))
+    return out, exclusions
+
+
+def _read_sqlite_tables(con):
+    """Per-table extraction as string rows for the shared classification
+    pipeline. Identifier-quoted (embedded '"' escaped); row cap is visible
+    per table."""
+    try:
+        tables = sorted(r[0] for r in con.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' "
+            "AND name NOT LIKE 'sqlite_%'"))
+        for t in tables:
+            qname = '"' + t.replace('"', '""') + '"'
+            cols = [c[1] for c in con.execute(f'PRAGMA table_info({qname})')]
+            n = con.execute(f'SELECT COUNT(*) FROM {qname}').fetchone()[0]
+            rows_raw = con.execute(f'SELECT * FROM {qname} LIMIT {_SQLITE_ROW_CAP}').fetchall()
+            rows = [dict(zip(cols, [("" if v is None else str(v)) for v in r]))
+                    for r in rows_raw]
+            warnings = []
+            if n > _SQLITE_ROW_CAP:
+                warnings.append(f"table {t} truncated to {_SQLITE_ROW_CAP} of {n} rows")
+            yield f"{t}", cols, rows, warnings
+    finally:
+        con.close()
+
+
+def _load_sqlite(path: Path):
+    """Read-only per-table extraction. Never mutates the database and never
+    creates WAL/SHM sidecars next to it (reviewer A-D3 / B-D3):
+
+    * no sidecars  -> mode=ro&immutable=1 directly on the original;
+    * -wal/-journal present -> immutable=1 would IGNORE the write-ahead log
+      and serve a STALE snapshot, so the DB plus its sidecars is copied to a
+      private tempdir and the copy (which may checkpoint freely) is read.
+      The original bytes are never opened for write."""
+    import shutil
+    import sqlite3
+    import tempfile
+
+    has_journal = any(path.with_name(path.name + suf).exists()
+                      for suf in ("-wal", "-journal"))
+    if not has_journal:
+        yield from _read_sqlite_tables(
+            sqlite3.connect(f"file:{path}?mode=ro&immutable=1", uri=True))
+        return
+    with tempfile.TemporaryDirectory(prefix="pf-sqlite-") as td:
+        copy = Path(td) / path.name
+        shutil.copy2(path, copy)
+        for suf in ("-wal", "-shm", "-journal"):
+            side = path.with_name(path.name + suf)
+            if side.exists():
+                shutil.copy2(side, copy.with_name(copy.name + suf))
+        yield from _read_sqlite_tables(sqlite3.connect(str(copy)))
+
+
+def _stem_for(path: Path, root: Path) -> str:
+    """Metric-key stem from the relative POSIX path (never the bare name —
+    reviewer A-D1/B-D1: results/x.csv vs runs/x.csv; reviewer A-N1: the
+    mapping must be INJECTIVE, so '/' stays literal — results/a/b.csv and
+    results/a__b.csv keep distinct stems. The macro layer sanitizes and
+    hash-suffixes collisions on its own.)"""
+    return path.relative_to(root).as_posix().rsplit(".", 1)[0]
+
+
+def _hash_source(path: Path) -> tuple[str, str | None]:
+    """Pin the source. When a live WAL/journal exists, the metrics are read
+    from a private replayed copy — so the digest must cover main file AND
+    journal bytes, or hash and content can disagree (reviewer A-N4).
+    Known residual (B-F3, accepted): the copy is read at discovery time and
+    the digest computed at emission time; a live writer active BETWEEN the
+    two can still drift hash vs. content. Offline pipelines have no live
+    writer; any drift surfaces downstream as U7 drift, never as silent
+    green."""
+    sides = [s for s in ("-wal", "-journal", "-shm")
+             if path.with_name(path.name + s).exists()]
+    if not sides:
+        return sha256_file(path), None
+    import hashlib
+    h = hashlib.sha256()
+    for f in (path, *(path.with_name(path.name + s) for s in sides)):
+        h.update(f.read_bytes())
+    return (h.hexdigest(),
+            "digest covers main file + " + "+".join(sides) +
+            " (live journal replayed via private copy)")
+
+
 def run_statistics(ctx: NodeContext) -> NodeOutcome:
     root = ctx.workspace.target_root
-    results_dir = root / "results"
-    if not results_dir.is_dir():
+    sources, path_exclusions = _data_source_files(root, list(ctx.config.inputs.paths))
+    if not sources:
         _write_empty_numbers_tex(ctx.workspace.paper_dir / "generated")
         # audit trail parity with the populated path (reviewer A-F1): persist
         # the DEGRADED diagnosis as an artifact, not only as node status
         write_json(ctx.workspace.reports_dir / "paper_metrics.json",
                    {"computed_at": utcnow(), "sources": {}, "metrics": {},
-                    "audit": {"degraded": "no results/ directory"}})
-        return NodeOutcome(Verdict.DEGRADED, {"reason": "no results/ directory — no metrics derivable"})
+                    "audit": {"degraded": "no data sources discovered "
+                                          "(results/runs/data/fixtures + config inputs.paths)",
+                              "exclusions": path_exclusions}})
+        return NodeOutcome(Verdict.DEGRADED, {"reason": "no data sources discovered "
+                                                        "(results/runs/data/fixtures + config inputs.paths)"})
 
     metrics: dict[str, Any] = {"computed_at": utcnow(), "sources": {}, "metrics": {},
                                "audit": {"missing_cells": 0, "missing_group_keys": 0,
                                          "exclusions": [], "classification": {},
                                          "small_samples": [], "randomization": "recorded_in_source",
+                                         "caps": {"sqlite_row_cap": _SQLITE_ROW_CAP,
+                                                  "csv": "uncapped"},  # D5: no silent truncation
                                          "grouping": "grouped by detected design columns "
                                                      "(see classification); single global group "
                                                      "when none are present"}}
@@ -168,10 +358,45 @@ def run_statistics(ctx: NodeContext) -> NodeOutcome:
                     PFGET_ACCESSOR_LINE,
                     "\\makeatother"]
 
-    for csv_path in sorted(results_dir.glob("*.csv")):
-        fields, rows, warnings = _load_csv(csv_path)
-        src_key = str(csv_path.relative_to(root))
-        metrics["sources"][src_key] = {"sha256": sha256_file(csv_path), "rows": len(rows)}
+    work_items: list[tuple[str, str, list[str], list[dict[str, str]], list[str]]] = []
+    for kind, path in sources:
+        rel = str(path.relative_to(root))
+        try:  # a corrupt source degrades to a visible exclusion, never a crash
+            if kind == "csv":
+                fields, rows, warnings = _load_csv(
+                    path, delimiter="\t" if path.suffix.lower() == ".tsv" else ",")
+                work_items.append((rel, _stem_for(path, root), fields, rows, warnings))
+            else:  # sqlite: one work item per table, provenance pinned to the file
+                had_table = False
+                for table, fields, rows, warnings in _load_sqlite(path):
+                    had_table = True
+                    work_items.append((f"{rel}::{table}", f"{_stem_for(path, root)}__{table}",
+                                       fields, rows, warnings))
+                if not had_table:
+                    # A-N3: a table-less store must leave an audit trace
+                    path_exclusions.append({"source": rel,
+                                            "reason": "no user tables in SQLite store"})
+        except Exception as exc:
+            path_exclusions.append({"source": rel,
+                                    "reason": f"unreadable: {type(exc).__name__}: {exc}"})
+
+    # scope/rejection and per-source failure exclusions reach the persisted
+    # audit in the populated branch too (reviewer A-D2/B-D2): nothing is
+    # silently dropped, regardless of whether metrics were derivable.
+    metrics["audit"]["exclusions"].extend(path_exclusions)
+
+    file_hashes: dict[str, tuple[str, str | None]] = {}  # hash each file once (reviewer B-N1)
+    collided: set[str] = set()  # base keys already disambiguated (B-F1)
+
+    for src_key, stem, fields, rows, warnings in work_items:
+        src_file = src_key.split("::")[0]
+        if src_file not in file_hashes:
+            file_hashes[src_file] = _hash_source(root / src_file)
+        digest, digest_note = file_hashes[src_file]
+        src_entry: dict[str, Any] = {"sha256": digest, "rows": len(rows)}
+        if digest_note:
+            src_entry["note"] = digest_note
+        metrics["sources"][src_key] = src_entry
         for w in warnings:
             metrics["audit"]["exclusions"].append({"source": src_key, "reason": w})
         # numeric = at least one parseable value and every non-missing cell parses;
@@ -298,7 +523,28 @@ def run_statistics(ctx: NodeContext) -> NodeOutcome:
                 if not vals:
                     continue
                 stat = _mean_ci(vals)
-                key = f"{csv_path.stem}__{f}" + (f"__{gname}" if gname else "")
+                key = f"{stem}__{f}" + (f"__{gname}" if gname else "")
+                if key in collided or key in metrics["metrics"]:
+                    # B-F1 (MAJOR): the key space {stem}__{field} is not
+                    # injective — results/x__a.csv:b and results/x.csv:a__b
+                    # collide. Never last-write-wins: EVERY participant of a
+                    # collided base key (incl. late arrivals — A-R4-F1/B-R4-NIT)
+                    # gets a deterministic source-hash suffix, visibly.
+                    base = key
+                    if base in metrics["metrics"]:
+                        old = metrics["metrics"].pop(base)
+                        old_key = f"{base}__src{hashlib.sha256(str(old['source']).encode()).hexdigest()[:6]}"
+                        while old_key in metrics["metrics"]:
+                            old_key += "x"  # pathological: stay unique
+                        metrics["metrics"][old_key] = old
+                    collided.add(base)
+                    key = f"{base}__src{hashlib.sha256(src_key.encode()).hexdigest()[:6]}"
+                    while key in metrics["metrics"]:
+                        key += "x"
+                    metrics["audit"]["exclusions"].append({
+                        "source": src_key,
+                        "reason": f"metric-key collision disambiguated: "
+                                  f"'{base}' now source-suffixed"})
                 metrics["metrics"][key] = {"source": src_key, "field": f,
                                            "group": dict(zip(group_cols, disp)), **stat}
                 if stat.get("small_sample"):

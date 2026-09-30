@@ -45,3 +45,23 @@ Subagenten). Konflikte löst die globale Regel zuerst, dann diese Datei.
   `~/.agents/rules/subagent-brief.md` steht trotzdem wörtlich in jedem Brief.
 - Max. 2 Subagenten parallel pro Strang; Berichte werden stichprobenartig
   selbst gegengeprüft.
+
+## Speicher-Disziplin (User-Anweisung 2026-09-30, nach ENOSPC-Vorfall)
+
+Die Ubuntu-Systemplatte (`/`) darf nicht wieder volllaufen. Trennung:
+
+- **Ubuntu (`/home/sai/paper-factory`):** Repo, Reports, Dashboards, State-JSONs,
+  Pilot-Workspaces (`.paper-factory/`), kleine Fixtures — alles, was das eigentliche
+  Ergebnis ist.
+- **Extern (`/mnt/e/paper-factory-archive/`):** alles Sperrige/Redundante, das
+  VeriHarness/HoH und die Archiv-statt-Löschen-Regel sonst auf `/` aufblähen:
+  - `pilot-sources/` — große Source-Snapshots für Piloten (>50 MB Rohdaten)
+  - `hoh-runs/` — PF-eigene HoH-Run-Bäume, Arenas, Receipt-Massen
+  - `scratch/` — große Scratch-Verzeichnisse
+  - `arenas/` — HoH-Arena-Kopien
+- Fremde `~/...-runs/`-Bäume (VeriHarness-Entwicklungssession) bleiben unangetastet —
+  sie gehören der parallelen Claude-Session.
+- Archiv-statt-Löschen gilt unverändert; das **Archiv selbst** liegt bei Bulk auf E:
+  (verschieben statt auf `/` zu behalten). Reports/Reports-Hashes verweisen dann auf
+  den E:-Pfad.
+- Vor jedem großen Lauf: `df -h /` prüfen; bei <20G frei erst auslagern.

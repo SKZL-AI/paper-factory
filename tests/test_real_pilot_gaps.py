@@ -2897,3 +2897,444 @@ def test_gap2_manuscript_compiles_with_empty_generated(tmp_path):
     assert report["checks"]["compiles"]["pass"], report["checks"]["compiles"]
     assert "bib_exists" in report["failed"]  # honest, principled failure
     assert outcome.verdict == Verdict.FAIL  # still FAIL — but for the real reason
+
+
+# ---------------------------------------------------------------------------
+# GAP-012 (real pilot 2): metric discovery is not results/-conventional —
+# runs/, data/, fixtures/, config inputs.paths and SQLite tables all feed the
+# same classification pipeline, read-only.
+# ---------------------------------------------------------------------------
+
+def test_gap012_runs_dir_csv_discovered(tmp_path):
+    """Pilot-2 shape: metrics live in runs/, not results/."""
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    (runs / "experiment.csv").write_text(
+        "arm,cell,nll\n" + "".join(f"a{i%2},c{i%2},{4.5 + i * 0.1:.4f}\n"
+                                   for i in range(6)), encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    outcome = run_statistics(ctx)
+    assert outcome.verdict == Verdict.PASS, outcome.detail
+    metrics = _json.loads(
+        (ctx.workspace.reports_dir / "paper_metrics.json").read_text())["metrics"]
+    assert metrics, "runs/ CSV must produce metrics"
+    assert any("runs/experiment.csv" in v["source"] for v in metrics.values())
+
+
+def test_gap012_sqlite_tables_as_metric_source(tmp_path):
+    """baseline.sqlite (pilot 2) shape: read-only per-table ingestion."""
+    import sqlite3
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    db = runs / "baseline.sqlite"
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE call_counts (scope TEXT, model TEXT, n_calls REAL)")
+    con.executemany("INSERT INTO call_counts VALUES (?,?,?)",
+                    [("a", "m1", 100 + i) for i in range(4)]
+                    + [("b", "m1", 200 + i) for i in range(4)])
+    con.commit()
+    con.close()
+    before = db.read_bytes()
+    ctx = _ctx(tmp_path)
+    outcome = run_statistics(ctx)
+    assert outcome.verdict == Verdict.PASS, outcome.detail
+    assert db.read_bytes() == before, "read-only: the DB must be untouched"
+    metrics = _json.loads(
+        (ctx.workspace.reports_dir / "paper_metrics.json").read_text())["metrics"]
+    keys = list(metrics)
+    assert any("baseline__call_counts__n_calls" in k for k in keys), keys
+    # grouped by the repeating text columns (scope, model)
+    means = sorted(round(v["mean"], 1) for v in metrics.values())
+    assert 101.5 in means and 201.5 in means, means
+
+
+def test_gap012_no_sources_still_degraded(tmp_path):
+    ctx = _ctx(tmp_path)  # nothing at all
+    outcome = run_statistics(ctx)
+    assert outcome.verdict == Verdict.DEGRADED
+    assert "no data sources" in outcome.detail["reason"]
+    assert (ctx.workspace.paper_dir / "generated" / "numbers.tex").exists()
+
+
+def test_gap012_config_inputs_paths_discovered(tmp_path):
+    """config inputs.paths extends the discovery set."""
+    extra = tmp_path / "measurements"
+    extra.mkdir()
+    (extra / "m.csv").write_text("seed,score\n1,0.5\n2,0.7\n3,0.6\n",
+                                 encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    ctx.config.inputs.paths = ["measurements"]
+    outcome = run_statistics(ctx)
+    assert outcome.verdict == Verdict.PASS
+    metrics = _json.loads(
+        (ctx.workspace.reports_dir / "paper_metrics.json").read_text())["metrics"]
+    assert any("measurements/m.csv" in v["source"] for v in metrics.values())
+
+
+# ---------------------------------------------------------------------------
+# GAP-012 review round 1 (reviewer A D1-D5 / reviewer B D1-D3): scope guard,
+# stem collision, WAL safety, corrupt-source resilience, audit transparency
+# ---------------------------------------------------------------------------
+
+import sqlite3 as _sqlite3
+
+
+def _audit(ctx):
+    return _json.loads(
+        (ctx.workspace.reports_dir / "paper_metrics.json").read_text())["audit"]
+
+
+def test_gap012_d1_same_filename_in_results_and_runs_both_kept(tmp_path):
+    """D1: results/x.csv and runs/x.csv must never shadow each other."""
+    (tmp_path / "results").mkdir()
+    (tmp_path / "runs").mkdir()
+    (tmp_path / "results" / "x.csv").write_text(
+        "seed,score\n1,0.1\n2,0.2\n3,0.15\n", encoding="utf-8")
+    (tmp_path / "runs" / "x.csv").write_text(
+        "seed,score\n1,0.8\n2,0.9\n3,0.85\n", encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    outcome = run_statistics(ctx)
+    assert outcome.verdict == Verdict.PASS, outcome.detail
+    data = _json.loads((ctx.workspace.reports_dir / "paper_metrics.json").read_text())
+    sources = {m["source"] for m in data["metrics"].values()}
+    assert sources == {"results/x.csv", "runs/x.csv"}, sources
+    means = sorted(round(m["mean"], 2) for m in data["metrics"].values())
+    assert means == [0.15, 0.85], means  # neither lost, each correctly bound
+
+
+def test_gap012_d2_inputs_paths_escape_rejected(tmp_path):
+    """D2: absolute and ../-escaping config paths are excluded, never read."""
+    outside = tmp_path.parent / "outside_gap012"
+    outside.mkdir(exist_ok=True)
+    (outside / "leak.csv").write_text("seed,score\n1,9.9\n2,9.9\n", encoding="utf-8")
+    (tmp_path / "results").mkdir()
+    (tmp_path / "results" / "ok.csv").write_text(
+        "seed,score\n1,0.5\n2,0.7\n3,0.6\n", encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    ctx.config.inputs.paths = ["../outside_gap012", str(outside), "missing_dir"]
+    outcome = run_statistics(ctx)
+    assert outcome.verdict == Verdict.PASS, outcome.detail  # no crash
+    data = _json.loads((ctx.workspace.reports_dir / "paper_metrics.json").read_text())
+    sources = {m["source"] for m in data["metrics"].values()}
+    assert sources == {"results/ok.csv"}, sources
+    excl = _json.dumps(data["audit"]["exclusions"])
+    assert "../outside_gap012" in excl and str(outside) in excl
+    assert "missing_dir" in excl
+
+
+def test_gap012_d2_symlinked_inputs_dir_escape_rejected(tmp_path):
+    """D2b: an in-root symlink whose target is outside is rejected."""
+    outside = tmp_path.parent / "outside_gap012_symlink"
+    outside.mkdir(exist_ok=True)
+    (outside / "leak.csv").write_text("seed,score\n1,9.9\n2,9.8\n", encoding="utf-8")
+    (tmp_path / "alias").symlink_to(outside, target_is_directory=True)
+    ctx = _ctx(tmp_path)
+    ctx.config.inputs.paths = ["alias"]
+    outcome = run_statistics(ctx)
+    assert outcome.verdict == Verdict.DEGRADED  # nothing admissible left
+    excl = _json.dumps(_audit(ctx)["exclusions"])
+    assert "symlink escapes target root" in excl
+
+
+def test_gap012_d2_symlinked_subdir_file_never_read(tmp_path):
+    """D2c: discovery never returns a file resolving outside the root, even
+    when reached through a symlinked subdirectory of a conventional dir."""
+    outside = tmp_path.parent / "outside_gap012_sub"
+    outside.mkdir(exist_ok=True)
+    (outside / "leak.csv").write_text("seed,score\n1,9.9\n2,9.8\n", encoding="utf-8")
+    (tmp_path / "results").mkdir()
+    (tmp_path / "results" / "link").symlink_to(outside, target_is_directory=True)
+    (tmp_path / "results" / "ok.csv").write_text(
+        "seed,score\n1,0.5\n2,0.7\n3,0.6\n", encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    outcome = run_statistics(ctx)
+    assert outcome.verdict == Verdict.PASS, outcome.detail
+    data = _json.loads((ctx.workspace.reports_dir / "paper_metrics.json").read_text())
+    assert {m["source"] for m in data["metrics"].values()} == {"results/ok.csv"}
+
+
+def test_gap012_d3_wal_db_reads_committed_state_without_sidecars(tmp_path):
+    """D3: a WAL-mode DB with uncheckpointed commits must yield the CURRENT
+    committed state — and PF must leave the original file + sidecars exactly
+    as found (no checkpoint of the original, no new files)."""
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    db = runs / "live.sqlite"
+    con = _sqlite3.connect(db)
+    con.execute("PRAGMA journal_mode=WAL")
+    con.execute("CREATE TABLE t (grp TEXT, val REAL)")
+    con.executemany("INSERT INTO t VALUES ('a', ?)", [(float(i),) for i in range(3)])
+    con.commit()
+    # keep the WAL hot: an open second connection prevents auto-checkpoint
+    hold = _sqlite3.connect(db)
+    hold.execute("BEGIN")
+    hold.execute("SELECT count(*) FROM t").fetchone()
+    assert (runs / "live.sqlite-wal").exists()
+    before = {p.name: p.read_bytes() for p in runs.iterdir()}
+    ctx = _ctx(tmp_path)
+    outcome = run_statistics(ctx)
+    assert outcome.verdict == Verdict.PASS, outcome.detail
+    data = _json.loads((ctx.workspace.reports_dir / "paper_metrics.json").read_text())
+    assert any(m["field"] == "val" and m["n"] == 3 for m in data["metrics"].values()), \
+        "committed WAL rows must be visible"
+    after = {p.name: p.read_bytes() for p in runs.iterdir()}
+    hold.rollback()
+    hold.close()
+    con.close()
+    assert set(after) == set(before), "PF must not create sidecars"
+    assert after == before, "PF must not modify the original DB or its WAL"
+
+
+def test_gap012_d4_corrupt_sqlite_only_is_honest_degraded(tmp_path):
+    """A corrupt SQLite file must not crash P09: exclusion + DEGRADED."""
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    (runs / "broken.sqlite").write_bytes(b"this is not a sqlite database at all")
+    ctx = _ctx(tmp_path)
+    outcome = run_statistics(ctx)
+    assert outcome.verdict == Verdict.DEGRADED, outcome.detail
+    excl = _json.dumps(_audit(ctx)["exclusions"])
+    assert "broken.sqlite" in excl and "unreadable" in excl
+
+
+def test_gap012_d4_mixed_corrupt_and_valid_keeps_valid_metrics(tmp_path):
+    """Corrupt + valid sources: valid metrics survive, exclusion stays visible."""
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    (runs / "broken.db").write_bytes(b"garbage-not-sqlite")
+    (tmp_path / "results").mkdir()
+    (tmp_path / "results" / "ok.csv").write_text(
+        "seed,score\n1,0.5\n2,0.7\n3,0.6\n", encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    outcome = run_statistics(ctx)
+    assert outcome.verdict == Verdict.PASS, outcome.detail
+    data = _json.loads((ctx.workspace.reports_dir / "paper_metrics.json").read_text())
+    assert any(m["source"] == "results/ok.csv" for m in data["metrics"].values())
+    excl = _json.dumps(data["audit"]["exclusions"])
+    assert "broken.db" in excl and "unreadable" in excl
+
+
+def test_gap012_d4_weird_table_name_quoted(tmp_path):
+    """Table names with quotes/spaces are handled via identifier quoting."""
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    db = runs / "weird.sqlite"
+    con = _sqlite3.connect(db)
+    con.execute('CREATE TABLE "weird ""table"" name" (grp TEXT, val REAL)')
+    con.executemany('INSERT INTO "weird ""table"" name" VALUES (?,?)',
+                    [("a", 0.5), ("a", 0.7), ("b", 0.9)])
+    con.commit()
+    con.close()
+    ctx = _ctx(tmp_path)
+    outcome = run_statistics(ctx)
+    assert outcome.verdict == Verdict.PASS, outcome.detail
+    data = _json.loads((ctx.workspace.reports_dir / "paper_metrics.json").read_text())
+    assert any("weird" in m["source"] for m in data["metrics"].values())
+
+
+def test_gap012_d5_caps_visible_in_audit(tmp_path):
+    """D5: truncation policy is audit-visible, never silent."""
+    outcome, data = _stats(tmp_path, "seed,score\n1,0.5\n2,0.7\n3,0.6\n")
+    assert outcome.verdict == Verdict.PASS
+    assert data["audit"]["caps"]["sqlite_row_cap"] == 200_000
+    assert data["audit"]["caps"]["csv"] == "uncapped"
+
+
+# ---------------------------------------------------------------------------
+# GAP-012 review round 2 (B-D1 workspace self-ingestion, A-N1..N4)
+# ---------------------------------------------------------------------------
+
+def test_gap012_b_d1_dot_inputs_path_never_ingests_workspace_state(tmp_path):
+    """B-D1 (MAJOR): inputs.paths=['.'] must not read .paper-factory/runs.sqlite
+    (the pipeline's own bookkeeping) as a data source — self-referential
+    provenance. Other data still flows."""
+    state_db = tmp_path / ".paper-factory"
+    state_db.mkdir()
+    con = _sqlite3.connect(state_db / "runs.sqlite")
+    con.execute("CREATE TABLE nodes (node_id TEXT, attempts REAL)")
+    con.executemany("INSERT INTO nodes VALUES (?,?)",
+                    [("P00", 1.0), ("P00", 2.0), ("P01", 1.0)])
+    con.commit()
+    con.close()
+    (tmp_path / "results").mkdir()
+    (tmp_path / "results" / "ok.csv").write_text(
+        "seed,score\n1,0.5\n2,0.7\n3,0.6\n", encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    ctx.config.inputs.paths = ["."]
+    outcome = run_statistics(ctx)
+    assert outcome.verdict == Verdict.PASS, outcome.detail
+    data = _json.loads((ctx.workspace.reports_dir / "paper_metrics.json").read_text())
+    assert not any(".paper-factory" in s for s in data["sources"]), data["sources"]
+    assert {m["source"] for m in data["metrics"].values()} == {"results/ok.csv"}
+    excl = _json.dumps(data["audit"]["exclusions"])
+    assert "runs.sqlite" in excl  # visible, not silent
+
+
+def test_gap012_a_n1_stem_mapping_is_injective(tmp_path):
+    """A-N1: results/a__b.csv and results/a/b.csv must both survive."""
+    (tmp_path / "results" / "a").mkdir(parents=True)
+    (tmp_path / "results" / "a__b.csv").write_text(
+        "seed,score\n1,1.0\n2,1.2\n3,1.1\n", encoding="utf-8")
+    (tmp_path / "results" / "a" / "b.csv").write_text(
+        "seed,score\n1,5.0\n2,5.2\n3,5.1\n", encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    outcome = run_statistics(ctx)
+    assert outcome.verdict == Verdict.PASS, outcome.detail
+    data = _json.loads((ctx.workspace.reports_dir / "paper_metrics.json").read_text())
+    means = sorted(round(m["mean"], 1) for m in data["metrics"].values())
+    assert means == [1.1, 5.1], means  # no last-write-wins loss
+    keys = list(data["metrics"])
+    assert any(k.startswith("results/a__b__") for k in keys), keys
+    assert any(k.startswith("results/a/b__") for k in keys), keys
+
+
+def test_gap012_a_n2_symlinked_dir_escape_is_visible(tmp_path):
+    """A-N2: a symlinked data dir inside results/ is never traversed AND the
+    exclusion is audit-visible (previously: silently absent)."""
+    outside = tmp_path.parent / "outside_gap012_n2"
+    outside.mkdir(exist_ok=True)
+    (outside / "leak.csv").write_text("seed,score\n1,9.9\n2,9.8\n", encoding="utf-8")
+    (tmp_path / "results").mkdir(exist_ok=True)
+    (tmp_path / "results" / "linkdir").symlink_to(outside, target_is_directory=True)
+    (tmp_path / "results" / "ok.csv").write_text(
+        "seed,score\n1,0.5\n2,0.7\n3,0.6\n", encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    outcome = run_statistics(ctx)
+    assert outcome.verdict == Verdict.PASS, outcome.detail
+    data = _json.loads((ctx.workspace.reports_dir / "paper_metrics.json").read_text())
+    assert {m["source"] for m in data["metrics"].values()} == {"results/ok.csv"}
+    excl = _json.dumps(data["audit"]["exclusions"])
+    assert "linkdir" in excl  # escape or not-traversed: visible either way
+
+
+def test_gap012_a_n3_tableless_sqlite_is_visible(tmp_path):
+    """A-N3: an empty SQLite store leaves an audit trace."""
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    _sqlite3.connect(runs / "empty.db").close()
+    ctx = _ctx(tmp_path)
+    outcome = run_statistics(ctx)
+    assert outcome.verdict == Verdict.DEGRADED
+    excl = _json.dumps(_audit(ctx)["exclusions"])
+    assert "empty.db" in excl and "no user tables" in excl
+
+
+def test_gap012_a_n4_wal_digest_covers_journal(tmp_path):
+    """A-N4: with a live WAL, the source digest covers db+wal (the bytes the
+    metrics were actually derived from), and says so."""
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    db = runs / "live.sqlite"
+    con = _sqlite3.connect(db)
+    con.execute("PRAGMA journal_mode=WAL")
+    con.execute("CREATE TABLE t (grp TEXT, val REAL)")
+    con.executemany("INSERT INTO t VALUES ('a', ?)", [(float(i),) for i in range(3)])
+    con.commit()
+    hold = _sqlite3.connect(db)  # keep the WAL hot
+    hold.execute("BEGIN")
+    hold.execute("SELECT count(*) FROM t").fetchone()
+    ctx = _ctx(tmp_path)
+    try:
+        outcome = run_statistics(ctx)
+        assert outcome.verdict == Verdict.PASS, outcome.detail
+        data = _json.loads(
+            (ctx.workspace.reports_dir / "paper_metrics.json").read_text())
+        src = data["sources"]["runs/live.sqlite::t"]
+        assert "note" in src and "-wal" in src["note"], src
+        assert src["sha256"] != __import__("hashlib").sha256(
+            db.read_bytes()).hexdigest(), "digest must cover more than the main file"
+    finally:
+        hold.rollback()
+        hold.close()
+        con.close()
+
+
+# ---------------------------------------------------------------------------
+# GAP-012 review round 3 (B-F1 field-level key collision, B-F2 dedupe order)
+# ---------------------------------------------------------------------------
+
+def test_gap012_b_f1_field_level_key_collision_keeps_both(tmp_path):
+    """B-F1 (MAJOR): results/x__a.csv with column 'b' and results/x.csv with
+    column 'a__b' both map to key results/x__a__b — no silent shadowing:
+    both metrics survive with source-suffixed keys, visibly audited."""
+    (tmp_path / "results").mkdir()
+    (tmp_path / "results" / "x__a.csv").write_text(
+        "seed,b\n1,1.4\n2,1.5\n3,1.6\n", encoding="utf-8")
+    (tmp_path / "results" / "x.csv").write_text(
+        "seed,a__b\n1,9.8\n2,9.85\n3,9.9\n", encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    outcome = run_statistics(ctx)
+    assert outcome.verdict == Verdict.PASS, outcome.detail
+    data = _json.loads((ctx.workspace.reports_dir / "paper_metrics.json").read_text())
+    means = sorted(round(m["mean"], 2) for m in data["metrics"].values())
+    assert means == [1.5, 9.85], means  # BOTH survive
+    sources = sorted(m["source"] for m in data["metrics"].values())
+    assert sources == ["results/x.csv", "results/x__a.csv"], sources
+    assert any("collision disambiguated" in str(e.get("reason", ""))
+               for e in data["audit"]["exclusions"])
+
+
+def test_gap012_b_f2_overlapping_dirs_no_double_exclusion(tmp_path):
+    """B-F2: a hidden file reached via results/ AND '.' is excluded once."""
+    (tmp_path / "results" / ".cache").mkdir(parents=True)
+    (tmp_path / "results" / ".cache" / "h.csv").write_text(
+        "seed,score\n1,0.5\n2,0.7\n3,0.6\n", encoding="utf-8")
+    (tmp_path / "results" / "ok.csv").write_text(
+        "seed,score\n1,0.5\n2,0.7\n3,0.6\n", encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    ctx.config.inputs.paths = ["."]
+    outcome = run_statistics(ctx)
+    assert outcome.verdict == Verdict.PASS, outcome.detail
+    audit = _audit(ctx)
+    hits = [e for e in audit["exclusions"] if ".cache" in str(e.get("source", ""))]
+    assert len(hits) == 1, hits
+
+
+# ---------------------------------------------------------------------------
+# GAP-012 review round 4 (A-F2 dedupe order trap, A-F1/B-NIT triple collision)
+# ---------------------------------------------------------------------------
+
+def test_gap012_a_f2_excluded_first_alias_later_still_ingests(tmp_path):
+    """A-R4-F2 (MINOR): a file first seen via an excluded hidden path must
+    still be ingestible via a later admissible configured alias — never
+    silently dropped by early dedupe."""
+    (tmp_path / "results" / ".hid").mkdir(parents=True)
+    real = tmp_path / "results" / ".hid" / "real.csv"
+    real.write_text("seed,score\n1,0.5\n2,0.7\n3,0.6\n", encoding="utf-8")
+    # the reviewer scenario: an in-root symlinked DIRECTORY alias to the
+    # hidden dir, configured explicitly via inputs.paths
+    (tmp_path / "alias").symlink_to(tmp_path / "results" / ".hid",
+                                    target_is_directory=True)
+    ctx = _ctx(tmp_path)
+    ctx.config.inputs.paths = ["alias"]
+    outcome = run_statistics(ctx)
+    data = _json.loads((ctx.workspace.reports_dir / "paper_metrics.json").read_text())
+    # the hidden-path discovery is excluded and visible; the configured alias
+    # is admissible (in-root target) and its content reaches the metrics
+    assert outcome.verdict == Verdict.PASS, (outcome.detail, data["sources"])
+    assert any("alias/real.csv" == s or s.endswith("alias/real.csv")
+               for s in data["sources"]), data["sources"]
+
+
+def test_gap012_triple_collision_all_suffixed(tmp_path):
+    """A-F1/B-NIT: three sources on one base key — ALL get source suffixes,
+    no bare keeper pretending to be canonical."""
+    (tmp_path / "results").mkdir()
+    (tmp_path / "results" / "a.csv").write_text(
+        "seed,b__c\n1,1.0\n2,1.2\n3,1.1\n", encoding="utf-8")
+    (tmp_path / "results" / "a__b.csv").write_text(
+        "seed,c\n1,5.0\n2,5.2\n3,5.1\n", encoding="utf-8")
+    db = tmp_path / "results" / "a.sqlite"
+    con = _sqlite3.connect(db)
+    con.execute("CREATE TABLE b (seed REAL, c REAL)")
+    con.executemany("INSERT INTO b VALUES (?,?)", [(1, 9.8), (2, 9.85), (3, 9.9)])
+    con.commit()
+    con.close()
+    ctx = _ctx(tmp_path)
+    outcome = run_statistics(ctx)
+    assert outcome.verdict == Verdict.PASS, outcome.detail
+    data = _json.loads((ctx.workspace.reports_dir / "paper_metrics.json").read_text())
+    means = sorted(round(m["mean"], 2) for m in data["metrics"].values())
+    assert means == [1.1, 5.1, 9.85], means  # all three survive
+    bare = [k for k in data["metrics"] if "__src" not in k]
+    assert bare == [], bare  # no canonical-looking bare keeper
