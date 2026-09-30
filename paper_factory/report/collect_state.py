@@ -3,7 +3,6 @@ policy report. Each adapter is probed via doctor() only (no quota spend).
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from ..core.config import default_config_dir, load_config

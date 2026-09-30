@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 import re
-from pathlib import Path
 
 from ..core.results import Severity, Verdict
 from ..core.util import utcnow
@@ -123,7 +122,7 @@ def run_language_review(ctx: NodeContext) -> NodeOutcome:
     issues = []
     for tex in sorted(paper.rglob("*.tex")):
         text = tex.read_text(encoding="utf-8", errors="replace")
-        for m in re.finditer(r"\b(very|really|obviously|clearly|simply)\b", text, re.I):
+        for m in re.finditer(r"\b(very|really|obviously|clearly|simply)\b", text, re.IGNORECASE):
             issues.append({"file": str(tex.relative_to(paper)), "word": m.group(0),
                            "note": "weasel word"})
     report = ReviewReport(review_id="P29-language", reviewer="language_reviewer",

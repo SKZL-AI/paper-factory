@@ -14,11 +14,11 @@ from ..core.util import sha256_file, utcnow, write_json
 from ..dag.executor import NodeContext, NodeOutcome
 
 KEY_PATTERNS = {
-    "hypotheses": re.compile(r"\b(hypothes[ie]s|vermutung|we hypothesize|annahme)\b", re.I),
-    "decisions": re.compile(r"\b(decid|entscheid|beschlossen|we will|festgelegt)\b", re.I),
-    "failed_experiments": re.compile(r"\b(fail|fehlgeschlag|did not work|nicht funktioniert|negative result)\b", re.I),
-    "successful_experiments": re.compile(r"\b(success|erfolg|worked|bestätigt|confirmed)\b", re.I),
-    "open_questions": re.compile(r"\b(open question|offene frage|todo|unklar|unclear|\?)\s*$", re.I | re.M),
+    "hypotheses": re.compile(r"\b(hypothes[ie]s|vermutung|we hypothesize|annahme)\b", re.IGNORECASE),
+    "decisions": re.compile(r"\b(decid|entscheid|beschlossen|we will|festgelegt)\b", re.IGNORECASE),
+    "failed_experiments": re.compile(r"\b(fail|fehlgeschlag|did not work|nicht funktioniert|negative result)\b", re.IGNORECASE),
+    "successful_experiments": re.compile(r"\b(success|erfolg|worked|bestätigt|confirmed)\b", re.IGNORECASE),
+    "open_questions": re.compile(r"\b(open question|offene frage|todo|unklar|unclear|\?)\s*$", re.IGNORECASE | re.MULTILINE),
 }
 
 
@@ -39,7 +39,7 @@ def _read_jsonl_messages(path: Path) -> list[dict[str, Any]]:
 
 _TEXT_KEYS = ("text", "content", "message", "note", "summary", "title", "body")
 _SENSITIVE_KEY = re.compile(
-    r"token|secret|password|api[_-]?key|credential|auth|cookie|session", re.I)
+    r"token|secret|password|api[_-]?key|credential|auth|cookie|session", re.IGNORECASE)
 
 
 def _message_text(m: dict[str, Any]) -> str:

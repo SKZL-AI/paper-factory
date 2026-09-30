@@ -7,7 +7,6 @@ VERIFIED, PARTIAL, CONTRADICTED, UNSUPPORTED, RETIRED.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
@@ -27,7 +26,7 @@ class Claim(BaseModel):
     source: str | None = None  # draft path(+section) the claim was extracted from
 
     @model_validator(mode="after")
-    def _check_linkage(self) -> "Claim":
+    def _check_linkage(self) -> Claim:
         if self.status == ClaimStatus.VERIFIED and not self.evidence and self.type == "empirical":
             raise ValueError(f"{self.claim_id}: VERIFIED empirical claim without evidence linkage")
         return self

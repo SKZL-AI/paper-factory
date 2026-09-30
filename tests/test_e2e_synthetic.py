@@ -11,8 +11,6 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
-import sys
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -147,13 +145,12 @@ def test_08_altered_number_caught(full_run):
 # 9: MAJOR finding blocks closure ----------------------------------------------
 
 def test_09_major_finding_blocks_closure(full_run, tmp_path):
-    import importlib
 
         # rebuild a context pointing at the finished workspace
     from paper_factory.core.config import load_config
     from paper_factory.dag.executor import NodeContext
     from paper_factory.release.closure import run_global_closure
-    from paper_factory.reviews.framework import (Finding, ReviewReport, save_review)
+    from paper_factory.reviews.framework import Finding, ReviewReport, save_review
     from paper_factory.state.store import Workspace
 
     ws = Workspace(full_run["proj"])
@@ -203,8 +200,12 @@ def test_11_alternative_provider_resume():
 def test_12_same_family_review_marked_degraded():
     """Force a single-family provider world: the adversarial review must be
     marked DEGRADED_INDEPENDENCE, never silently 'independent'."""
-    from paper_factory.core.config import (ProvidersConfig, ProviderEntry,
-                                           ProviderPolicyConfig, MarkingRegistry)
+    from paper_factory.core.config import (
+        MarkingRegistry,
+        ProviderEntry,
+        ProviderPolicyConfig,
+        ProvidersConfig,
+    )
     from paper_factory.providers.router import ProviderRouter
 
     prov = ProvidersConfig(providers={

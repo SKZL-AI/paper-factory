@@ -8,7 +8,6 @@ import json
 import re
 import urllib.parse
 import urllib.request
-from pathlib import Path
 from typing import Any
 
 from ..core.results import Verdict
@@ -68,7 +67,7 @@ _GENERIC_WORDS = {"project", "main", "repo", "work", "code", "src", "home",
 # "(Is All You Need)" stay (reviewer B: the paren may BE the content)
 _TAG_PAREN = re.compile(
     r"\s*\((?:[^()]*(?:pilot|rev(?:ision)?|version|v\d|draft|pf|20\d\d)[^()]*)\)",
-    re.I)
+    re.IGNORECASE)
 
 
 def _strip_tag_parens(title: str) -> str:
@@ -111,14 +110,14 @@ def derive_queries(ctx: NodeContext) -> list[str]:
         out: list[str] = []
         for draft in sorted(root.glob("draft/*.md")) + sorted(root.glob("draft/*.tex")):
             text = draft.read_text(encoding="utf-8", errors="replace")
-            m = re.search(r"^#\s+(.+)$", text, re.M)
+            m = re.search(r"^#\s+(.+)$", text, re.MULTILINE)
             if m:
                 out.append(_clean_title(m.group(1)))
             # line-anchored with mandatory colon (A-F1): prose mentioning
             # 'keywords' mid-sentence is not a keyword line
             for kw in re.findall(
                     r"^\s*(?:keywords?|Schlüsselwörter)\s*:\s*(.+)$",
-                    text, re.I | re.M):
+                    text, re.IGNORECASE | re.MULTILINE):
                 out.append(kw.strip())
         return out
 
@@ -127,7 +126,7 @@ def derive_queries(ctx: NodeContext) -> list[str]:
         if not readme.exists():
             return []
         m = re.search(r"^#\s+(.+)$",
-                      readme.read_text(encoding="utf-8", errors="replace"), re.M)
+                      readme.read_text(encoding="utf-8", errors="replace"), re.MULTILINE)
         return [_clean_title(m.group(1))] if m else []
 
     def _stage_config() -> list[str]:

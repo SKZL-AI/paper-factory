@@ -15,8 +15,12 @@ from pathlib import Path
 
 import pytest
 
-from paper_factory.core.config import (MarkingRegistry, PaperFactoryConfig,
-                                       ProviderPolicyConfig, ProvidersConfig)
+from paper_factory.core.config import (
+    MarkingRegistry,
+    PaperFactoryConfig,
+    ProviderPolicyConfig,
+    ProvidersConfig,
+)
 from paper_factory.core.results import Verdict
 from paper_factory.core.util import read_json, sha256_file, write_json
 from paper_factory.dag.executor import NodeContext

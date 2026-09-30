@@ -10,8 +10,13 @@ from __future__ import annotations
 from ..core.results import Verdict
 from ..core.util import utcnow, write_json
 from ..dag.executor import NodeContext, NodeOutcome
-from .quantitative import (_RE_DECIMAL, find_quantitative, is_claim_section,
-                           manuscript_tex_files, normalize_tex)
+from .quantitative import (
+    _RE_DECIMAL,
+    find_quantitative,
+    is_claim_section,
+    manuscript_tex_files,
+    normalize_tex,
+)
 
 
 def run_numbers_units_audit(ctx: NodeContext) -> NodeOutcome:

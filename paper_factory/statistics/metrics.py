@@ -525,7 +525,7 @@ def run_statistics(ctx: NodeContext) -> NodeOutcome:
             display.setdefault(nk, tuple(disp))
 
         for gkey, grows in sorted(groups.items(), key=lambda kv: tuple(
-                (str(x) for x in kv[0]))):
+                str(x) for x in kv[0])):
             disp = display[gkey]
             gname = "__".join(f"{c}{v}" for c, v in zip(group_cols, disp) if v)
             for f in outcome_fields:
@@ -609,24 +609,24 @@ def _try_float(s: str) -> bool:
 # layout zones are not prose: grid environments, markdown tables, column specs
 _GRID_ENV = re.compile(
     r"\\begin\{(?:tabular|tabularx|longtable|array|supertabular)\*?\}.*?"
-    r"\\end\{(?:tabular|tabularx|longtable|array|supertabular)\*?\}", re.S)
+    r"\\end\{(?:tabular|tabularx|longtable|array|supertabular)\*?\}", re.DOTALL)
 _MD_TABLE_ROW = re.compile(r"(?m)^\s*\|.*\|\s*$")
 _LAYOUT_DIM = re.compile(r"\b\d+(?:\.\d+)?\s*\\(?:linewidth|textwidth|columnwidth"
                          r"|paperwidth|pt|mm|cm|em|ex)\b")
-_RATIO_PAT = re.compile(r"\b(\d+(?:\.\d+)?)\s*(?:x\b|-\s*fold\b)", re.I)
+_RATIO_PAT = re.compile(r"\b(\d+(?:\.\d+)?)\s*(?:x\b|-\s*fold\b)", re.IGNORECASE)
 _COUNT_PAT = re.compile(
     r"\b\d+\s*/\s*\d+\b"                                     # 9/9 cells
     r"|\b[nN]\s*=\s*\d+\b"                                   # n = 18
     r"|\b\d+\s*(?:seeds|runs|cells|configs|configurations|universes|tokens|"
-    r"experiments|baselines|models|arms|iterations|epochs)\b", re.I)
+    r"experiments|baselines|models|arms|iterations|epochs)\b", re.IGNORECASE)
 _DEC_PAT = re.compile(r"\b\d+\.\d+\b(?!\s*%)")               # 0.021 (1+ decimals; % handled by _PCT_PAT)
 _PCT_PAT = re.compile(r"\b\d+(?:\.\d+)?\s*%")
 _SEMANTIC_SKIP = re.compile(
     r"\b(within|window|threshold|froze|frozen|tolerance|budget"
-    r"|approximately|approx\.?|roughly)\b", re.I)
+    r"|approximately|approx\.?|roughly)\b", re.IGNORECASE)
 _RESULT_CUE = re.compile(
     r"\b(achiev|reach|improv|outperform|faster|slower|significant|lower|higher|"
-    r"reduc|gain|win|better|beat)", re.I)
+    r"reduc|gain|win|better|beat)", re.IGNORECASE)
 
 # field-name aliases for context binding (word-boundary matched, case-insensitive)
 _FIELD_ALIASES: dict[str, tuple[str, ...]] = {
@@ -649,37 +649,37 @@ _FIELD_DIM_TOKENS = {"ratio", "factor", "fold", "diff", "rate", "score", "mean",
 # metrics whose field signals derived semantics (diff/ratio/contrast/…)
 _COMPARATIVE = re.compile(
     r"\b(?:worse|better|higher|lower|faster|slower|more|less)\s+than\b"
-    r"|\bdiffer(?:ence|ences|s|ent)?\b|\bminus\b|\bcontrasts?\b|\bspread\b", re.I)
+    r"|\bdiffer(?:ence|ences|s|ent)?\b|\bminus\b|\bcontrasts?\b|\bspread\b", re.IGNORECASE)
 _DIFF_FIELD = re.compile(r"diff|minus|delta|ratio|factor|fold|contrast|change|"
-                         r"drop|gain|spread", re.I)
+                         r"drop|gain|spread", re.IGNORECASE)
 # exceptive/negation markers directly before an anchor disqualify it
 # (reviewer B R1): "Latency, unlike the loss, reaches 5.0" — the number still
 # belongs to latency. 'while'/'but' are NOT exceptive: neutral clauses.
 _EXCEPTIVE = re.compile(
     r"\b(?:unlike|not|never|rather\s+than|instead\s+of|as\s+opposed\s+to|"
-    r"versus|vs\.?|except)\b", re.I)
+    r"versus|vs\.?|except)\b", re.IGNORECASE)
 # window before an anchor mention, sized for the longest marker + article
 _EXCEPTIVE_ANCHOR_WINDOW = 20
 # universal quantifier near a dimension word ('at every load', 'per load')
 # disables the point-anchor exemption and demands the value hold for EVERY
 # bound group (reviewer B R2)
-_UNIVERSAL = re.compile(r"\b(?:every|each|all|any|per)\b", re.I)
+_UNIVERSAL = re.compile(r"\b(?:every|each|all|any|per)\b", re.IGNORECASE)
 # number-negation must reach verb-distance: 'does not reach a latency of 5.0'
 # negates the whole assertion (reviewer B W3/X4: stems, no trailing boundary).
 # The negation itself is then EVALUATED against the bound metrics — never
 # silently skipped (X2: 'does not reach 5.0' with latency=5.0 is a false claim).
 _NEGATION_VERB = re.compile(
     r"\b(?:not|never|n't)\b[^.;?!]{0,28}?\b(?:reach|is|was|were|be|become|"
-    r"remain|stand|lie|stay|fall|drop|rise|improve|get|exceed|surpass|top|climb)", re.I)
+    r"remain|stand|lie|stay|fall|drop|rise|improve|get|exceed|surpass|top|climb)", re.IGNORECASE)
 # cap/floor polarity inside a negated claim (X3): 'never exceeds C' claims
 # metric ≤ C; 'never below C' claims metric ≥ C
 _CAP_WORDS = re.compile(r"\b(?:exceed|surpass|above|over|top|higher\s+than|"
-                        r"greater\s+than|more\s+than)", re.I)
+                        r"greater\s+than|more\s+than)", re.IGNORECASE)
 _FLOOR_WORDS = re.compile(r"\b(?:below|under|less\s+than|fewer\s+than|"
-                          r"lower\s+than)", re.I)
+                          r"lower\s+than)", re.IGNORECASE)
 _RANGE_PAT = re.compile(
     r"\bbetween\s+(\d+(?:\.\d+)?)\s+and\s+(\d+(?:\.\d+)?)\b"
-    r"|\b(\d+(?:\.\d+)?)\s*(?:to|–|—)\s*(\d+(?:\.\d+)?)\b", re.I)
+    r"|\b(\d+(?:\.\d+)?)\s*(?:to|–|—)\s*(\d+(?:\.\d+)?)\b", re.IGNORECASE)
 
 
 _UNVERIFIABLE_CAP = 10  # per draft — reviewer B S5: visibility must not flood
@@ -815,7 +815,7 @@ def run_integrity_audit(ctx: NodeContext) -> NodeOutcome:
     drafts = sorted(root.glob("draft/*.md")) + sorted(root.glob("draft/*.tex"))
 
     sig_pat = re.compile(r"(p\s*[<≤=]\s*0?\.\d+|statistically significant|significant\b)",
-                         re.I)
+                         re.IGNORECASE)
 
     metrics: dict[str, Any] = {}
     true_values: dict[str, float] = {}

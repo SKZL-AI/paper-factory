@@ -8,22 +8,27 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from ..claims.graph import load_claims
 from ..core.results import ClaimStatus, Verdict
 from ..core.util import read_jsonl, sha256_file, utcnow, write_json
 from ..dag.executor import NodeContext, NodeOutcome
-from ..provenance.firewall import is_protected
 from ..provenance.origin import origin_receipts, protected_files
 from ..reviews.framework import dedupe_key, load_reviews, unresolved_blocking
 from ..statistics.metrics import expected_macro_entries
-from ..statistics.quantitative import (PFGET_ACCESSOR_LINE, _strip_comments,
-                                       find_pfget_uses, find_pfget_uses_with_spans,
-                                       find_quantitative,
-                                       is_claim_section, manuscript_tex_files,
-                                       normalize_tex)
+from ..statistics.quantitative import (
+    PFGET_ACCESSOR_LINE,
+    _strip_comments,
+    find_pfget_uses,
+    find_pfget_uses_with_spans,
+    find_quantitative,
+    is_claim_section,
+    manuscript_tex_files,
+    normalize_tex,
+)
 
 Check = Callable[[NodeContext], tuple[str, str]]  # → (state, note)
 
@@ -31,7 +36,7 @@ Check = Callable[[NodeContext], tuple[str, str]]  # → (state, note)
 # a claim about THIS run's macro (GAP-011 R3, reviewer A v4b). Real citation
 # markers only — generic discourse markers ('following the', 'protocol of')
 # are an evasion vehicle (reviewer B W2).
-_REF_CUE = re.compile(r"\\cite|\bet\s+al\.|prior work", re.I)
+_REF_CUE = re.compile(r"\\cite|\bet\s+al\.|prior work", re.IGNORECASE)
 
 
 def _u1(ctx: NodeContext) -> tuple[str, str]:
@@ -222,9 +227,12 @@ def _labelless_macro_uses(paper: Path, metrics: dict[str, Any]) -> tuple[list[st
     binder): the field whose mention sits CLOSEST to the macro use must be
     the macro's own field (ties allowed). A field that is merely present
     somewhere in the window does not label the macro."""
-    from ..statistics.metrics import (_FIELD_ALIASES, _FIELD_DIM_TOKENS,
-                                      _alias_hit, _num_scale_match,
-                                      macro_base_names)
+    from ..statistics.metrics import (
+        _FIELD_ALIASES,
+        _FIELD_DIM_TOKENS,
+        _num_scale_match,
+        macro_base_names,
+    )
 
     bases = macro_base_names(list(metrics.keys()))
     macro_field: dict[str, str | None] = {}   # original case (CamelCase split)
@@ -758,7 +766,7 @@ def _u7(ctx: NodeContext) -> tuple[str, str]:
     """Code/data commits match manifests: re-hash the evidence artifacts and
     compare against the intake ledger; verification-grade nodes must carry
     receipts when HoH ran."""
-    from ..core.util import read_jsonl, sha256_file
+    from ..core.util import sha256_file
 
     ws = ctx.workspace
     ledger = ws.evidence_dir / "evidence_ledger.jsonl"

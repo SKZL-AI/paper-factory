@@ -8,9 +8,14 @@ import sys
 from pathlib import Path
 
 from ..core.config import default_config_dir, load_config
-from ..core.util import utcnow, write_json
-from ..dag.executor import (EXIT_INCOMPLETE, Executor, NodeContext,
-                            exit_code_for_overall, run_status_overall)
+from ..core.util import utcnow
+from ..dag.executor import (
+    EXIT_INCOMPLETE,
+    Executor,
+    NodeContext,
+    exit_code_for_overall,
+    run_status_overall,
+)
 from ..dag.handlers import build_handlers
 from ..state.store import Workspace
 

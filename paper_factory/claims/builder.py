@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import json
 import re
-from pathlib import Path
 from typing import Any
 
 from ..core.results import ClaimStatus, Verdict
@@ -17,7 +16,7 @@ from .graph import Claim, ClaimGraph, save_claims
 CLAIM_CUE = re.compile(
     r"([^.]*\b(?:faster|slower|speedup|latency|throughput|improve[sd]?|outperform|"
     r"reduc(?:es|ed)|significant|achieves?|reaches?|reaching|lower|higher)\b[^.]*\.)",
-    re.I)
+    re.IGNORECASE)
 NUM = re.compile(r"\b\d+(?:\.\d+)?%?\b")
 
 # claim text keyword → required metric field hints. If no metric field matches,
@@ -38,7 +37,7 @@ REQUIRED_METRIC_HINTS = {
 _STRUCT_CMD = re.compile(
     r"\\(?:hypertarget|(?:sub)*section|begin|end|toprule|midrule|"
     r"bottomrule|noalign|linewidth|input|include|import|documentclass)\b")
-_HEADING_MD = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*$", re.M)
+_HEADING_MD = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*$", re.MULTILINE)
 _HEADING_TEX = re.compile(r"\\(?:sub)*section(?:\[[^]]*\])?\s*\{([^}]*)\}")
 
 
@@ -86,10 +85,10 @@ def _clean_for_extraction(text: str) -> str:
     while prev != text:
         prev = text
         text = re.sub(r"\\begin\{(?:table|figure)\*?\}(.*?)\\end\{(?:table|figure)\*?\}",
-                      lambda m: "\n" + m.group(1) + "\n", text, flags=re.S)
+                      lambda m: "\n" + m.group(1) + "\n", text, flags=re.DOTALL)
     text = re.sub(r"\\begin\{(?:tabular|tabularx|array|equation|align)\*?\}.*?"
                   r"\\end\{(?:tabular|tabularx|array|equation|align)\*?\}",
-                  "\n", text, flags=re.S)
+                  "\n", text, flags=re.DOTALL)
     # lists: keep item prose, drop scaffolding
     text = re.sub(r"\\(?:begin|end)\{(?:itemize|enumerate|description)\*?\}", "\n", text)
     text = re.sub(r"\\item\b(?:\[[^]]*\])?", "\n", text)
@@ -108,7 +107,7 @@ def _clean_for_extraction(text: str) -> str:
         text = re.sub(r"\\[a-zA-Z]+\*?(?:\[[^]]*\])?\s*\{([^{}]*)\}", r" \1 ", text)
     # leftover bare structural command lines
     text = re.sub(r"^\s*\\(?:noalign|toprule|midrule|bottomrule)\b.*$", "",
-                  text, flags=re.M)
+                  text, flags=re.MULTILINE)
     # brace-less no-op commands must not kill a sentence they precede
     # (reviewer B round 4: \noindent/\par at sentence start)
     text = re.sub(r"(?m)^\s*\\(?:noindent|par|medskip|bigskip|smallskip|"

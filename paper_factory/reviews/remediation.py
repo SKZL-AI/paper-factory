@@ -16,8 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from ..claims.graph import ClaimGraph, load_claims, save_claims
-from ..core.results import (CLOSED_DISPOSITIONS, ClaimStatus, Disposition, Severity,
-                            Verdict)
+from ..core.results import CLOSED_DISPOSITIONS, ClaimStatus, Disposition, Severity, Verdict
 from ..core.util import sha256_file, utcnow, write_json
 from ..dag.executor import NodeContext, NodeOutcome
 from ..statistics.quantitative import manuscript_tex_files, normalize_tex
@@ -272,7 +271,7 @@ _CLAIM_KINDS = {"unsupported_claim", "significance_without_test"}
 _CITATION_KINDS = {"false_citation", "no_doi", "unverifiable_citation"}
 
 
-def _classify_legacy(f: "Finding") -> str | None:
+def _classify_legacy(f: Finding) -> str | None:
     """Kind inference for findings from before structured folding (e.g.
     historical pilot artifacts). Conservative: when in doubt, None → DEFERRED."""
     s = f.statement.lower()
@@ -285,7 +284,7 @@ def _classify_legacy(f: "Finding") -> str | None:
     return None
 
 
-def _remediate_claim_finding(ctx: NodeContext, f: "Finding", graph: ClaimGraph,
+def _remediate_claim_finding(ctx: NodeContext, f: Finding, graph: ClaimGraph,
                              claims_path: Path, entry: dict, counts: dict) -> None:
     """Retire exactly the claims bound to this finding — and verify the claim
     is also gone from the printed manuscript. Graph retirement alone is
@@ -398,7 +397,7 @@ def _remediate_claim_finding(ctx: NodeContext, f: "Finding", graph: ClaimGraph,
         counts["resolved"] += 1
 
 
-def _remediate_citation_finding(ctx: NodeContext, f: "Finding", entry: dict,
+def _remediate_citation_finding(ctx: NodeContext, f: Finding, entry: dict,
                                 counts: dict) -> None:
     """Drop the specific unverifiable citation and verify THAT key is gone —
     by parsed-entry equality, not substring (reviewer A-G4). A finding about a

@@ -23,7 +23,7 @@ import pytest
 from paper_factory.core.config import (MarkingRegistry, PaperFactoryConfig,
                                        ProviderPolicyConfig, ProvidersConfig)
 from paper_factory.core.results import Verdict
-from paper_factory.core.util import read_json, sha256_file, utcnow, write_json
+from paper_factory.core.util import read_json
 from paper_factory.dag.executor import NodeContext
 from paper_factory.figures.build import run_figure_generation, run_figure_plan
 from paper_factory.manuscript.scaffold import run_manuscript_architecture, run_section_check

@@ -26,8 +26,8 @@ from pathlib import Path
 from typing import Any
 
 from ...core.results import Verdict
-from ...provenance.firewall import PolicyViolation
 from ...core.util import sha256_file, utcnow, write_json
+from ...provenance.firewall import PolicyViolation
 
 RUN_PREFIX = "PF-"
 

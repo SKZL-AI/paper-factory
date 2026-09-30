@@ -44,7 +44,7 @@ _UNICODE_TIMES = "×"      # U+00D7 MULTIPLICATION SIGN
 # unambiguous quantitative claims — scanned in every manuscript file
 _RE_PERCENT = re.compile(
     r"\b\d+(?:\.\d+)?\s*\\?%|\b\d+(?:\.\d+)?\s*(?:percent|per\s+cent|Prozent)\b"
-    r"|\b\d+(?:\.\d+)?-(?:percent|per-cent)\b", re.I)
+    r"|\b\d+(?:\.\d+)?-(?:percent|per-cent)\b", re.IGNORECASE)
 _RE_PFGET = re.compile(r"\\pfget\s*\{([^}]*)\}")  # TeX skips space before the arg (B-G5)
 _RE_RAW_CSNAME = re.compile(r"\\csname\s+pf@([^\s\\]+?)\\endcsname")
 
@@ -52,18 +52,18 @@ _RE_RAW_CSNAME = re.compile(r"\\csname\s+pf@([^\s\\]+?)\\endcsname")
 # "lr = 1e-3" legitimately live in methods/introduction — they are not results)
 _RE_FOLD = re.compile(r"\b\d+(?:\.\d+)?\s*-?\s*fold\b"
                       r"|\b(?:two|three|four|five|six|seven|eight|nine|ten)\s*-?\s*fold\b",
-                      re.I)
+                      re.IGNORECASE)
 _RE_SPEEDUP = re.compile(r"\b\d+(?:\.\d+)?\s*x(?=\s|$|[,.;)])"
                          r"|\b\d+(?:\.\d+)?\s+times\s+(?:as\s+)?(?:fast|faster|slow|slower|"
                          r"better|higher|lower|more|less|larger|smaller)\b",
-                         re.I)  # "2.5x speedup" / "2.5 times faster" / "times as fast" (B-G2/H3)
+                         re.IGNORECASE)  # "2.5x speedup" / "2.5 times faster" / "times as fast" (B-G2/H3)
 _RE_SCI = re.compile(r"\b\d+(?:\.\d+)?[eE][+-]?\d+\b")
 _RE_DECIMAL = re.compile(r"(?<![\w.])0?\.\d{2,}\b")          # 0.42 / .42 (APA p < .05)
 _RE_DECIMAL_COMMA = re.compile(r"\b\d+,\d{1,2}\b")           # 0,42 (decimal comma)
 _RE_SAMPLE_N = re.compile(r"\b[Nn]\s*=\s*\d+")               # N = 1284
 _RE_COUNT_UNIT = re.compile(
     r"\b\d+(?:\.\d+)?\s*(?:participants|subjects|samples|runs|seeds|iterations|epochs|"
-    r"patients|nodes|gpus|hours|minutes|seconds|ms|gb|mb|tb|points)\b", re.I)
+    r"patients|nodes|gpus|hours|minutes|seconds|ms|gb|mb|tb|points)\b", re.IGNORECASE)
 
 
 _URL_OR_VERB = re.compile(

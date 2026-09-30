@@ -1,9 +1,9 @@
 """Deterministic DAG executor with honest terminal states and resume support."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from ..core.config import MarkingRegistry, PaperFactoryConfig, ProviderPolicyConfig, ProvidersConfig
 from ..core.results import Verdict
@@ -118,7 +118,7 @@ class Executor:
         self.ws.event(self.ctx.run_id, "run_report", payload={"statuses_sha256": digest})
 
 
-def run_status_overall(statuses: dict[str, "Verdict | str"]) -> str:
+def run_status_overall(statuses: dict[str, Verdict | str]) -> str:
     """Canonical overall-state aggregation — the single truth for CLI and dashboard.
 
     Precedence (fail-closed): FAILED > HUMAN_REQUIRED > INCOMPLETE > DEGRADED > CLOSED.
@@ -130,7 +130,7 @@ def run_status_overall(statuses: dict[str, "Verdict | str"]) -> str:
     """
     if not statuses:
         return "EMPTY"
-    norm: dict[str, "Verdict | str"] = {}
+    norm: dict[str, Verdict | str] = {}
     for nid, v in statuses.items():
         if isinstance(v, Verdict):
             norm[nid] = v
@@ -202,7 +202,21 @@ def exit_code_for_overall(overall: str) -> int:
     return OVERALL_EXIT_CODES.get(overall, EXIT_UNKNOWN)
 
 
-__all__ = ["Executor", "NodeContext", "NodeOutcome", "Handler", "run_status_overall",
-           "OK_STATES", "NODES", "exit_code_for_overall", "OVERALL_EXIT_CODES",
-           "EXIT_CLOSED", "EXIT_FAILED", "EXIT_HUMAN_REQUIRED", "EXIT_INCOMPLETE",
-           "EXIT_DEGRADED", "EXIT_EMPTY", "EXIT_UNKNOWN"]
+__all__ = [
+    "EXIT_CLOSED",
+    "EXIT_DEGRADED",
+    "EXIT_EMPTY",
+    "EXIT_FAILED",
+    "EXIT_HUMAN_REQUIRED",
+    "EXIT_INCOMPLETE",
+    "EXIT_UNKNOWN",
+    "NODES",
+    "OK_STATES",
+    "OVERALL_EXIT_CODES",
+    "Executor",
+    "Handler",
+    "NodeContext",
+    "NodeOutcome",
+    "exit_code_for_overall",
+    "run_status_overall",
+]

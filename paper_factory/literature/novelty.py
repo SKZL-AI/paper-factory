@@ -9,7 +9,6 @@ discovered prior art hits per claim.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 from ..core.results import Verdict
 from ..core.util import utcnow, write_json

@@ -19,8 +19,9 @@ from __future__ import annotations
 import codecs
 import math
 import re
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 PATTERNS = [
     ("anthropic_key", re.compile(r"sk-ant-[A-Za-z0-9_-]{20,}")),
@@ -51,7 +52,7 @@ def _entropy(s: str) -> float:
 
 _ASSIGNMENT = re.compile(
     r"(?:api[_-]?key|token|secret|password|credential|passphrase)\s*[:=]\s*[\"'<{]{0,2}"
-    r"([A-Za-z0-9._~+/-]{16,})[\"'>}]{0,2}", re.I)
+    r"([A-Za-z0-9._~+/-]{16,})[\"'>}]{0,2}", re.IGNORECASE)
 
 
 def _scan_text(text: str, relpath: str, via: str) -> list[dict[str, Any]]:

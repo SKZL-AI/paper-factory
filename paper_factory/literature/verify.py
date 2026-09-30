@@ -45,9 +45,9 @@ def resolve_doi(doi: str, timeout: int = 20) -> dict[str, Any]:
     return rec
 
 
-_BIB_ENTRY = re.compile(r"@\w+\s*\{\s*([^,]+),([^@]*)\}", re.S)
-_DOI = re.compile(r"doi\s*=\s*[{\"]?([^}\s,\"]+)", re.I)
-_TITLE = re.compile(r"title\s*=\s*[\{\"](.+?)[}\"]\s*,", re.S | re.I)
+_BIB_ENTRY = re.compile(r"@\w+\s*\{\s*([^,]+),([^@]*)\}", re.DOTALL)
+_DOI = re.compile(r"doi\s*=\s*[{\"]?([^}\s,\"]+)", re.IGNORECASE)
+_TITLE = re.compile(r"title\s*=\s*[\{\"](.+?)[}\"]\s*,", re.DOTALL | re.IGNORECASE)
 
 
 def parse_bib(path: Path) -> list[dict[str, Any]]:

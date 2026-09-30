@@ -10,11 +10,9 @@ provider router under the same policy.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
-from ..core.config import MarkingRegistry, ProviderPolicyConfig
 from ..core.results import Verdict
-from ..core.util import utcnow, write_json
+from ..core.util import utcnow
 from ..dag.executor import NodeContext, NodeOutcome
 from ..provenance.firewall import decide_write
 from ..provenance.origin import record_origin

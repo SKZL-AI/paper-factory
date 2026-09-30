@@ -16,8 +16,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from paper_factory.core.config import (MarkingRegistry, PaperFactoryConfig,
-                                       ProviderPolicyConfig, ProvidersConfig)
+from paper_factory.core.config import (
+    MarkingRegistry,
+    PaperFactoryConfig,
+    ProviderPolicyConfig,
+    ProvidersConfig,
+)
 from paper_factory.core.results import Verdict
 from paper_factory.dag.executor import NodeContext
 from paper_factory.figures.build import run_figure_plan
@@ -324,7 +328,6 @@ def test_overall_unknown_state_is_never_closed():
 # ---------------------------------------------------------------------------
 # Dual-review round: regression tests for the verified reviewer findings
 # ---------------------------------------------------------------------------
-from paper_factory.statistics.metrics import run_statistics
 from paper_factory.statistics.numbers_audit import run_numbers_units_audit
 
 
@@ -751,7 +754,6 @@ def test_rb_j2_table_value_edit_fails(tmp_path):
 
 def test_rb_j2_input_drift_fails(tmp_path):
     ctx = _seed_metrics_and_manuscript(tmp_path)
-    import hashlib
     (ctx.workspace.reports_dir / "tables_manifest.json").write_text(json.dumps({
         "generated_at": "t", "tables": [],
         "input_data_hashes": {"reports/paper_metrics.json": "0" * 64}}), encoding="utf-8")
@@ -1040,10 +1042,15 @@ import subprocess as _sp
 import pytest as _pytest
 
 from paper_factory.cli.main import main as _cli_main
-from paper_factory.dag.executor import (EXIT_DEGRADED, EXIT_EMPTY, EXIT_FAILED,
-                                        EXIT_HUMAN_REQUIRED, EXIT_INCOMPLETE,
-                                        EXIT_UNKNOWN, OVERALL_EXIT_CODES,
-                                        exit_code_for_overall, run_status_overall)
+from paper_factory.dag.executor import (
+    EXIT_DEGRADED,
+    EXIT_FAILED,
+    EXIT_HUMAN_REQUIRED,
+    EXIT_INCOMPLETE,
+    EXIT_UNKNOWN,
+    OVERALL_EXIT_CODES,
+    exit_code_for_overall,
+)
 from paper_factory.dag.nodes import NODE_MAP
 
 _EXIT_REPO = Path(__file__).resolve().parents[1]
@@ -1182,8 +1189,7 @@ def test_gap_exit_cli_failed_real_subprocess(tmp_path):
     """Deterministic FAILED at the process boundary: an undisposed MAJOR
     review finding makes U5 FAIL (same mechanism as e2e test_09), so P35 FAILs
     and the CLI must exit EXIT_FAILED, never 0."""
-    from paper_factory.reviews.framework import (Finding, ReviewReport,
-                                                 save_review)
+    from paper_factory.reviews.framework import Finding, ReviewReport, save_review
     rid = "exit-contract-failed"
     ws = Workspace(tmp_path)
     ws.create_run(rid)
@@ -1224,13 +1230,15 @@ def test_gap_exit_release_stub_fails_closed(tmp_path):
 # ---------------------------------------------------------------------------
 
 from paper_factory.claims.builder import run_claim_graph
-from paper_factory.claims.graph import (Claim, ClaimGraph, load_claims,
-                                        save_claims)
+from paper_factory.claims.graph import Claim, ClaimGraph, load_claims, save_claims
 from paper_factory.core.results import ClaimStatus, Disposition, Severity
 from paper_factory.release.closure import _u5
-from paper_factory.reviews.framework import (Finding, ReviewReport,
-                                             load_reviews, save_review,
-                                             unresolved_blocking)
+from paper_factory.reviews.framework import (
+    Finding,
+    ReviewReport,
+    load_reviews,
+    save_review,
+)
 from paper_factory.reviews.remediation import run_remediation
 from paper_factory.reviews.runners import run_methods_review
 
@@ -1373,11 +1381,10 @@ def test_gap004_false_citation_bound_resolution(tmp_path, monkeypatch):
     _g4_review(ctx, [_g4_finding("F01", kind="false_citation", category="citation",
                                  details={"doi": "10.9999/fake.bloom.2024"})])
 
-    import paper_factory.literature.verify as verify
+    from paper_factory.literature import verify
 
     def _rebuild_drops_key(ctx_):
         bib.write_text("@article{ok, doi={10.1/real}}\n", encoding="utf-8")
-        return None
 
     monkeypatch.setattr(verify, "build_references", _rebuild_drops_key)
     monkeypatch.setattr(verify, "_audit_entries", lambda ctx_, entries: ([], [], None))
@@ -1396,7 +1403,7 @@ def test_gap004_false_citation_surviving_key_is_unresolved(tmp_path, monkeypatch
     _g4_review(ctx, [_g4_finding("F01", kind="false_citation", category="citation",
                                  details={"doi": "10.9999/fake.bloom.2024"})])
 
-    import paper_factory.literature.verify as verify
+    from paper_factory.literature import verify
     monkeypatch.setattr(verify, "build_references", lambda ctx_: None)  # no-op rebuild
     monkeypatch.setattr(verify, "_audit_entries", lambda ctx_, entries: ([], [], None))
     outcome = run_remediation(ctx)
@@ -1573,7 +1580,7 @@ def test_gap004_g4_citation_substring_no_wedge(tmp_path, monkeypatch):
     _g4_review(ctx, [_g4_finding("F01", kind="false_citation", category="citation",
                                  details={"doi": "10.9999/fake"})])
 
-    import paper_factory.literature.verify as verify
+    from paper_factory.literature import verify
 
     def _rebuild(ctx_):
         bib.write_text("@article{b, doi={10.9999/fake.longer}}\n", encoding="utf-8")
@@ -1771,7 +1778,7 @@ def test_gap004_n3_doi_case_insensitive(tmp_path, monkeypatch):
     _g4_review(ctx, [_g4_finding("F01", kind="false_citation", category="citation",
                                  details={"doi": "10.9999/fake"})])
 
-    import paper_factory.literature.verify as verify
+    from paper_factory.literature import verify
     monkeypatch.setattr(verify, "build_references", lambda ctx_: None)  # no-op
     monkeypatch.setattr(verify, "_audit_entries", lambda ctx_, entries: ([], [], None))
     outcome = run_remediation(ctx)
@@ -1790,7 +1797,7 @@ def test_gap004_n4_final_citation_audit_carries_offline_flag(tmp_path, monkeypat
     _g4_review(ctx, [_g4_finding("F01", kind="false_citation", category="citation",
                                  details={"doi": "10.9999/fake"})])
 
-    import paper_factory.literature.verify as verify
+    from paper_factory.literature import verify
     monkeypatch.setattr(verify, "build_references", lambda ctx_: None)
     monkeypatch.setattr(verify, "_audit_entries", lambda ctx_, entries: ([], [], None))
     run_remediation(ctx)
@@ -2694,9 +2701,6 @@ def test_gap003_y3_positive_polarity_idioms(tmp_path):
 # ---------------------------------------------------------------------------
 
 from paper_factory.context.mining import run_context_mining
-from paper_factory.reviews.runners import (run_adversarial_review,
-                                           run_methods_review,
-                                           run_statistics_review)
 
 
 def test_gap010_duplicate_findings_remediated_once(tmp_path):

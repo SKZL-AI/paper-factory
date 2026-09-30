@@ -5,7 +5,6 @@ append-only) and evidence/evidence_index.json.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 from ..core.results import Verdict
 from ..core.util import append_jsonl, sha256_file, utcnow, write_json

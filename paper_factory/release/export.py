@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-from pathlib import Path
 
 from ..core.results import Verdict
 from ..core.util import read_json, sha256_file, utcnow, write_json
