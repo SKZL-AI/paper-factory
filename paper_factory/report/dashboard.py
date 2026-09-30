@@ -169,6 +169,9 @@ def render_dashboard(workspace_reports: Path | None = None, out: Path | None = N
     pilot02 = _load("real_pilot_02_summary.json")
     if pilot02:
         pilot_html += _pilot_card(pilot02, "12", "REAL PILOT 02 — TSCG-2.0")
+    pilot03 = _load("real_pilot_03_summary.json")
+    if pilot03:
+        pilot_html += _pilot_card(pilot03, "13", "REAL PILOT 03 — MassInv Paper 1 (Draft-References-Brücke)")
 
     doc = f"""<!DOCTYPE html>
 <html lang="de"><head><meta charset="utf-8"><title>PAPER FACTORY — Dashboard</title>
