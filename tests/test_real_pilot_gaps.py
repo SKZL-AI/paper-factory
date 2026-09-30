@@ -3338,3 +3338,146 @@ def test_gap012_triple_collision_all_suffixed(tmp_path):
     assert means == [1.1, 5.1, 9.85], means  # all three survive
     bare = [k for k in data["metrics"] if "__src" not in k]
     assert bare == [], bare  # no canonical-looking bare keeper
+
+
+# ---------------------------------------------------------------------------
+# GAP-013 (real pilot 2): literature queries from real project vocabulary,
+# never the generic dir-name fallback ("project" → foreign works)
+# ---------------------------------------------------------------------------
+
+from paper_factory.literature.discovery import derive_queries, run_literature_discovery
+
+
+def test_gap013_draft_title_and_keywords_win(tmp_path):
+    (tmp_path / "draft").mkdir()
+    (tmp_path / "draft" / "paper.md").write_text(
+        "# Mass-Invariance in Attention\n\nkeywords: attention, renormalization\n",
+        encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    q = derive_queries(ctx)
+    assert q[0] == "Mass-Invariance in Attention"
+    assert any("attention" in x for x in q)
+
+
+def test_gap013_readme_heading_when_no_draft(tmp_path):
+    (tmp_path / "README.md").write_text("# TSCG 2.0 — Agent-Observation Compiler\n",
+                                        encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    assert derive_queries(ctx) == ["TSCG 2.0 — Agent-Observation Compiler"]
+
+
+def test_gap013_config_title_parentheses_stripped(tmp_path):
+    ctx = _ctx(tmp_path)
+    ctx.config.paper.title = "TSCG 2.0 — Agent-Observation Compiler (PF Pilot 2)"
+    assert derive_queries(ctx) == ["TSCG 2.0 — Agent-Observation Compiler"]
+
+
+def test_gap013_generic_dirname_filtered(tmp_path):
+    """Pilot-2 repro: the dir name 'project' must NOT become a query."""
+    generic = tmp_path / "project"
+    generic.mkdir()
+    ctx = _ctx(generic)
+    ctx.config.paper.title = None
+    assert derive_queries(ctx) == []
+
+
+def test_gap013_no_vocabulary_degrades_without_api_call(tmp_path):
+    """Empty query list → honest DEGRADED, no network attempt."""
+    generic = tmp_path / "work"
+    generic.mkdir()
+    ctx = _ctx(generic)
+    ctx.config.paper.title = None
+    ctx.offline = False  # we test the vocabulary path, not the offline guard
+    outcome = run_literature_discovery(ctx)
+    assert outcome.verdict == Verdict.DEGRADED
+    assert "GAP-013" in outcome.detail["reason"]
+
+
+def test_gap013_real_dirname_still_works(tmp_path):
+    real = tmp_path / "massinv_reopening"
+    real.mkdir()
+    ctx = _ctx(real)
+    ctx.config.paper.title = None
+    assert derive_queries(ctx) == ["massinv reopening"]
+
+
+# ---------------------------------------------------------------------------
+# GAP-013 review round (A-F1..F6, B: empty-pool novelty)
+# ---------------------------------------------------------------------------
+
+from paper_factory.literature.novelty import run_novelty_attack
+
+
+def test_gap013_f1_prose_keywords_not_a_query(tmp_path):
+    (tmp_path / "draft").mkdir()
+    (tmp_path / "draft" / "paper.md").write_text(
+        "# Sparse Retrieval\n\nWe describe the keywords used in our pipeline.\n",
+        encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    q = derive_queries(ctx)
+    assert q == ["Sparse Retrieval"], q  # no prose leak
+
+
+def test_gap013_f2_useless_title_falls_through_to_readme(tmp_path):
+    (tmp_path / "draft").mkdir()
+    (tmp_path / "draft" / "paper.md").write_text("# Results\n", encoding="utf-8")
+    (tmp_path / "README.md").write_text("# Sparse retrieval for low-resource languages\n",
+                                        encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    assert derive_queries(ctx) == ["Sparse retrieval for low-resource languages"]
+
+
+def test_gap013_f3_unicode_and_abbrev_titles_survive(tmp_path):
+    (tmp_path / "draft").mkdir()
+    (tmp_path / "draft" / "paper.md").write_text("# 深層学習の高速化\n", encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    assert derive_queries(ctx) == ["深層学習の高速化"]
+    ctx.config.paper.title = None
+
+    other = tmp_path / "proj2"
+    (other / "draft").mkdir(parents=True)
+    (other / "draft" / "paper.md").write_text("# On AI\n", encoding="utf-8")
+    assert derive_queries(_ctx(other)) == ["On AI"]
+
+
+def test_gap013_f4_markup_stripped(tmp_path):
+    (tmp_path / "draft").mkdir()
+    (tmp_path / "draft" / "paper.md").write_text(
+        "# **Bold** [Sparse Retrieval](http://x.example) ##\n", encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    assert derive_queries(ctx) == ["Bold Sparse Retrieval"]
+
+
+def test_gap013_f5_content_parens_kept_tag_parens_stripped(tmp_path):
+    (tmp_path / "draft").mkdir()
+    (tmp_path / "draft" / "paper.md").write_text(
+        "# Attention (Is All You Need)\n", encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    assert derive_queries(ctx) == ["Attention (Is All You Need)"]
+    ctx.config.paper.title = None
+
+    other = tmp_path / "proj3"
+    (other / "draft").mkdir(parents=True)
+    (other / "draft" / "paper.md").write_text("# Sparse Retrieval (PF Pilot 2)\n",
+                                              encoding="utf-8")
+    assert derive_queries(_ctx(other)) == ["Sparse Retrieval"]
+
+
+def test_gap013_f6_year_does_not_rescue_generic_title(tmp_path):
+    ctx = _ctx(tmp_path)
+    ctx.config.paper.title = "My Project 2024"
+    # no draft/README → config title is generic-only → falls to dir name
+    q = derive_queries(ctx)
+    assert "My Project 2024" not in q
+
+
+def test_gap013_b_empty_pool_novelty_degrades_not_pass(tmp_path):
+    """B-G13: P07 must not PASS a novelty attack against zero prior art."""
+    ctx = _ctx(tmp_path)
+    ctx.offline = False
+    ctx.workspace.reports_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.reports_dir / "literature_discovery.json").write_text(
+        _json.dumps({"discovered_at": "t", "queries": {}, "unique_works": {}}),
+        encoding="utf-8")
+    outcome = run_novelty_attack(ctx)
+    assert outcome.verdict == Verdict.DEGRADED

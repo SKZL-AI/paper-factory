@@ -44,8 +44,11 @@ def run_novelty_attack(ctx: NodeContext) -> NodeOutcome:
             }
     attack["prior_art_pool"] = list(discovery.get("unique_works", {}).values())[:50]
     write_json(ws.reviews_dir / "novelty_attack.json", attack)
-    if ctx.offline and not discovery.get("unique_works"):
+    if not discovery.get("unique_works"):
+        # B-G13: an EMPTY prior-art pool must not PASS the novelty attack —
+        # 'attacked against nothing' is degraded, offline or not
         return NodeOutcome(Verdict.DEGRADED,
-                           {"reason": "offline: novelty attack limited to local artifacts"})
+                           {"reason": "empty prior-art pool — novelty not attacked "
+                                      "(offline or no usable query vocabulary)"})
     return NodeOutcome(Verdict.PASS, {"claims_attacked": len(attack["claims"]),
                                       "pool": len(attack["prior_art_pool"])})

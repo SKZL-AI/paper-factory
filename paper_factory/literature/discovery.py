@@ -5,6 +5,7 @@ with verification records. Offline → DEGRADED with reason.
 from __future__ import annotations
 
 import json
+import re
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -54,24 +55,96 @@ def search_crossref(query: str, rows: int = 5) -> list[dict[str, Any]]:
     return out
 
 
-def derive_queries(ctx: NodeContext) -> list[str]:
-    """Deterministic query derivation from intake + draft title/keywords."""
-    root = ctx.workspace.target_root
-    queries: list[str] = []
-    import re
+# GAP-013 (real pilot 2): a fallback query of literally "project" pulled 10
+# thematically foreign works (NCEP, GTEx, warships). Query derivation must use
+# real project vocabulary: drafts → README heading → config paper title →
+# directory name — with generic words filtered out at every step.
+_GENERIC_WORDS = {"project", "main", "repo", "work", "code", "src", "home",
+                  "data", "results", "test", "pilot", "paper", "draft",
+                  "untitled", "new", "final", "version", "the", "a", "an",
+                  "and", "of", "for", "with", "on", "in"}
+# provenance tags in parentheses are not query vocabulary — but only TAG-like
+# parens are stripped (pilot/rev/version/year markers); content parens like
+# "(Is All You Need)" stay (reviewer B: the paren may BE the content)
+_TAG_PAREN = re.compile(
+    r"\s*\((?:[^()]*(?:pilot|rev(?:ision)?|version|v\d|draft|pf|20\d\d)[^()]*)\)",
+    re.I)
 
-    for draft in sorted(root.glob("draft/*.md")) + sorted(root.glob("draft/*.tex")):
-        text = draft.read_text(encoding="utf-8", errors="replace")
-        m = re.search(r"^#\s+(.+)$", text, re.M)
-        if m:
-            queries.append(m.group(1).strip())
-        kw = re.findall(r"(?:keywords?|Schlüsselwörter)[:\s]+(.+)", text, re.I)
-        queries.extend(k.strip() for k in kw)
-    if not queries:
-        queries.append(root.name.replace("_", " "))
-    # dedupe, keep order
-    seen = set()
-    return [q for q in queries if not (q in seen or seen.add(q))][:5]
+
+def _strip_tag_parens(title: str) -> str:
+    prev = None
+    while prev != title:  # iterate to fixpoint for adjacent tags
+        prev = title
+        title = _TAG_PAREN.sub("", title)
+    return title.strip()
+
+
+def _clean_title(title: str) -> str:
+    """Markdown/markup hygiene (reviewer A-F4): bold/italic markers, links
+    and trailing heading #'s are not query vocabulary."""
+    title = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", title)  # [text](url) → text
+    title = re.sub(r"[*_`]+", "", title)
+    title = re.sub(r"\s*#+\s*$", "", title)
+    return _strip_tag_parens(title.strip())
+
+
+def _useful(query: str) -> bool:
+    """A query is useful when at least one content word is non-generic.
+    Unicode-aware (A-F3: CJK titles count); pure digits (years) are never
+    content (A-F6); 2-letter all-caps abbreviations (AI, ML) count."""
+    tokens = [t for t in re.split(r"[^\w]+", query) if t]
+    content = [t for t in tokens
+               if t.lower() not in _GENERIC_WORDS and not t.isdigit()
+               and (len(t) > 2 or (len(t) == 2 and t.isupper()))]
+    return bool(content) and len(query.strip()) >= 4
+
+
+def derive_queries(ctx: NodeContext) -> list[str]:
+    """Deterministic query derivation. Stages in priority order — draft
+    title/keywords → README heading → config paper title → directory name —
+    with fall-through on USELESSNESS, not just absence (A-F2). Generic
+    results are dropped: a thematically empty query is worse than none
+    (GAP-013)."""
+    root = ctx.workspace.target_root
+
+    def _stage_drafts() -> list[str]:
+        out: list[str] = []
+        for draft in sorted(root.glob("draft/*.md")) + sorted(root.glob("draft/*.tex")):
+            text = draft.read_text(encoding="utf-8", errors="replace")
+            m = re.search(r"^#\s+(.+)$", text, re.M)
+            if m:
+                out.append(_clean_title(m.group(1)))
+            # line-anchored with mandatory colon (A-F1): prose mentioning
+            # 'keywords' mid-sentence is not a keyword line
+            for kw in re.findall(
+                    r"^\s*(?:keywords?|Schlüsselwörter)\s*:\s*(.+)$",
+                    text, re.I | re.M):
+                out.append(kw.strip())
+        return out
+
+    def _stage_readme() -> list[str]:
+        readme = root / "README.md"
+        if not readme.exists():
+            return []
+        m = re.search(r"^#\s+(.+)$",
+                      readme.read_text(encoding="utf-8", errors="replace"), re.M)
+        return [_clean_title(m.group(1))] if m else []
+
+    def _stage_config() -> list[str]:
+        return [_clean_title(ctx.config.paper.title)] if ctx.config.paper.title else []
+
+    def _stage_dirname() -> list[str]:
+        return [root.name.replace("_", " ").replace("-", " ")]
+
+    queries: list[str] = []
+    for stage in (_stage_drafts, _stage_readme, _stage_config, _stage_dirname):
+        useful = [q for q in stage() if _useful(q)]
+        if useful:
+            queries = useful
+            break
+    seen: set[str] = set()
+    return [q for q in queries
+            if not (q.casefold() in seen or seen.add(q.casefold()))][:5]
 
 
 def run_literature_discovery(ctx: NodeContext) -> NodeOutcome:
@@ -79,6 +152,15 @@ def run_literature_discovery(ctx: NodeContext) -> NodeOutcome:
         return NodeOutcome(Verdict.DEGRADED, {"reason": "offline mode — literature discovery not run",
                                               "literature": "NOT_RUN"})
     queries = derive_queries(ctx)
+    if not queries:
+        # GAP-013: no usable project vocabulary — an empty/generic query must
+        # never reach the APIs (it returns thematically foreign noise)
+        write_json(ctx.workspace.reports_dir / "literature_discovery.json",
+                   {"discovered_at": utcnow(), "queries": {}, "unique_works": {}})
+        return NodeOutcome(Verdict.DEGRADED,
+                           {"reason": "no usable query vocabulary (drafts/README/title "
+                                      "all missing or generic — GAP-013 filter)",
+                            "literature": "NOT_RUN"})
     found: dict[str, Any] = {"discovered_at": utcnow(), "queries": {}, "unique_works": {}}
     for q in queries:
         works = search_openalex(q) + search_crossref(q)
