@@ -132,6 +132,14 @@ def find_pfget_uses(text: str) -> set[str]:
     return set(_RE_PFGET.findall(text)) | set(_RE_RAW_CSNAME.findall(text))
 
 
+def find_pfget_uses_with_spans(text: str) -> list[tuple[str, int]]:
+    """Like find_pfget_uses, but with positions — GAP-011 label binding needs
+    the context window around each use."""
+    out = [(m.group(1), m.start()) for m in _RE_PFGET.finditer(text)]
+    out += [(m.group(1), m.start()) for m in _RE_RAW_CSNAME.finditer(text)]
+    return sorted(out, key=lambda t: t[1])
+
+
 def manuscript_tex_files(paper: Path, include_generated: bool = False) -> list[Path]:
     """All manuscript .tex under paper/, recursively — excluding the top-level
     build/ directory (and generated/ unless include_generated=True; raw values

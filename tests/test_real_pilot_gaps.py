@@ -3481,3 +3481,506 @@ def test_gap013_b_empty_pool_novelty_degrades_not_pass(tmp_path):
         encoding="utf-8")
     outcome = run_novelty_attack(ctx)
     assert outcome.verdict == Verdict.DEGRADED
+
+
+# ---------------------------------------------------------------------------
+# GAP-011: pfget label binding — the prose around a provenance macro must
+# name the bound metric's field (U2 fail-closed on label mismatch)
+# ---------------------------------------------------------------------------
+
+def _g11_ctx(tmp_path, macro_key: str, field: str, sentence: str):
+    """Manuscript with one pfget use + matching metrics/numbers artifacts."""
+    ctx = _ctx(tmp_path)
+    _write_manuscript(ctx, {"results.tex": sentence + "\n"})
+    run_numbers_units_audit(ctx)
+    (ctx.workspace.reports_dir / "paper_metrics.json").write_text(_json.dumps(
+        {"computed_at": "t", "sources": {},
+         "metrics": {macro_key: {"source": "results/x.csv", "field": field,
+                                 "mean": 0.11, "n": 3}}}), encoding="utf-8")
+    from paper_factory.statistics.metrics import expected_macro_entries
+    entries = expected_macro_entries({macro_key: {"mean": 0.11, "n": 3}})
+    gen = ctx.workspace.paper_dir / "generated"
+    gen.mkdir(parents=True, exist_ok=True)
+    lines = ["% generated",
+             "\\makeatletter",
+             "\\newcommand{\\pfget}[1]{\\ifcsname pf@#1\\endcsname\\csname pf@#1\\endcsname"
+             "\\else\\textbf{??}\\fi}",
+             "\\makeatother"]
+    lines += [f"\\expandafter\\gdef\\csname pf@{k}\\endcsname{{{v}}}"
+              for k, v in entries.items()]
+    (gen / "numbers.tex").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return ctx, entries
+
+
+def test_gap011_mislabeled_pfget_use_fails(tmp_path):
+    """Reviewer chain finding: 'latency improved to \\pfget{<nll-macro>}' must
+    NOT pass — the value belongs to nll, the sentence says latency."""
+    ctx, entries = _g11_ctx(
+        tmp_path, "runs__exp__nll", "nll",
+        "The latency improved to $\\pfget{runsexp nllmean}$.".replace("runsexp nll", "runsexpnll"))
+    # sanity: the macro used must exist in generated entries
+    mean_macro = next(k for k in entries if k.endswith("mean"))
+    _write_manuscript(ctx, {"results.tex":
+                            f"The latency improved to $\\pfget{{{mean_macro}}}$.\n"})
+    run_numbers_units_audit(ctx)
+    _, states = _closure_states(ctx)
+    assert states["U2"] == "FAIL", states
+
+
+def test_gap011_correctly_labeled_pfget_use_passes(tmp_path):
+    ctx, entries = _g11_ctx(
+        tmp_path, "runs__exp__nll", "nll", "placeholder")
+    mean_macro = next(k for k in entries if k.endswith("mean"))
+    _write_manuscript(ctx, {"results.tex":
+                            f"The nll improved to $\\pfget{{{mean_macro}}}$.\n"})
+    run_numbers_units_audit(ctx)
+    _, states = _closure_states(ctx)
+    assert states["U2"] == "PASS", states
+
+
+def test_gap011_alias_labels_pass(tmp_path):
+    """Field aliases count as naming: 'negative log-likelihood' names nll."""
+    ctx, entries = _g11_ctx(
+        tmp_path, "runs__exp__nll", "nll", "placeholder")
+    mean_macro = next(k for k in entries if k.endswith("mean"))
+    _write_manuscript(ctx, {"results.tex":
+                            f"The negative log-likelihood dropped to "
+                            f"$\\pfget{{{mean_macro}}}$.\n"})
+    run_numbers_units_audit(ctx)
+    _, states = _closure_states(ctx)
+    assert states["U2"] == "PASS", states
+
+
+def test_gap011_metric_without_field_skips_label_check(tmp_path):
+    """Legacy metrics without a 'field' key are unaffected (unbound checks
+    still apply — only the label check is skipped)."""
+    ctx, entries = _g11_ctx(
+        tmp_path, "realkey", "", "placeholder")
+    mean_macro = next(k for k in entries if k.endswith("mean"))
+    _write_manuscript(ctx, {"results.tex": f"The value is $\\pfget{{{mean_macro}}}$.\n"})
+    run_numbers_units_audit(ctx)
+    _, states = _closure_states(ctx)
+    assert states["U2"] == "PASS", states
+
+
+def test_gap011_compose_output_label_binds(tmp_path):
+    """The deterministic composer names the metric key (which contains the
+    field) next to every pfget use — compose output must pass GAP-011."""
+    from paper_factory.manuscript.compose import _compose_section
+    ctx = _ctx(tmp_path)
+    results = tmp_path / "results"
+    results.mkdir()
+    rows = ["seed,load,fpr"]
+    for seed in (42, 43, 44):
+        for load in ("0.90", "0.95"):
+            rows.append(f"{seed},{load},{0.01 + seed * 1e-4 + float(load):.6f}")
+    (results / "data.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    assert run_statistics(ctx).verdict == Verdict.PASS
+    text = _compose_section("results", ctx)
+    sections = ctx.workspace.paper_dir / "sections"
+    sections.mkdir(parents=True, exist_ok=True)
+    (sections / "results.tex").write_text(text, encoding="utf-8")
+    run_numbers_units_audit(ctx)
+    _, states = _closure_states(ctx)
+    assert states["U2"] == "PASS", states
+
+
+# ---------------------------------------------------------------------------
+# GAP-011 review round (B-a nearest-anchor attribution, B-e group binding,
+# A-F-A camelcase fields, B-c skip visibility)
+# ---------------------------------------------------------------------------
+
+def _g11_grouped_ctx(tmp_path, sentence: str):
+    """Two groups of the same metric (fpr at load 0.90 / 0.95), real P09 path."""
+    ctx = _ctx(tmp_path)
+    results = tmp_path / "results"
+    results.mkdir()
+    rows = ["seed,load,fpr"]
+    for seed in (42, 43, 44):
+        for load in ("0.90", "0.95"):
+            rows.append(f"{seed},{load},{0.01 + seed * 1e-4 + float(load):.6f}")
+    (results / "data.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    assert run_statistics(ctx).verdict == Verdict.PASS
+    _write_manuscript(ctx, {"results.tex": sentence + "\n"})
+    run_numbers_units_audit(ctx)
+    return ctx
+
+
+def _macro_for(metrics, field, group_val):
+    from paper_factory.statistics.metrics import macro_base_names
+    keys = [k for k, v in metrics.items()
+            if v["field"] == field
+            and str({**(v.get("group") or {}),
+                     **(v.get("fixed_design") or {})}.get("load")) == group_val]
+    assert keys, (field, group_val, list(metrics))
+    return macro_base_names(list(metrics.keys()))[keys[0]] + "mean"
+
+
+def test_gap011_b_a_nearest_anchor_attribution(tmp_path):
+    """B-a (MAJOR): 'The latency reaches \\pfget{<nll-macro>} and the loss is
+    fine' — with BOTH fields as metrics, the nearest mention to the macro is
+    'latency', not the macro's own field 'nll'."""
+    ctx = _ctx(tmp_path)
+    _write_manuscript(ctx, {"results.tex": "placeholder\n"})
+    (ctx.workspace.reports_dir / "paper_metrics.json").write_text(_json.dumps(
+        {"computed_at": "t", "sources": {},
+         "metrics": {"runs__exp__nll": {"source": "results/x.csv", "field": "nll",
+                                        "mean": 5.0, "n": 3},
+                     "runs__exp__latency": {"source": "results/x.csv",
+                                            "field": "latency", "mean": 1.0, "n": 3}}}),
+        encoding="utf-8")
+    from paper_factory.statistics.metrics import expected_macro_entries
+    entries = expected_macro_entries(
+        {"runs__exp__nll": {"mean": 5.0, "n": 3},
+         "runs__exp__latency": {"mean": 1.0, "n": 3}})
+    gen = ctx.workspace.paper_dir / "generated"
+    gen.mkdir(parents=True, exist_ok=True)
+    lines = ["% generated", "\\makeatletter",
+             "\\newcommand{\\pfget}[1]{\\ifcsname pf@#1\\endcsname\\csname pf@#1\\endcsname"
+             "\\else\\textbf{??}\\fi}", "\\makeatother"]
+    lines += [f"\\expandafter\\gdef\\csname pf@{k}\\endcsname{{{v}}}"
+              for k, v in entries.items()]
+    (gen / "numbers.tex").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    nll_macro = next(k for k in entries if k.startswith("runsexpnll") and k.endswith("mean"))
+    _write_manuscript(ctx, {"results.tex":
+                            f"The latency reaches $\\pfget{{{nll_macro}}}$ "
+                            "and the loss is fine.\n"})
+    run_numbers_units_audit(ctx)
+    _, states = _closure_states(ctx)
+    assert states["U2"] == "FAIL", states
+
+
+def test_gap011_b_e_wrong_group_macro_fails(tmp_path):
+    """B-e (MAJOR): 'the fpr at load 0.9' citing the load-0.95 macro."""
+    ctx = _g11_grouped_ctx(tmp_path, "placeholder")
+    metrics = _json.loads(
+        (ctx.workspace.reports_dir / "paper_metrics.json").read_text())["metrics"]
+    macro095 = _macro_for(metrics, "fpr", "0.95")
+    _write_manuscript(ctx, {"results.tex":
+                            f"The fpr at load 0.9 is $\\pfget{{{macro095}}}$.\n"})
+    run_numbers_units_audit(ctx)
+    _, states = _closure_states(ctx)
+    assert states["U2"] == "FAIL", states
+
+
+def test_gap011_b_e_right_group_macro_passes(tmp_path):
+    ctx = _g11_grouped_ctx(tmp_path, "placeholder")
+    metrics = _json.loads(
+        (ctx.workspace.reports_dir / "paper_metrics.json").read_text())["metrics"]
+    macro090 = _macro_for(metrics, "fpr", "0.90")
+    _write_manuscript(ctx, {"results.tex":
+                            f"The fpr at load 0.9 is $\\pfget{{{macro090}}}$.\n"})
+    run_numbers_units_audit(ctx)
+    _, states = _closure_states(ctx)
+    assert states["U2"] == "PASS", states
+
+
+def test_gap011_no_group_in_context_is_fine(tmp_path):
+    """No design point named → no group requirement."""
+    ctx = _g11_grouped_ctx(tmp_path, "placeholder")
+    metrics = _json.loads(
+        (ctx.workspace.reports_dir / "paper_metrics.json").read_text())["metrics"]
+    macro095 = _macro_for(metrics, "fpr", "0.95")
+    _write_manuscript(ctx, {"results.tex":
+                            f"Across conditions the fpr stayed low, e.g. $\\pfget{{{macro095}}}$.\n"})
+    run_numbers_units_audit(ctx)
+    _, states = _closure_states(ctx)
+    assert states["U2"] == "PASS", states
+
+
+def test_gap011_a_camelcase_field_namable_in_prose(tmp_path):
+    """A-F-A: field 'falsePositiveRate' is namable as 'false positive rate'."""
+    ctx, entries = _g11_ctx(tmp_path, "runs__exp__falsePositiveRate",
+                            "falsePositiveRate", "placeholder")
+    mean_macro = next(k for k in entries if k.endswith("mean"))
+    _write_manuscript(ctx, {"results.tex":
+                            f"The false positive rate dropped to $\\pfget{{{mean_macro}}}$.\n"})
+    run_numbers_units_audit(ctx)
+    _, states = _closure_states(ctx)
+    assert states["U2"] == "PASS", states
+
+
+# ---------------------------------------------------------------------------
+# GAP-011 review round 2 (A-R2-1 dim-token fields, B-r1/r2 unmeasured design
+# points, A-R2-2 enumeration exception)
+# ---------------------------------------------------------------------------
+
+def test_gap011_dim_token_field_compose_closes(tmp_path):
+    """A-R2-1 (MAJOR): a 'score' outcome column must be closable — the field
+    names itself when dim-token filtering would strip everything."""
+    from paper_factory.manuscript.compose import _compose_section
+    ctx = _ctx(tmp_path)
+    results = tmp_path / "results"
+    results.mkdir()
+    rows = ["seed,method,score"]
+    for seed in (1, 2, 3):
+        for meth in ("a", "b"):
+            rows.append(f"{seed},{meth},{0.5 + seed * 0.01 + (0.2 if meth == 'b' else 0):.4f}")
+    (results / "data.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    assert run_statistics(ctx).verdict == Verdict.PASS
+    text = _compose_section("results", ctx)
+    sections = ctx.workspace.paper_dir / "sections"
+    sections.mkdir(parents=True, exist_ok=True)
+    (sections / "results.tex").write_text(text, encoding="utf-8")
+    run_numbers_units_audit(ctx)
+    _, states = _closure_states(ctx)
+    assert states["U2"] == "PASS", states
+
+
+def test_gap011_b_r1_unmeasured_design_point_without_sibling_fails(tmp_path):
+    """B-r1: only load 0.95 measured; text claims 'at load 0.9' → FAIL even
+    though no sibling group exists."""
+    ctx = _ctx(tmp_path)
+    results = tmp_path / "results"
+    results.mkdir()
+    rows = ["seed,load,fpr"] + [f"{s},0.95,{0.01 + s * 1e-4:.6f}" for s in (42, 43, 44)]
+    (results / "data.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    assert run_statistics(ctx).verdict == Verdict.PASS
+    metrics = _json.loads(
+        (ctx.workspace.reports_dir / "paper_metrics.json").read_text())["metrics"]
+    macro = _macro_for(metrics, "fpr", "0.95")
+    _write_manuscript(ctx, {"results.tex":
+                            f"The fpr at load 0.9 is $\\pfget{{{macro}}}$.\n"})
+    run_numbers_units_audit(ctx)
+    _, states = _closure_states(ctx)
+    assert states["U2"] == "FAIL", states
+
+
+def test_gap011_b_r2_unknown_design_point_among_siblings_fails(tmp_path):
+    """B-r2: groups 0.90/0.95 measured; text claims 'at load 0.7' → FAIL."""
+    ctx = _g11_grouped_ctx(tmp_path, "placeholder")
+    metrics = _json.loads(
+        (ctx.workspace.reports_dir / "paper_metrics.json").read_text())["metrics"]
+    macro090 = _macro_for(metrics, "fpr", "0.90")
+    _write_manuscript(ctx, {"results.tex":
+                            f"The fpr at load 0.7 is $\\pfget{{{macro090}}}$.\n"})
+    run_numbers_units_audit(ctx)
+    _, states = _closure_states(ctx)
+    assert states["U2"] == "FAIL", states
+
+
+def test_gap011_a_r2_2_enumeration_passes(tmp_path):
+    """A-R2-2: 'The fpr and latency both improved: \\pfget{fpr} and
+    \\pfget{latency}' — enumeration, each mention owned by its own macro."""
+    ctx = _ctx(tmp_path)
+    results = tmp_path / "results"
+    results.mkdir()
+    rows = ["seed,fpr,latency"] + [f"{s},{0.01 + s * 1e-4:.6f},{1.0 + s * 0.01:.4f}"
+                                   for s in (42, 43, 44)]
+    (results / "data.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    assert run_statistics(ctx).verdict == Verdict.PASS
+    metrics = _json.loads(
+        (ctx.workspace.reports_dir / "paper_metrics.json").read_text())["metrics"]
+    from paper_factory.statistics.metrics import macro_base_names
+    bases = macro_base_names(list(metrics.keys()))
+    fpr_m = bases[next(k for k, v in metrics.items() if v["field"] == "fpr")] + "mean"
+    lat_m = bases[next(k for k, v in metrics.items() if v["field"] == "latency")] + "mean"
+    _write_manuscript(ctx, {"results.tex":
+                            f"The fpr and latency both improved: $\\pfget{{{fpr_m}}}$ "
+                            f"and $\\pfget{{{lat_m}}}$ respectively.\n"})
+    run_numbers_units_audit(ctx)
+    _, states = _closure_states(ctx)
+    assert states["U2"] == "PASS", states
+
+
+# ---------------------------------------------------------------------------
+# GAP-011 review round 3 (A-R3-1: design points attribute to nearest carrier
+# macro; enumerations and prior-work references are not macro claims)
+# ---------------------------------------------------------------------------
+
+def _g11_grouped_ctx_1dec(tmp_path, sentence: str):
+    """Same as _g11_grouped_ctx but with single-decimal design points
+    (0.9/1.0) — P22's raw-decimal gate flags 2+-decimal literals in
+    manuscripts, which is orthogonal to GAP-011 (label/group binding)."""
+    ctx = _ctx(tmp_path)
+    results = tmp_path / "results"
+    results.mkdir(parents=True)
+    rows = ["seed,load,fpr"]
+    for seed in (42, 43, 44):
+        for load in ("0.9", "1.0"):
+            rows.append(f"{seed},{load},{0.01 + seed * 1e-4 + float(load):.6f}")
+    (results / "data.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    assert run_statistics(ctx).verdict == Verdict.PASS
+    _write_manuscript(ctx, {"results.tex": sentence + "\n"})
+    run_numbers_units_audit(ctx)
+    return ctx
+
+
+def test_gap011_r3_canonical_comparison_sentence_passes(tmp_path):
+    """A-R3-1 (MAJOR): 'The fpr at load 0.9 is \\pfget{F09} and at load 1.0
+    it is \\pfget{F10}' — the canonical comparison must pass."""
+    ctx = _g11_grouped_ctx_1dec(tmp_path, "placeholder")
+    metrics = _json.loads(
+        (ctx.workspace.reports_dir / "paper_metrics.json").read_text())["metrics"]
+    m09 = _macro_for(metrics, "fpr", "0.9")
+    m10 = _macro_for(metrics, "fpr", "1.0")
+    _write_manuscript(ctx, {"results.tex":
+                            f"The fpr at load 0.9 is $\\pfget{{{m09}}}$ and at "
+                            f"load 1.0 it is $\\pfget{{{m10}}}$.\n"})
+    run_numbers_units_audit(ctx)
+    _, states = _closure_states(ctx)
+    assert states["U2"] == "PASS", states
+
+
+def test_gap011_r3_design_space_enumeration_passes(tmp_path):
+    """'We cover loads 0.9 and 1.0; at load 1.0 the fpr is …' — enumeration
+    is not a macro claim."""
+    ctx = _g11_grouped_ctx_1dec(tmp_path, "placeholder")
+    metrics = _json.loads(
+        (ctx.workspace.reports_dir / "paper_metrics.json").read_text())["metrics"]
+    m10 = _macro_for(metrics, "fpr", "1.0")
+    _write_manuscript(ctx, {"results.tex":
+                            f"We cover loads 0.9 and 1.0; at load 1.0 the fpr "
+                            f"is $\\pfget{{{m10}}}$.\n"})
+    run_numbers_units_audit(ctx)
+    _, states = _closure_states(ctx)
+    assert states["U2"] == "PASS", states
+
+
+def test_gap011_r3_prior_work_design_point_passes(tmp_path):
+    """A foreign protocol's design point near a correct macro is not the
+    macro's claim."""
+    ctx = _g11_grouped_ctx_1dec(tmp_path, "placeholder")
+    metrics = _json.loads(
+        (ctx.workspace.reports_dir / "paper_metrics.json").read_text())["metrics"]
+    m10 = _macro_for(metrics, "fpr", "1.0")
+    _write_manuscript(ctx, {"results.tex":
+                            f"Following the load 2.0 protocol of prior work, the "
+                            f"fpr at load 1.0 is $\\pfget{{{m10}}}$.\n"})
+    run_numbers_units_audit(ctx)
+    _, states = _closure_states(ctx)
+    assert states["U2"] == "PASS", states
+
+
+# ---------------------------------------------------------------------------
+# GAP-011 review round 4 (B-W1 decoy carrier, B-W2 ref-cue laundering,
+# B-W3 enumeration hiding unmeasured, B-W4 plural single-value evasion)
+# ---------------------------------------------------------------------------
+
+def test_gap011_b_w1_cross_field_decoy_does_not_steal_attribution(tmp_path):
+    """W1: a latency macro (group 0.9) parked next to the number must not
+    absorb the design-point check for the fpr macro (group 0.95)."""
+    ctx = _ctx(tmp_path)
+    results = tmp_path / "results"
+    results.mkdir()
+    rows = ["seed,load,fpr,latency"]
+    for seed in (42, 43, 44):
+        for load in ("0.9", "1.0"):
+            rows.append(f"{seed},{load},{0.01 + seed * 1e-4 + float(load):.6f},"
+                        f"{1.0 + seed * 0.01 + float(load):.4f}")
+    (results / "data.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    assert run_statistics(ctx).verdict == Verdict.PASS
+    metrics = _json.loads(
+        (ctx.workspace.reports_dir / "paper_metrics.json").read_text())["metrics"]
+    lat09 = _macro_for(metrics, "latency", "0.9")
+    fpr10 = _macro_for(metrics, "fpr", "1.0")
+    _write_manuscript(ctx, {"results.tex":
+                            f"At load 0.9 ($\\pfget{{{lat09}}}$ for latency) "
+                            f"the fpr is $\\pfget{{{fpr10}}}$.\n"})
+    run_numbers_units_audit(ctx)
+    _, states = _closure_states(ctx)
+    assert states["U2"] == "FAIL", states  # fpr at load 0.9 cited with 1.0 value
+
+
+def test_gap011_b_w2_ref_cue_needs_own_point_named(tmp_path):
+    """W2: 'following the load 0.9 protocol of prior work, our fpr is
+    \\pfget{<1.0>}' — the cue must not launder a claim that never names its
+    own design point."""
+    ctx = _g11_grouped_ctx_1dec(tmp_path, "placeholder")
+    metrics = _json.loads(
+        (ctx.workspace.reports_dir / "paper_metrics.json").read_text())["metrics"]
+    fpr10 = _macro_for(metrics, "fpr", "1.0")
+    _write_manuscript(ctx, {"results.tex":
+                            f"Following the load 0.9 protocol of prior work, "
+                            f"our fpr is $\\pfget{{{fpr10}}}$.\n"})
+    run_numbers_units_audit(ctx)
+    _, states = _closure_states(ctx)
+    assert states["U2"] == "FAIL", states
+
+
+def test_gap011_b_w3_enumeration_with_unmeasured_point_fails(tmp_path):
+    """W3: 'at load 0.9 and 2.0 is \\pfget{<0.9>}' — the enumerated 2.0 is
+    unmeasured; the enumeration form must not hide it."""
+    ctx = _g11_grouped_ctx_1dec(tmp_path, "placeholder")
+    metrics = _json.loads(
+        (ctx.workspace.reports_dir / "paper_metrics.json").read_text())["metrics"]
+    fpr09 = _macro_for(metrics, "fpr", "0.9")
+    _write_manuscript(ctx, {"results.tex":
+                            f"The fpr at load 0.9 and 2.0 is $\\pfget{{{fpr09}}}$.\n"})
+    run_numbers_units_audit(ctx)
+    _, states = _closure_states(ctx)
+    assert states["U2"] == "FAIL", states
+
+
+def test_gap011_b_w4_plural_single_value_evasion_fails(tmp_path):
+    """W4: 'at loads 0.9 is \\pfget{<1.0>}' — plural marker with a single
+    value must not deactivate the check."""
+    ctx = _g11_grouped_ctx_1dec(tmp_path, "placeholder")
+    metrics = _json.loads(
+        (ctx.workspace.reports_dir / "paper_metrics.json").read_text())["metrics"]
+    fpr10 = _macro_for(metrics, "fpr", "1.0")
+    _write_manuscript(ctx, {"results.tex":
+                            f"The fpr at loads 0.9 is $\\pfget{{{fpr10}}}$.\n"})
+    run_numbers_units_audit(ctx)
+    _, states = _closure_states(ctx)
+    assert states["U2"] == "FAIL", states
+
+
+# ---------------------------------------------------------------------------
+# GAP-011 review round 5 (B-Y1 hyphen range, B-Y2 adverb chain break,
+# A-F1 chain decimals vs clause scan)
+# ---------------------------------------------------------------------------
+
+def _w_case(tmp_path, sentence):
+    ctx = _g11_grouped_ctx_1dec(tmp_path, "placeholder")
+    metrics = _json.loads(
+        (ctx.workspace.reports_dir / "paper_metrics.json").read_text())["metrics"]
+    fpr09 = _macro_for(metrics, "fpr", "0.9")
+    _write_manuscript(ctx, {"results.tex": sentence.format(m=fpr09) + "\n"})
+    run_numbers_units_audit(ctx)
+    return _closure_states(ctx)[1]
+
+
+def test_gap011_b_y1_hyphen_range_does_not_hide_unmeasured(tmp_path):
+    """'at load 0.9-2.0 is \\pfget{<0.9>}' — the hyphen-linked 2.0 is
+    unmeasured and must surface (unicode dashes normalize to '-')."""
+    for i, form in enumerate(("The fpr at load 0.9-2.0 is $\\pfget{{{m}}}$.",
+                 "The fpr at load 0.9–2.0 is $\\pfget{{{m}}}$.",
+                 "The fpr at load 0.9—2.0 is $\\pfget{{{m}}}$.")):
+        states = _w_case(tmp_path / f"y1_{i}", form)
+        assert states["U2"] == "FAIL", (form, states)
+
+
+def test_gap011_b_y2_adverb_chain_break_does_not_hide(tmp_path):
+    """'at load 0.9 and also 2.0' — the adverb must not break the chain."""
+    states = _w_case(tmp_path, "The fpr at load 0.9 and also 2.0 is $\\pfget{{m}}$.")
+    assert states["U2"] == "FAIL", states
+
+
+def test_gap011_a_f1_chain_decimals_do_not_poison_clause_scan(tmp_path):
+    """A-F1: 'at load 0.9 and 1.0' (claim role) must judge identically to
+    integer points — the chain's decimals are not clause boundaries."""
+    states = _w_case(tmp_path, "The fpr at load 0.9 and 1.0 is $\\pfget{{m}}$.")
+    assert states["U2"] == "FAIL", states  # 1.0 is a sibling in CLAIM role
+
+
+def test_gap011_negative_design_value_keeps_sign(tmp_path):
+    """B-R6 MINOR: 'at load -1' must read as -1, not 1 — a matching negative
+    group passes, a wrong one fails."""
+    ctx = _ctx(tmp_path)
+    results = tmp_path / "results"
+    results.mkdir()
+    rows = ["seed,load,fpr"]
+    for seed in (42, 43, 44):
+        for load in ("-1.0", "1.0"):
+            rows.append(f"{seed},{load},{0.01 + seed * 1e-4 + abs(float(load)) * 0.1:.6f}")
+    (results / "data.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    assert run_statistics(ctx).verdict == Verdict.PASS
+    metrics = _json.loads(
+        (ctx.workspace.reports_dir / "paper_metrics.json").read_text())["metrics"]
+    m_neg = _macro_for(metrics, "fpr", "-1.0")
+    _write_manuscript(ctx, {"results.tex":
+                            f"The fpr at load -1 is $\\pfget{{{m_neg}}}$.\n"})
+    run_numbers_units_audit(ctx)
+    _, states = _closure_states(ctx)
+    assert states["U2"] == "PASS", states

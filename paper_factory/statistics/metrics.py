@@ -456,6 +456,23 @@ def run_statistics(ctx: NodeContext) -> NodeOutcome:
                 metrics["audit"]["classification"][f] = {
                     "class": "design", "reason": "design-vocabulary name, repeats across rows",
                     "distinct": distinct}
+        # a CONSTANT design-vocabulary column (load=0.95 everywhere) groups
+        # nothing, but it still pins the design point the metrics were measured
+        # at — recorded as fixed_design so closure can catch 'at load 0.9'
+        # claims against a 0.95-only measurement (reviewer B r1, GAP-011 R2)
+        fixed_design: dict[str, str] = {}
+        for f in numeric_fields:
+            if f in excluded or f in design_nums or f.lower() not in _DESIGN_NAMES:
+                continue
+            present = [v for v in (_parse_value(r.get(f, "")) for r in rows)
+                       if v is not None]
+            if present and len(set(present)) == 1:
+                fixed_design[f] = str(present[0])
+                metrics["audit"]["classification"][f] = {
+                    "class": "fixed_design",
+                    "reason": "design-vocabulary name, constant across rows — "
+                              "recorded as fixed design point",
+                    "distinct": 1}
         group_cols = text_fields + design_nums
         outcome_fields = []
         for f in numeric_fields:
@@ -546,7 +563,9 @@ def run_statistics(ctx: NodeContext) -> NodeOutcome:
                         "reason": f"metric-key collision disambiguated: "
                                   f"'{base}' now source-suffixed"})
                 metrics["metrics"][key] = {"source": src_key, "field": f,
-                                           "group": dict(zip(group_cols, disp)), **stat}
+                                           "group": dict(zip(group_cols, disp)),
+                                           "fixed_design": dict(fixed_design),
+                                           **stat}
                 if stat.get("small_sample"):
                     metrics["audit"]["small_samples"].append(key)
 

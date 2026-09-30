@@ -20,11 +20,18 @@ from ..provenance.origin import origin_receipts, protected_files
 from ..reviews.framework import dedupe_key, load_reviews, unresolved_blocking
 from ..statistics.metrics import expected_macro_entries
 from ..statistics.quantitative import (PFGET_ACCESSOR_LINE, _strip_comments,
-                                       find_pfget_uses, find_quantitative,
+                                       find_pfget_uses, find_pfget_uses_with_spans,
+                                       find_quantitative,
                                        is_claim_section, manuscript_tex_files,
                                        normalize_tex)
 
 Check = Callable[[NodeContext], tuple[str, str]]  # → (state, note)
+
+# reference cues: a design point attributed to a cited/foreign protocol is not
+# a claim about THIS run's macro (GAP-011 R3, reviewer A v4b). Real citation
+# markers only — generic discourse markers ('following the', 'protocol of')
+# are an evasion vehicle (reviewer B W2).
+_REF_CUE = re.compile(r"\\cite|\bet\s+al\.|prior work", re.I)
 
 
 def _u1(ctx: NodeContext) -> tuple[str, str]:
@@ -204,6 +211,237 @@ def _generated_policy(paper: Path) -> tuple[list[str], dict[str, str]]:
     return violations, defs
 
 
+def _labelless_macro_uses(paper: Path, metrics: dict[str, Any]) -> tuple[list[str], int]:
+    """GAP-011: for every \\pfget/pf@ use in the manuscript, the surrounding
+    prose must name the bound metric's field AND — when the context names a
+    design point — the group must match (reviewer B: window-presence is not
+    attribution; 'the fpr at load 0.9' citing the load-0.95 macro is a false
+    citation). Returns (['<file>:<macro>@<pos>: <reason>', …], skipped_count).
+
+    Attribution rule (nearest-anchor, same principle as the GAP-003 sentence
+    binder): the field whose mention sits CLOSEST to the macro use must be
+    the macro's own field (ties allowed). A field that is merely present
+    somewhere in the window does not label the macro."""
+    from ..statistics.metrics import (_FIELD_ALIASES, _FIELD_DIM_TOKENS,
+                                      _alias_hit, _num_scale_match,
+                                      macro_base_names)
+
+    bases = macro_base_names(list(metrics.keys()))
+    macro_field: dict[str, str | None] = {}   # original case (CamelCase split)
+    macro_key: dict[str, str] = {}
+    for key, stat in metrics.items():
+        field = str(stat.get("field", "") or "")
+        base = bases[key]
+        for suffix in ("mean", "std", "n"):
+            name = f"{base}{suffix}"
+            macro_field[name] = field or None
+            macro_key[name] = key
+    all_fields = sorted({f for f in macro_field.values() if f})
+
+    def _content_tokens(field: str) -> list[str]:
+        # CamelCase is prose-splittable (A F-A): falsePositiveRate →
+        # false/positive/rate
+        split = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", field)
+        tokens = [t for t in re.split(r"[^a-z0-9]+", split.lower())
+                  if len(t) >= 3 and t not in _FIELD_DIM_TOKENS]
+        if not tokens and len(field) >= 3:
+            # dim-token-only fields (score, rate, ratio) would be unnameable
+            # and make U2 unpassable (A-R2-1): the field names itself
+            tokens = [re.sub(r"[^a-z0-9]+", "", field.lower())]
+        return [t for t in tokens if t]
+
+    def _mention_positions(field: str, w: str) -> list[int]:
+        positions: list[int] = []
+        for alias in _FIELD_ALIASES.get(field.lower(), ()):
+            stem = re.escape(alias)
+            positions += [m.start() for m in re.finditer(
+                rf"(?<![a-z0-9]){stem}(?:e?s)?(?![a-z0-9])", w)]
+        content = _content_tokens(field)
+        if content:
+            hits = []
+            for t in content:
+                hs = [m.start() for m in re.finditer(
+                    rf"(?<![a-z0-9]){re.escape(t)}(?![a-z0-9])", w)]
+                if not hs:
+                    hits = []
+                    break
+                hits.append(min(hs))
+            positions += hits
+        return positions
+
+    # siblings per (source, field): for the group-dimension check. Group and
+    # fixed_design (constant design columns, GAP-011 R2/B-r1) merge into one
+    # design-point view.
+    by_sf: dict[tuple[str, str], list[tuple[str, dict]]] = {}
+    for key, stat in metrics.items():
+        merged = dict(stat.get("group") or {})
+        merged.update(stat.get("fixed_design") or {})
+        by_sf.setdefault((str(stat.get("source", "")),
+                          str(stat.get("field", "") or "").lower()), []).append(
+            (key, merged))
+
+    bad: list[str] = []
+    skipped = 0
+    window = 200  # chars on each side — sentence + table-header reach
+    for s in manuscript_tex_files(paper):
+        body = normalize_tex(s.read_text(encoding="utf-8", errors="replace"))
+        body_l = body.lower()
+        infos = []
+        for name, pos in find_pfget_uses_with_spans(body):
+            info = {"name": name, "pos": pos, "lo": max(0, pos - window),
+                    "field": macro_field.get(name)}
+            if info["field"] is not None:
+                merged = dict(metrics[macro_key[name]].get("group") or {})
+                merged.update(metrics[macro_key[name]].get("fixed_design") or {})
+                info["design"] = merged
+            infos.append(info)
+        for info in infos:
+            field = info["field"]
+            if field is None:
+                skipped += 1  # legacy metric without field — visible in the note
+                continue
+            lo = info["lo"]
+            w = body_l[lo:info["pos"] + window]
+            wpos = info["pos"] - lo
+            pos_map = {f: ps for f in all_fields
+                       if (ps := _mention_positions(f, w))}
+            own_ps = pos_map.get(field)
+            if not own_ps:
+                bad.append(f"{s.name}:{info['name']}@{info['pos']}: "
+                           f"field '{field}' never named")
+                continue
+            own = min(abs(p - wpos) for p in own_ps)
+            dists = {f: min(abs(p - wpos) for p in ps)
+                     for f, ps in pos_map.items()}
+            nearest = min(dists.values())
+            if own > nearest + 5:
+                other = min(dists, key=dists.get)
+                other_mention_abs = lo + min(pos_map[other],
+                                             key=lambda p: abs(p - wpos))
+                # enumeration exception (A-R2-2): 'The fpr and latency both
+                # improved: \pfget{fpr} and \pfget{latency}' — the nearer
+                # foreign mention is part of an enumeration whose own macro
+                # follows LATER in the text
+                owned_elsewhere = any(
+                    o is not info and o["field"] == other
+                    and o["pos"] > info["pos"]
+                    and other_mention_abs < info["pos"]
+                    for o in infos)
+                if not owned_elsewhere:
+                    bad.append(f"{s.name}:{info['name']}@{info['pos']}: nearest "
+                               f"field mention is '{other}', not '{field}' — "
+                               f"misattributed macro")
+                    continue
+            # group check: if the window names a design point of one of this
+            # metric's dimensions, it must be THIS macro's group (B-e). The
+            # number must be the dimension's ARGUMENT (only connectors between
+            # them — GAP-003 X1/Y1); a named point matching NEITHER this group
+            # NOR any sibling is an unmeasured design point — flagged (B-r1/r2).
+            # group check: a design point named as the dimension's ARGUMENT is
+            # attributed to the nearest carrier macro OF THE SAME FIELD
+            # (cross-field decoys cannot steal attribution — B-W1); numbers in
+            # the macro's own clause are claims and must match THIS group;
+            # numbers in a separate clause are design-space context and must
+            # at least be measured somewhere (own ∪ siblings — B-W3/W4).
+            group = info.get("design") or {}
+            for dim, gv in group.items():
+                dim_l = str(dim).lower()
+                dim_hits = list(re.finditer(
+                    rf"(?<![a-z0-9]){re.escape(dim_l)}s?(?![a-z0-9])", w))
+                if not dim_hits:
+                    continue
+                try:
+                    gvf = float(gv)
+                except (TypeError, ValueError):
+                    continue
+                sib_vals = [float(sg[dim]) for _sk, sg in
+                            by_sf.get((str(metrics[macro_key[info["name"]]].get("source", "")),
+                                       field.lower()), [])
+                            if dim in sg and str(sg[dim]) != str(gv)
+                            and str(sg[dim]).replace(".", "", 1).lstrip("-").isdigit()]
+                for m in re.finditer(r"[-+]?\b\d+(?:\.\d+)?\b", w):
+                    hit = None
+                    for d in dim_hits:
+                        if m.end() <= d.start():
+                            between = w[m.end():d.start()]
+                        elif d.end() <= m.start():
+                            between = w[d.end():m.start()]
+                        else:
+                            continue
+                        if re.fullmatch(r"[\s@:=(/%-]*(?:of\s+)?", between):
+                            hit = d
+                            break
+                    if hit is None:
+                        continue  # not the dimension's argument
+                    num_abs = lo + m.start()
+                    # attribute to the nearest carrier OF THE SAME FIELD;
+                    # only if none exists, any carrier (B-W1 decoy defense)
+                    same_field = [o for o in infos if o["field"] == field
+                                  and dim in (o.get("design") or {})]
+                    carriers = same_field or [o for o in infos
+                                              if dim in (o.get("design") or {})]
+                    if carriers and min(
+                            carriers, key=lambda o: abs(o["pos"] - num_abs)) is not info:
+                        continue  # belongs to another macro of this field
+                    # a citation cue excuses the number only when the macro's
+                    # OWN design point is also named (B-W2: the cue must not
+                    # launder an unattributed own-value claim)
+                    seg = body_l[min(num_abs, info["pos"]):max(num_abs, info["pos"])]
+                    own_named = any(
+                        _num_scale_match(float(m2.group(0)), gvf)
+                        for m2 in re.finditer(r"\b\d+(?:\.\d+)?\b", w))
+                    if _REF_CUE.search(seg) and own_named:
+                        continue  # foreign protocol, own point named — fine
+                    # enumeration chain (B-W3): 'at load 0.9 and 2.0' links
+                    # further design points to the same dim mention — each
+                    # linked value is checked, none hides. Link forms: comma,
+                    # hyphen/range dash (Y1: normalize_tex maps –/— to '-'),
+                    # 'to', 'and' (+ common adverbs 'and also/even' — Y2)
+                    chain = [float(m.group(0))]
+                    cursor = m.end()
+                    while True:
+                        link = re.match(
+                            r"\s*(?:,|-|\bto\b|\band\b(?:\s+(?:also|even))?)"
+                            r"\s*(\d+(?:\.\d+)?)",
+                            w[cursor:])
+                        if not link:
+                            break
+                        chain.append(float(link.group(1)))
+                        cursor += link.end()
+                    # same-clause test EXCLUDES the number AND its chain tail —
+                    # the chain's own decimal points are not clause boundaries
+                    # (A-F1: otherwise '0.9 and 0.95' poisons the scan)
+                    clause_seg = (w[cursor:wpos] if m.end() <= wpos
+                                  else w[wpos:m.start()])
+                    same_clause = not re.search(r"[.;:\n]", clause_seg)
+                    for n in chain:
+                        if _num_scale_match(n, gvf):
+                            continue  # names THIS group — fine
+                        is_sibling = any(_num_scale_match(n, sv) for sv in sib_vals)
+                        if same_clause:
+                            if is_sibling:
+                                bad.append(f"{s.name}:{info['name']}@{info['pos']}: context "
+                                           f"names {dim}={n}, macro carries {dim}={gv} — "
+                                           f"wrong design point")
+                            else:
+                                bad.append(f"{s.name}:{info['name']}@{info['pos']}: context "
+                                           f"names {dim}={n}, but no measured group of this "
+                                           f"metric has it (macro carries {dim}={gv}) — "
+                                           f"unmeasured design point")
+                            break
+                        # separate clause: design-space context — must be measured
+                        # SOMEWHERE for this metric (own ∪ siblings)
+                        if not is_sibling:
+                            bad.append(f"{s.name}:{info['name']}@{info['pos']}: context "
+                                       f"names unmeasured {dim}={n} next to the macro "
+                                       f"(measured: {dim}={gv})")
+                            break
+                    else:
+                        continue
+                    break
+    return bad, skipped
+
+
 def _u2(ctx: NodeContext) -> tuple[str, str]:
     # Manuscript-level: numbers in the PAPER must derive from generated macros.
     ws = ctx.workspace
@@ -259,6 +497,19 @@ def _u2(ctx: NodeContext) -> tuple[str, str]:
                             f"{'…' if len(unbound) > 5 else ''}")
         # (value binding of the definitions themselves happened above, for ALL
         # defs — used ones are a subset of that check)
+        # GAP-011: value binding alone is not enough — the prose around a
+        # \pfget use must NAME the bound metric's field, otherwise
+        # 'latency improved to \pfget{nll…mean}' passes while citing the nll
+        # metric for a latency sentence (reviewer B chain finding).
+        mislabeled, label_skipped = _labelless_macro_uses(ws.paper_dir, metrics)
+        if mislabeled:
+            return "FAIL", ("provenance macro used without naming its metric in "
+                            f"context: {mislabeled[:5]}"
+                            f"{'…' if len(mislabeled) > 5 else ''}")
+        if label_skipped:
+            return "PASS", (f"manuscript numbers derive from generated macros "
+                            f"({label_skipped} macro use(s) on metrics without "
+                            f"field label — label check not applicable)")
     return "PASS", "manuscript numbers derive from generated macros"
 
 
