@@ -610,19 +610,58 @@ def _u3(ctx: NodeContext) -> tuple[str, str]:
 
 
 def _u4(ctx: NodeContext) -> tuple[str, str]:
-    # Post-remediation audit wins; otherwise the P21 audit of the manuscript bib.
+    # Post-remediation audit wins — but only when it is NOT OLDER than the P21
+    # audit: a stale final from an earlier run/remediation must never mask a
+    # fresher, stricter audit (reviewer B R3-B2)
     ws = ctx.workspace
     final = ws.reports_dir / "citation_audit_final.json"
-    audit = final if final.exists() else ws.reports_dir / "citation_audit.json"
-    if not audit.exists():
+    audit = ws.reports_dir / "citation_audit.json"
+
+    def _ts(p) -> str:
+        try:
+            v = json.loads(p.read_text()).get("audited_at")
+        except Exception:
+            return ""  # unreadable audit never wins the freshness race
+        # non-string values (null, numbers) never win either — str(None) would
+        # lexicographically beat any real timestamp (reviewer B R5-NIT)
+        return v if isinstance(v, str) else ""
+
+    chosen = None
+    if audit.exists():
+        chosen = audit
+    # a final WITHOUT a readable audited_at never wins the freshness race
+    # (str(None)="None" would lexicographically beat any real timestamp)
+    if final.exists() and (chosen is None
+                           or (_ts(final) and _ts(final) >= _ts(audit))):
+        chosen = final
+    if chosen is None:
         return "NOT_RUN", "no citation audit"
+    audit = chosen
     data = json.loads(audit.read_text())
-    crit = [f for f in data.get("findings", []) if f.get("kind") == "false_citation"]
+    findings = data.get("findings", [])
+    crit = [f for f in findings if f.get("kind") == "false_citation"]
     if crit:
         return "FAIL", f"false citations: {[f.get('key') for f in crit]}"
     if data.get("offline"):
         return "NOT_RUN", "citation audit ran offline — verification pending"
+    # B R2-F1 (MAJOR): never attest "resolve" for citations nothing verified —
+    # T4-derived entries without DOI and network-unverifiable ones block the
+    # closure claim
+    unverifiable = [f for f in findings
+                    if f.get("kind") in ("unverifiable_citation", "unverifiable_network")]
+    if unverifiable:
+        kinds = sorted({str(f.get("kind")) for f in unverifiable})
+        return "DEGRADED", (f"{len(unverifiable)} citation(s) unverifiable "
+                            f"({', '.join(kinds)}): "
+                            f"{[f.get('key') for f in unverifiable]}")
     src = "post-remediation" if audit.name.endswith("final.json") else "P21"
+    no_doi = [f for f in findings if f.get("kind") == "no_doi"]
+    if no_doi:
+        # books/tech reports legitimately lack DOIs — honest scope, not a
+        # blanket "all resolve" claim
+        return "PASS", (f"all DOI-carrying citations resolve ({src} audit); "
+                        f"{len(no_doi)} without DOI not resolvable (MINOR): "
+                        f"{[f.get('key') for f in no_doi]}")
     return "PASS", f"all citations resolve ({src} audit)"
 
 

@@ -67,6 +67,9 @@ def run_venue_compliance(ctx: NodeContext) -> NodeOutcome:
     checks: dict[str, dict] = {}
 
     checks["main_tex_exists"] = {"pass": (paper / "main.tex").exists()}
+    # bib_exists is deliberately the WEAK mechanical gate (existence only;
+    # a draft-derived fallback bib counts). The semantic gate is closure U4,
+    # which attests resolution/verification — see release/closure.py:_u4
     bib = (paper / "references.bib").exists() or list(ctx.workspace.target_root.glob("literature/*.bib"))
     checks["bib_exists"] = {"pass": bool(bib)}
     checks["compiles"] = _try_build(paper)

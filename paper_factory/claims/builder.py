@@ -13,8 +13,16 @@ from ..core.util import utcnow, write_json
 from ..dag.executor import NodeContext, NodeOutcome
 from .graph import Claim, ClaimGraph, save_claims
 
+# NOTE: pointer sentences ("Figure 3 shows N…") still match the cue set —
+# accepted noise (reviewer A F1, deferred): they retire via the UNSUPPORTED
+# path and never bind evidence they cannot point to
 CLAIM_CUE = re.compile(
     r"([^.]*\b(?:faster|slower|speedup|latency|throughput|improve[sd]?|outperform|"
+    # measurement/audit rhetoric (real pilot 3): papers that CLASSIFY and
+    # REPORT measurements instead of claiming improvements
+    r"classif(?:y|ies|ied)|reports?(?:ed)?|observ(?:e|es|ed)|show(?:s|ed|n)?|"
+    r"measur(?:e|es|ed)|finds?|found|remains?|holds?|compris(?:e|es|ed)|"
+    r"covers?|exceeds?|totals?|identif(?:y|ies|ied)|detects?(?:ed)?|accounts?|"
     r"reduc(?:es|ed)|significant|achieves?|reaches?|reaching|lower|higher)\b[^.]*\.)",
     re.IGNORECASE)
 NUM = re.compile(r"\b\d+(?:\.\d+)?%?\b")
@@ -41,11 +49,20 @@ _HEADING_MD = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*$", re.MULTILINE)
 _HEADING_TEX = re.compile(r"\\(?:sub)*section(?:\[[^]]*\])?\s*\{([^}]*)\}")
 
 
+_MD_TABLE_ROW = re.compile(r"^\s*\|(?:[^|\n]*\|){2,}\s*\.?$", re.M)
+
+
 def _is_structural_fragment(cand: str) -> bool:
     """Reject candidates that are markup, not scientific statements."""
     if _STRUCT_CMD.search(cand):
         return True
-    if "&" in cand or "\\\\" in cand:  # table row / cell fragment
+    if "&" in cand or "\\\\" in cand:  # LaTeX table row / cell fragment
+        return True
+    # markdown table debris: a pipe-GRID line (starts with |, ≥3 pipes, ends
+    # at the last pipe). A bare `|`-rule would eat inline math (|S|, P(A|B)),
+    # a loose multi-pipe rule would eat "|S| and |T| both show…" (reviewer A
+    # R3-3 / R4-5)
+    if _MD_TABLE_ROW.search(cand):
         return True
     stripped = cand.strip()
     if not stripped[:1].isalpha():  # a sentence starts with a letter
@@ -115,9 +132,64 @@ def _clean_for_extraction(text: str) -> str:
     return text
 
 
+_LEADING_HEADING = re.compile(r"^\s*#{1,6}\s+[^\n]*(?:\n|$)")
+
+
 def _extract_candidates(text: str) -> list[tuple[int, str]]:
-    return [(m.start(), m.group(1).strip()) for m in CLAIM_CUE.finditer(text)
-            if NUM.search(m.group(1))]
+    out = []
+    for m in CLAIM_CUE.finditer(text):
+        cand = m.group(1)
+        # the cue window spans newlines — a heading directly above the claim
+        # sentence glues itself onto the statement (reviewer A R2 N-C); drop
+        # leading heading lines, keep the sentence
+        prev = None
+        while prev != cand:
+            prev = cand
+            cand = _LEADING_HEADING.sub("", cand).lstrip()
+        if cand:
+            cand = cand.strip()
+            if NUM.search(cand):
+                out.append((m.start(), cand))
+    return out
+
+
+_THEBIB = re.compile(r"\\begin\{thebibliography\}")
+_LATEX_REFS_SECTION = re.compile(
+    r"\\(?:sub)*section\*?\s*\{\s*(?:references|bibliography|"
+    r"literatur(?:verzeichnis)?)\s*\}", re.I)
+# bibliography evidence anchors. Entry markers must sit at LINE START —
+# mid-line [N] is a citation, not a bibliography entry (reviewer A R4-3 false
+# cut). Bullet lists count too: the common no-[N] markdown bibliography shape
+# (reviewer A R4-2)
+_BIB_ENTRY_MARK = re.compile(r"^\s{0,3}\\?\[\d+\\?\]", re.M)
+_BIB_BULLET = re.compile(r"^\s{0,3}[-*+]\s+\S", re.M)
+_BIBITEM = re.compile(r"\\bibitem\b")
+_BIB_LOOKAHEAD = 4000
+
+
+def _cut_reference_section(text: str) -> str:
+    """Bibliography content is not claim material (reviewer A R2 N-B: a
+    reference TITLE with a cue verb + year became a claim). Cut at the
+    earliest VALIDATED bibliography marker: markdown/LaTeX section headings
+    count only when entry evidence (line-anchored [N] / \\bibitem / bullet
+    list) follows within a bounded window — a mid-text '# References'
+    discussion section must not silently cut everything below it (reviewer A
+    R3-5). `thebibliography` is an unambiguous anchor on its own."""
+    from ..literature.draft_refs import REFS_HEADING_RE
+    anchors: list[tuple[int, bool]] = []  # (pos, needs_evidence)
+    for m in _THEBIB.finditer(text):
+        anchors.append((m.start(), False))
+    for pat in (REFS_HEADING_RE, _LATEX_REFS_SECTION):
+        for m in pat.finditer(text):
+            anchors.append((m.start(), True))
+    for pos, needs_evidence in sorted(anchors):
+        if not needs_evidence:
+            return text[:pos]
+        window = text[pos:pos + _BIB_LOOKAHEAD]
+        if (_BIB_ENTRY_MARK.search(window) or _BIBITEM.search(window)
+                or _BIB_BULLET.search(window)):
+            return text[:pos]
+    return text
 
 
 def run_claim_graph(ctx: NodeContext) -> NodeOutcome:
@@ -134,7 +206,8 @@ def run_claim_graph(ctx: NodeContext) -> NodeOutcome:
     audit_findings: list[dict] = []
     for draft in sorted(root.glob("draft/*.md")) + sorted(root.glob("draft/*.tex")):
         text = _clean_for_extraction(
-            draft.read_text(encoding="utf-8", errors="replace"))
+            _cut_reference_section(
+                draft.read_text(encoding="utf-8", errors="replace")))
         rel = str(draft.relative_to(root))
         for pos, cand in _extract_candidates(text):
             if _is_structural_fragment(cand):

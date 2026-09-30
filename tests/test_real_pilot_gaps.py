@@ -3988,3 +3988,607 @@ def test_gap011_negative_design_value_keeps_sign(tmp_path):
     run_numbers_units_audit(ctx)
     _, states = _closure_states(ctx)
     assert states["U2"] == "PASS", states
+
+
+# ---------------------------------------------------------------------------
+# GAP-3x (real pilot 3): claim vocabulary too narrow (comparative-only) —
+# audit/measurement papers extract ZERO claims; markdown reference lists in
+# drafts never become a bibliography (P15/P21 DEGRADED, P32 bib_exists FAIL)
+# ---------------------------------------------------------------------------
+
+from paper_factory.claims.builder import _clean_for_extraction, _extract_candidates
+
+_P3_DRAFT_STYLE = (
+    "Cadence-based structural arithmetic classifies 766,771,200 of "
+    "1,020,057,600 scalar coordinates (75.17%) as unreachable.\n"
+    "The audit reports that 0 of 168 target gate-scope tensors were owned by Muon.\n"
+    "The held-out suite shows 3 true positives and 9 true negatives.\n"
+    "The sweep covers 19 attestations across 7 configurations.\n"
+    "We discuss related work without numbers.\n")
+
+
+def test_gap_p3_measurement_verbs_yield_claims():
+    """Pilot-3 repro: 'classifies N of M', 'reports 0 of 168', 'shows 3 TP' —
+    measurement/audit rhetoric must produce candidates."""
+    cands = _extract_candidates(_clean_for_extraction(_P3_DRAFT_STYLE))
+    joined = " ".join(c for _, c in cands)
+    assert "766,771,200" in joined, cands
+    assert "0 of 168" in joined, cands
+    assert len(cands) >= 3, cands
+
+
+def test_gap_p3_numberless_prose_still_not_a_claim():
+    cands = _extract_candidates(
+        _clean_for_extraction("We discuss related work and future directions."))
+    assert cands == []
+
+
+from paper_factory.literature.draft_refs import parse_markdown_refs
+
+_P3_REFS = """
+# References
+
+\\[1\\] Adam Smith and Jane Doe. Mass invariance in conditional networks.
+arXiv preprint arXiv:2401.01234, 2024. URL https://arxiv.org/abs/2401.01234.
+
+\\[17\\] PyTorch Contributors. Adam optimizer documentation (PyTorch 2.8).
+https://docs.pytorch.org/docs/2.8/generated/torch.optim.Adam.html, 2026.
+"""
+
+
+def test_gap_p3_markdown_refs_parse_to_bib():
+    bib = parse_markdown_refs(_P3_REFS)
+    assert bib.count("@") == 2, bib
+    assert "2401.01234" in bib
+    assert "parsed from draft reference list" in bib  # T4 provenance marker
+    # entries survive the verifier's own parser
+    import tempfile
+    from paper_factory.literature.verify import parse_bib
+    p = Path(tempfile.mkdtemp()) / "refs.bib"
+    p.write_text(bib, encoding="utf-8")
+    entries = parse_bib(p)
+    assert len(entries) == 2
+    assert entries[0]["title"] and "Mass invariance" in entries[0]["title"]
+
+
+def test_gap_p3_draft_refs_wire_into_bibliography_nodes(tmp_path):
+    """With no .bib anywhere, the draft reference list feeds P15/P21/P32."""
+    from paper_factory.literature.verify import build_references, run_citation_audit
+    (tmp_path / "draft").mkdir()
+    (tmp_path / "draft" / "paper.md").write_text(
+        "# Title\n\nSome text.\n\n" + _P3_REFS, encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    out_build = build_references(ctx)
+    assert out_build.verdict == Verdict.PASS, out_build.detail
+    assert (ctx.workspace.paper_dir / "references.bib").exists()
+    out_audit = run_citation_audit(ctx)  # offline ctx: audit degrades, not missing
+    assert out_audit.verdict == Verdict.DEGRADED
+    assert "no bibliography" not in str(out_audit.detail)
+
+
+# ---------------------------------------------------------------------------
+# GAP-3x review round (B-P3-1 stale derived bib, A-F2 author split,
+# A-F3 bare DOI, A-F4 duplicate markers, A-F6 self-refresh, B-c T4 visibility)
+# ---------------------------------------------------------------------------
+
+def test_gap_p3_r2_real_bib_displaces_derived(tmp_path):
+    """B-P3-1 (MAJOR): when a real .bib arrives, the derived file must leave
+    the glob (versioned, not deleted) and the chain must see only the real
+    key."""
+    from paper_factory.literature.draft_refs import ensure_draft_bib
+    from paper_factory.literature.verify import build_references
+    (tmp_path / "draft").mkdir()
+    (tmp_path / "draft" / "paper.md").write_text(
+        "# T\n\ntext\n\n" + _P3_REFS, encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    derived = ensure_draft_bib(tmp_path)
+    assert derived is not None and derived.exists()
+    # real bib arrives
+    (tmp_path / "literature" / "real.bib").write_text(
+        "@article{realkey, title={Real}, year={2024}}\n", encoding="utf-8")
+    assert ensure_draft_bib(tmp_path) is None
+    assert not derived.exists()
+    assert list((tmp_path / "literature").glob("parsed_from_draft.bib.v1.*")), \
+        "displaced derived bib must be versioned, not deleted"
+    out = build_references(ctx)
+    assert out.verdict == Verdict.PASS
+    built = (ctx.workspace.paper_dir / "references.bib").read_text()
+    assert "realkey" in built and "draftref" not in built
+
+
+def test_gap_p3_r2_derived_self_refreshes_on_draft_edit(tmp_path):
+    """A-F6: editing the draft reference list regenerates the derived bib
+    (old content versioned)."""
+    from paper_factory.literature.draft_refs import ensure_draft_bib
+    (tmp_path / "draft").mkdir()
+    d = tmp_path / "draft" / "paper.md"
+    d.write_text("# T\n\ntext\n\n" + _P3_REFS, encoding="utf-8")
+    first = ensure_draft_bib(tmp_path).read_text()
+    d.write_text(d.read_text().replace("Mass invariance", "Mass Variance"),
+                 encoding="utf-8")
+    second = ensure_draft_bib(tmp_path).read_text()
+    assert "Mass Variance" in second and first != second
+    assert list((tmp_path / "literature").glob("parsed_from_draft.bib.v1.*"))
+
+
+def test_gap_p3_r2_initials_author_title_split():
+    """A-F2: 'Doe, K. and Roe, L. Another study.' → authors keep initials,
+    title clean."""
+    from paper_factory.literature.draft_refs import parse_markdown_refs
+    bib = parse_markdown_refs(
+        "# References\n\n\\[1\\] Doe, K. and Roe, L. Another study on things. "
+        "Journal of X, 2024. URL https://arxiv.org/abs/2401.01234.\n")
+    assert "author = {Doe, K. and Roe, L}" in bib, bib
+    assert "title = {Another study on things" in bib, bib
+
+
+def test_gap_p3_r2_bare_doi_and_duplicate_markers():
+    """A-F3/F4: bare 'doi:10.xxxx/yy' is extracted; duplicate [N] markers get
+    suffixed keys, never duplicates."""
+    from paper_factory.literature.draft_refs import parse_markdown_refs
+    bib = parse_markdown_refs(
+        "# References\n\n"
+        "\\[3\\] A. First study on topics. J. X, 2023. doi:10.5555/abc.123.\n\n"
+        "\\[3\\] B. Second study on topics. J. Y, 2024. "
+        "URL https://arxiv.org/abs/2402.00001.\n")
+    assert "doi = {10.5555/abc.123}" in bib, bib
+    assert "draftref3," in bib and "draftref3b," in bib, bib
+    import tempfile
+    from paper_factory.literature.verify import parse_bib
+    p = Path(tempfile.mkdtemp()) / "r.bib"
+    p.write_text(bib, encoding="utf-8")
+    keys = [e["key"] for e in parse_bib(p)]
+    assert len(keys) == len(set(keys)) == 2
+
+
+def test_gap_p3_r2_t4_flag_in_citation_audit(tmp_path):
+    """B-c: entries from the derived bib carry t4_derived=True in the audit
+    records, not just in the filename."""
+    from paper_factory.literature.verify import run_citation_audit
+    (tmp_path / "draft").mkdir()
+    (tmp_path / "draft" / "paper.md").write_text(
+        "# T\n\ntext\n\n" + _P3_REFS, encoding="utf-8")
+    ctx = _ctx(tmp_path)  # offline → DEGRADED with per-entry records
+    out = run_citation_audit(ctx)
+    assert out.verdict == Verdict.DEGRADED
+    audit = _json.loads(
+        (ctx.workspace.reports_dir / "citation_audit.json").read_text())
+    assert audit["entries"], audit
+    assert all(e.get("t4_derived") is True for e in audit["entries"])
+
+
+# ---------------------------------------------------------------------------
+# GAP-3x review round 3 (B R2-F1 unverifiable T4 citations vs U4 "resolve",
+# B R2-F2 note-bound t4 flag, A R2 N-A arXiv old-style, N-B refs-section cut,
+# N-C markdown table/heading debris, N-D same-second rename collision)
+# ---------------------------------------------------------------------------
+
+def _ctx_online(tmp_path: Path) -> NodeContext:
+    """Audit executes (not offline). Safe in tests only for entries WITHOUT
+    resolvable identifiers — no-DOI entries never touch the network."""
+    ctx = _ctx(tmp_path)
+    ctx.offline = False
+    return ctx
+
+
+def test_gap_p3_r3_unverifiable_t4_blocks_u4(tmp_path):
+    """B R2-F1 (MAJOR): hallucinated draft references without DOI must NOT
+    reach U4 PASS 'all citations resolve'. The derived-bib bridge turned
+    'no bibliography → blocked' into 'PASS with MINOR no_doi' — the closure
+    attested resolution for citations nothing ever verified."""
+    from paper_factory.literature.verify import run_citation_audit
+    from paper_factory.release.closure import _u4
+    (tmp_path / "draft").mkdir()
+    (tmp_path / "draft" / "paper.md").write_text(
+        "# T\n\ntext\n\n# References\n\n"
+        "\\[1\\] Invented, A. A totally fabricated study on nothing at all. "
+        "Journal of Nowhere, 2024.\n\n"
+        "\\[2\\] Madeup, B. Another invented result on everything. "
+        "Conf. Fake, 2025.\n",
+        encoding="utf-8")
+    ctx = _ctx_online(tmp_path)
+    out = run_citation_audit(ctx)
+    assert out.verdict == Verdict.DEGRADED, out.detail
+    audit = _json.loads(
+        (ctx.workspace.reports_dir / "citation_audit.json").read_text())
+    assert all(f["kind"] == "unverifiable_citation" and f["severity"] == "MAJOR"
+               for f in audit["findings"]), audit["findings"]
+    state, note = _u4(ctx)
+    assert state == "DEGRADED", (state, note)
+    assert "unverifiable" in note.lower()
+
+
+def test_gap_p3_r3_u4_no_findings_only_then_resolve_claim(tmp_path):
+    """The note may claim 'all citations resolve' ONLY with zero findings."""
+    from paper_factory.release.closure import _u4
+    ctx = _ctx_online(tmp_path)
+    ctx.workspace.reports_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.reports_dir / "citation_audit.json").write_text(_json.dumps({
+        "offline": False, "entries": [{"key": "ok", "verdict": "VERIFIED"}],
+        "findings": []}))
+    state, note = _u4(ctx)
+    assert state == "PASS" and "all citations resolve" in note
+
+
+def test_gap_p3_r3_real_bib_no_doi_honest_note(tmp_path):
+    """A real-bib entry without DOI (book/tech report) stays MINOR — U4 PASS,
+    but the note must scope the claim instead of a blanket 'all resolve'."""
+    from paper_factory.release.closure import _u4
+    ctx = _ctx_online(tmp_path)
+    ctx.workspace.reports_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.reports_dir / "citation_audit.json").write_text(_json.dumps({
+        "offline": False, "entries": [{"key": "book1", "verdict": "NO_DOI"}],
+        "findings": [{"severity": "MINOR", "kind": "no_doi", "key": "book1"}]}))
+    state, note = _u4(ctx)
+    assert state == "PASS"
+    assert "not resolvable" in note
+    assert "all citations resolve" not in note
+
+
+def test_gap_p3_r3_u4_unverifiable_network_degraded(tmp_path):
+    """Same false-green class as B R2-F1: network-unverifiable citations must
+    not be attested as resolving."""
+    from paper_factory.release.closure import _u4
+    ctx = _ctx_online(tmp_path)
+    ctx.workspace.reports_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.reports_dir / "citation_audit.json").write_text(_json.dumps({
+        "offline": False, "entries": [{"key": "k", "verdict": "UNKNOWN_NETWORK"}],
+        "findings": [{"severity": "MAJOR", "kind": "unverifiable_network",
+                      "key": "k", "doi": "10.1/x"}]}))
+    state, note = _u4(ctx)
+    assert state == "DEGRADED" and "unverifiable" in note
+
+
+def test_gap_p3_r3_t4_no_doi_is_major_real_bib_no_doi_stays_minor(tmp_path):
+    from paper_factory.literature import verify
+    ctx = _ctx_online(tmp_path)
+    entries = [{"key": "t4x", "doi": None, "eprint": None, "title": "x",
+                "t4_derived": True},
+               {"key": "realx", "doi": None, "eprint": None, "title": "y",
+                "t4_derived": False}]
+    records, findings, verdict = verify._audit_entries(ctx, entries)
+    by_key = {f["key"]: f for f in findings}
+    assert by_key["t4x"]["kind"] == "unverifiable_citation"
+    assert by_key["t4x"]["severity"] == "MAJOR"
+    assert by_key["realx"]["kind"] == "no_doi"
+    assert by_key["realx"]["severity"] == "MINOR"
+    assert verdict == Verdict.DEGRADED
+    rec = {r["key"]: r for r in records}
+    assert rec["t4x"]["verdict"] == "UNVERIFIABLE_T4"
+    assert rec["realx"]["verdict"] == "NO_DOI"
+
+
+def test_gap_p3_r3_arxiv_eprint_synthesizes_datacite_doi(tmp_path, monkeypatch):
+    """arXiv eprints are verified via their official DataCite DOI — a fake
+    eprint becomes a false_citation CRITICAL, not a MINOR shrug."""
+    from paper_factory.literature import verify
+    seen = {}
+
+    def fake_resolve(doi, timeout=20):
+        seen["doi"] = doi
+        return {"doi": doi, "verdict": "NOT_FOUND", "sources": {}}
+
+    monkeypatch.setattr(verify, "resolve_doi", fake_resolve)
+    ctx = _ctx_online(tmp_path)
+    entries = [{"key": "k1", "doi": None, "eprint": "2401.99999",
+                "title": "t", "t4_derived": True}]
+    records, findings, verdict = verify._audit_entries(ctx, entries)
+    assert seen["doi"] == "10.48550/arXiv.2401.99999"
+    assert records[0]["doi_source"] == "arxiv_synthesized"
+    assert findings[0]["kind"] == "false_citation"
+    assert findings[0]["severity"] == "CRITICAL"
+
+
+def test_gap_p3_r3_t4_flag_from_note_content(tmp_path):
+    """B R2-F2: after build_references copies derived entries into
+    paper/references.bib, the manuscript-path audit still flags them
+    t4_derived — via the provenance NOTE in the entry, not the filename."""
+    from paper_factory.literature.verify import build_references, run_citation_audit
+    (tmp_path / "draft").mkdir()
+    (tmp_path / "draft" / "paper.md").write_text(
+        "# T\n\ntext\n\n" + _P3_REFS, encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    assert build_references(ctx).verdict == Verdict.PASS
+    out = run_citation_audit(ctx)  # reads paper/references.bib (manuscript path)
+    assert out.verdict == Verdict.DEGRADED  # offline
+    audit = _json.loads(
+        (ctx.workspace.reports_dir / "citation_audit.json").read_text())
+    assert audit["bib_files"][0].endswith("references.bib"), audit["bib_files"]
+    assert audit["entries"], audit
+    assert all(e.get("t4_derived") is True for e in audit["entries"])
+
+
+def test_gap_p3_r3_arxiv_old_style_eprint():
+    """A R2 N-A: old-style arXiv ids carry a slash (cs/0601001) — the regex
+    must span it."""
+    from paper_factory.literature.draft_refs import parse_markdown_refs
+    bib = parse_markdown_refs(
+        "# References\n\n\\[1\\] Old, S. A classic result on many things. "
+        "URL https://arxiv.org/abs/cs/0601001, 2006.\n")
+    assert "eprint = {cs/0601001}" in bib, bib
+
+
+def test_gap_p3_r3_claims_cut_at_references(tmp_path):
+    """A R2 N-B: reference-list content (cue verb + year inside a TITLE) must
+    not become a claim."""
+    from paper_factory.claims.builder import run_claim_graph
+    from paper_factory.claims.graph import load_claims
+    (tmp_path / "draft").mkdir()
+    (tmp_path / "draft" / "paper.md").write_text(
+        "# T\n\nThe audit shows 42 cases hold across all arms.\n\n"
+        "# References\n\n"
+        "\\[1\\] Pineau, J. Improving reproducibility in machine learning "
+        "research: A report from the NeurIPS 2019 reproducibility program. "
+        "2020.\n",
+        encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    run_claim_graph(ctx)
+    graph = load_claims(ctx.workspace.claims_dir / "claims.yaml")
+    stmts = " ".join(c.statement for c in graph.claims)
+    assert graph.claims, "the real claim above the references must survive"
+    assert "NeurIPS" not in stmts
+    assert "reproducibility" not in stmts
+
+
+def test_gap_p3_r3_heading_and_table_debris_not_claims():
+    """A R2 N-C: a markdown heading directly above a claim sentence is
+    stripped from the statement; markdown table rows never become claims."""
+    from paper_factory.claims.builder import (
+        _clean_for_extraction, _extract_candidates, _is_structural_fragment)
+    text = _clean_for_extraction(
+        "## Limitations\n\nThe audit shows 42 cases hold across arms.\n\n"
+        "| arm | tokens |\n|---|---|\n| muon shows 5 tokens | 4.6 |.\n")
+    cands = [c for _, c in _extract_candidates(text)
+             if not _is_structural_fragment(c)]
+    assert any(c.startswith("The audit shows") for c in cands), cands
+    assert not any("Limitations" in c for c in cands), cands
+    assert not any("muon shows" in c for c in cands), cands
+
+
+def test_gap_p3_r3_versioned_rename_same_second(tmp_path, monkeypatch):
+    """A R2 N-D: two versioned renames in the same UTC second must both
+    survive — POSIX rename would otherwise overwrite the earlier version."""
+    from paper_factory.literature import draft_refs
+
+    class _FrozenDT:
+        @staticmethod
+        def now(tz=None):
+            from datetime import datetime as _dt
+            return _dt(2026, 9, 30, 12, 0, 0)
+
+    monkeypatch.setattr(draft_refs, "datetime", _FrozenDT)
+    f = tmp_path / "parsed_from_draft.bib"
+    f.write_text("v1", encoding="utf-8")
+    d1 = draft_refs._versioned_rename(f)
+    f.write_text("v2", encoding="utf-8")
+    d2 = draft_refs._versioned_rename(f)
+    assert d1.name != d2.name
+    assert d1.read_text() == "v1" and d2.read_text() == "v2"
+
+
+# ---------------------------------------------------------------------------
+# GAP-3x review round 4 (A R3-1 eprint version suffix → false CRITICAL,
+# A R3-2 LaTeX refs cut, A R3-3 pipe-in-prose, A R3-4 note payload robustness,
+# A R3-5 mid-text References heading, B R3-1 remediation re-audit t4 flag,
+# B R3-2 stale final audit masking)
+# ---------------------------------------------------------------------------
+
+def test_gap_p3_r4_eprint_version_suffix_stripped(tmp_path, monkeypatch):
+    """A R3-1 (CRITICAL): arXiv DataCite DOIs are versionless — an eprint with
+    v2 suffix must be stripped, else a REAL paper 404s into false_citation."""
+    from paper_factory.literature import verify
+    seen = {}
+
+    def fake_resolve(doi, timeout=20):
+        seen["doi"] = doi
+        return {"doi": doi, "verdict": "VERIFIED", "sources": {}}
+
+    monkeypatch.setattr(verify, "resolve_doi", fake_resolve)
+    ctx = _ctx_online(tmp_path)
+    entries = [{"key": "k", "doi": None, "eprint": "2401.12345v2",
+                "title": "t", "t4_derived": False}]
+    records, findings, verdict = verify._audit_entries(ctx, entries)
+    assert seen["doi"] == "10.48550/arXiv.2401.12345", seen
+    assert not findings
+
+
+def test_gap_p3_r4_latex_refs_section_cut(tmp_path):
+    """A R3-2 (MAJOR): the reference cut must also work for LaTeX drafts —
+    \\section{References} with \\bibitem entries below."""
+    from paper_factory.claims.builder import run_claim_graph
+    from paper_factory.claims.graph import load_claims
+    (tmp_path / "draft").mkdir()
+    (tmp_path / "draft" / "paper.tex").write_text(
+        "\\section{Results}\nThe audit shows 42 cases hold across all arms.\n"
+        "\\section{References}\n"
+        "\\bibitem{rcnn} Ren, S. Faster R-CNN improves detection by 30 "
+        "percent in 2015 settings.\n",
+        encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    run_claim_graph(ctx)
+    graph = load_claims(ctx.workspace.claims_dir / "claims.yaml")
+    stmts = " ".join(c.statement for c in graph.claims)
+    assert graph.claims, "the real claim must survive"
+    assert "R-CNN" not in stmts, stmts
+
+
+def test_gap_p3_r4_mid_text_references_heading_not_a_cut(tmp_path):
+    """A R3-5 (MAJOR): a '# References' heading WITHOUT entry markers after it
+    is a discussion section — nothing below it may be cut."""
+    from paper_factory.claims.builder import _cut_reference_section
+    text = ("# Study\n\nWe discuss prior work.\n\n# References\n\n"
+            "This section argues the references in 2024 literature show 5 "
+            "trends clearly.\n\n# Results\n\nThe audit shows 42 cases hold.\n")
+    cut = _cut_reference_section(text)
+    assert "42 cases hold" in cut, "content below a marker-less References heading was cut"
+    assert "5 trends" in cut
+
+
+def test_gap_p3_r4_inline_math_pipes_keep_claim():
+    """A R3-3 (MAJOR): |S|, P(A|B), norms must not reject real claims — only
+    markdown table GRID rows (line starting with pipe, ≥3 pipes)."""
+    from paper_factory.claims.builder import (
+        _clean_for_extraction, _extract_candidates, _is_structural_fragment)
+    text = _clean_for_extraction(
+        "We find the cardinality |S| exceeds 2 in 80% of measured runs.\n\n"
+        "| arm | tokens | nll |\n|---|---|---|\n| muon shows 5 tokens | x | 4.6 |.\n")
+    cands = [c for _, c in _extract_candidates(text)
+             if not _is_structural_fragment(c)]
+    assert any("cardinality" in c for c in cands), cands
+    assert not any("muon shows" in c for c in cands), cands
+
+
+def test_gap_p3_r4_t4_flag_robust_to_nasty_note_payloads(tmp_path):
+    """A R3-4 (MAJOR): T4 provenance detection must survive quotes, @ and
+    inner braces in the note — the flag is span-bound, not regex-field-bound."""
+    from paper_factory.literature.verify import parse_bib
+    bib = tmp_path / "nasty.bib"
+    bib.write_text(
+        '@misc{weird1,\n  title = {X},\n'
+        '  note = {He said "internal draft", parsed from draft reference list (T4)}\n}\n'
+        '@misc{weird2,\n  title = {Y},\n'
+        '  note = {Contact foo@bar.edu, parsed from draft reference list (T4)}\n}\n'
+        '@misc{weird3,\n  title = {Z},\n'
+        '  note = {see {Smith 2020}, parsed from draft reference list (T4)}\n}\n'
+        '@misc{clean1,\n  title = {W},\n  note = {ordinary note}\n}\n',
+        encoding="utf-8")
+    entries = {e["key"]: e for e in parse_bib(bib)}
+    assert entries["weird1"]["t4_derived"] is True
+    assert entries["weird2"]["t4_derived"] is True
+    assert entries["weird3"]["t4_derived"] is True
+    assert entries["clean1"]["t4_derived"] is False
+
+
+def test_gap_p3_r4_remediation_reaudit_keeps_t4_flag(tmp_path):
+    """B R3-1 (MAJOR): the remediation re-audit parses references.bib via
+    parse_bib — the T4 flag must survive THAT path, so the final audit still
+    carries unverifiable_citation (MAJOR), not a downgraded MINOR no_doi."""
+    from paper_factory.literature import verify
+    ctx = _ctx_online(tmp_path)
+    ctx.workspace.paper_dir.mkdir(parents=True, exist_ok=True)
+    bib = ctx.workspace.paper_dir / "references.bib"
+    bib.write_text(
+        "@misc{draftref2,\n  title = {Madeup, B. Another invented result},\n"
+        "  note = {parsed from draft reference list (T4) — verify before citation}\n}\n",
+        encoding="utf-8")
+    entries = verify.parse_bib(bib)  # exactly what _remediate_citation_finding does
+    records, findings, verdict = verify._audit_entries(ctx, entries)
+    assert any(f["kind"] == "unverifiable_citation" and f["severity"] == "MAJOR"
+               and f["key"] == "draftref2" for f in findings), findings
+    assert verdict == Verdict.DEGRADED
+
+
+def test_gap_p3_r4_stale_final_never_masks_fresher_audit(tmp_path):
+    """B R3-2 (MAJOR): a stale citation_audit_final.json must not override a
+    FRESHER P21 audit with stricter findings. Inverse: a fresh final wins."""
+    from paper_factory.release.closure import _u4
+    ctx = _ctx_online(tmp_path)
+    reports = ctx.workspace.reports_dir
+    reports.mkdir(parents=True, exist_ok=True)
+    strict = {"audited_at": "2026-09-30T15:00:00Z", "offline": False,
+              "entries": [], "findings": [
+                  {"severity": "MAJOR", "kind": "unverifiable_citation",
+                   "key": "draftref2"}]}
+    lax = {"audited_at": "2026-09-30T14:00:00Z", "offline": False,
+           "entries": [], "findings": [
+               {"severity": "MINOR", "kind": "no_doi", "key": "draftref2"}]}
+    (reports / "citation_audit.json").write_text(_json.dumps(strict))
+    (reports / "citation_audit_final.json").write_text(_json.dumps(lax))
+    state, note = _u4(ctx)
+    assert state == "DEGRADED", (state, note)
+    # inverse: final is NEWER → it wins (post-remediation state is authoritative)
+    lax["audited_at"] = "2026-09-30T16:00:00Z"
+    (reports / "citation_audit_final.json").write_text(_json.dumps(lax))
+    state, note = _u4(ctx)
+    assert state == "PASS", (state, note)
+    assert "not resolvable" in note
+
+
+# ---------------------------------------------------------------------------
+# GAP-3x review round 4b (A R4-1 eprint V-case, A R4-2 bullet-list refs,
+# A R4-3 mid-line [N] citation false cut, A R4-5 multi-pipe prose)
+# ---------------------------------------------------------------------------
+
+def test_gap_p3_r4b_eprint_uppercase_version_stripped(tmp_path, monkeypatch):
+    """A R4-1: V2 (uppercase) must strip exactly like v2."""
+    from paper_factory.literature import verify
+    seen = {}
+
+    def fake_resolve(doi, timeout=20):
+        seen["doi"] = doi
+        return {"doi": doi, "verdict": "VERIFIED", "sources": {}}
+
+    monkeypatch.setattr(verify, "resolve_doi", fake_resolve)
+    ctx = _ctx_online(tmp_path)
+    entries = [{"key": "k", "doi": None, "eprint": "2401.12345V2",
+                "title": "t", "t4_derived": False}]
+    verify._audit_entries(ctx, entries)
+    assert seen["doi"] == "10.48550/arXiv.2401.12345", seen
+
+
+def test_gap_p3_r4b_bullet_list_references_cut():
+    """A R4-2: bullet-list bibliographies (no [N] markers) after a References
+    heading must also cut — else their titles become bogus claims."""
+    from paper_factory.claims.builder import _cut_reference_section
+    text = ("# Study\n\nThe audit shows 42 cases hold across arms.\n\n"
+            "# References\n\n"
+            "- Ren, S. Faster R-CNN improves detection by 30 percent in 2015.\n"
+            "- Pineau, J. A report from the 2019 program shows 3 trends.\n")
+    cut = _cut_reference_section(text)
+    assert "42 cases hold" in cut
+    assert "R-CNN" not in cut
+
+
+def test_gap_p3_r4b_midline_citation_marker_no_false_cut():
+    """A R4-3: a mid-line [1] CITATION after a '# References' discussion
+    heading is not bibliography evidence — nothing is cut."""
+    from paper_factory.claims.builder import _cut_reference_section
+    text = ("# Study\n\n# References\n\n"
+            "We argue the approach in [1] differs fundamentally from later "
+            "work in this area.\n\n"
+            "# Results\n\nThe audit reduces errors by 15 percent in 42 cold "
+            "runs overall.\n")
+    cut = _cut_reference_section(text)
+    assert "reduces errors by 15 percent" in cut, "false cut on mid-line [N] citation"
+
+
+def test_gap_p3_r4b_multi_pipe_prose_kept():
+    """A R4-5: multi-pipe PROSE is not a table row (a grid row ENDS at its
+    last pipe). Note: a candidate literally STARTING with '|S|' was already
+    rejected pre-R3 by the sentence-starts-with-a-letter rule — unchanged."""
+    from paper_factory.claims.builder import (
+        _clean_for_extraction, _extract_candidates, _is_structural_fragment)
+    text = _clean_for_extraction(
+        "The values |S| and |T| both show gains of 30% in the 42 measured "
+        "runs today.\n")
+    cands = [c for _, c in _extract_candidates(text)
+             if not _is_structural_fragment(c)]
+    assert any("both show gains" in c for c in cands), cands
+
+
+def test_gap_p3_r5_build_references_preserves_at_sign_entries(tmp_path):
+    """B R4-F1 (MAJOR): build_references copies via the span splitter — an '@'
+    inside a field (URL userinfo) must neither truncate the T4 note nor drop
+    the entry silently. The manuscript-path audit must still see MAJOR
+    unverifiable_citation, and U4 must stay DEGRADED."""
+    from paper_factory.literature.verify import build_references, run_citation_audit
+    from paper_factory.release.closure import _u4
+    (tmp_path / "draft").mkdir()
+    (tmp_path / "draft" / "paper.md").write_text(
+        "# T\n\ntext\n\n# References\n\n"
+        "\\[1\\] Author, A. Results at scale on many benchmarks. "
+        "URL https://example.org/u@host/page, 2024.\n",
+        encoding="utf-8")
+    ctx = _ctx_online(tmp_path)
+    out = build_references(ctx)
+    assert out.verdict == Verdict.PASS
+    assert out.detail["kept"], "entry with @-URL was silently dropped"
+    built = (ctx.workspace.paper_dir / "references.bib").read_text()
+    assert "parsed from draft reference list" in built, built
+    out_audit = run_citation_audit(ctx)  # manuscript path now
+    audit = _json.loads(
+        (ctx.workspace.reports_dir / "citation_audit.json").read_text())
+    assert any(f["kind"] == "unverifiable_citation" and f["severity"] == "MAJOR"
+               for f in audit["findings"]), audit["findings"]
+    state, note = _u4(ctx)
+    assert state == "DEGRADED", (state, note)
