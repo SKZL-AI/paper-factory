@@ -209,7 +209,9 @@ def parse_markdown_refs(text: str) -> str:
         if doi:
             fields.append(f"  doi = {{{doi}}}")
         if url:
-            fields.append(f"  url = {{{url.rstrip('.')}}}")
+            # prose punctuation glued to the link ('…html, 2026.') is citation
+            # syntax, not path (reviewer B R2 finding 1)
+            fields.append(f"  url = {{{url.rstrip('.,;:')}}}")
         fields.append(f"  note = {{{_PROVENANCE}}}")
         entries.append("@misc{%s,\n%s\n}" % (key, ",\n".join(fields)))
     return "\n\n".join(entries) + ("\n" if entries else "")

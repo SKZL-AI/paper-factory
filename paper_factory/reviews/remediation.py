@@ -268,7 +268,8 @@ def _manuscript_surface_files(paper: Path) -> list[Path]:
 
 
 _CLAIM_KINDS = {"unsupported_claim", "significance_without_test"}
-_CITATION_KINDS = {"false_citation", "citation_identity_mismatch",
+_CITATION_KINDS = {"false_citation", "false_url_citation",
+                   "citation_identity_mismatch",
                    "no_doi", "unverifiable_citation"}
 
 

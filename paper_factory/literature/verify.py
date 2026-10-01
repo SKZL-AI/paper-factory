@@ -240,10 +240,12 @@ def parse_bib(path: Path) -> list[dict[str, Any]]:
         # field always starts its own line (reviewer A R2-R1)
         cut = re.search(r"(?m)^\s*x-pf-title-cut\s*=\s*\{?\s*true", body,
                         re.IGNORECASE)
+        url = _bib_field(body, "url")
         entries.append({"key": key, "doi": doi.group(1) if doi else None,
                         "title": re.sub(r"\s+", " ", title).strip() if title else None,
                         "eprint": eprint.group(1) if eprint else None,
                         "note": note.group(1).strip() if note else None,
+                        "url": url.strip() if url else None,
                         # parser-narrowed draft title: prefix-only identity
                         # matches on it are unjudgeable (reviewer A R2-B1)
                         "title_cut": bool(cut),
@@ -251,6 +253,57 @@ def parse_bib(path: Path) -> list[dict[str, Any]]:
                         # nasty note payloads (reviewer B R2-F2 / A R3-4)
                         "t4_derived": T4_NOTE_MARK in body})
     return entries
+
+
+def _verify_url_entry(e: dict[str, Any]) -> dict[str, Any]:
+    """Authoritative-URL verification branch of _audit_entries. Returns
+    {"record", "findings"}. The URL verdict taxonomy lives in url_verify;
+    identity discipline is identical to the DOI path (incl. the cut-title
+    prefix downgrade, reviewer A R2-B1)."""
+    from .url_verify import verify_authoritative_url
+    rec = verify_authoritative_url(e["url"])
+    rec["key"] = e["key"]
+    rec["claimed_title"] = e.get("title")
+    rec["t4_derived"] = e.get("t4_derived", False)
+    findings: list[dict] = []
+    verdict = rec["verdict"]
+    if verdict == "VERIFIED_AUTHORITATIVE_URL":
+        match = _titles_match(e.get("title"), rec.get("title"))
+        if match is True and e.get("title_cut"):
+            exact = _norm_title(e.get("title") or "") == \
+                _norm_title(rec.get("title") or "")
+            if not exact:
+                match = None
+        rec["identity_check"] = ("match" if match is True else
+                                 "unjudgeable" if match is None else "mismatch")
+        if match is False:
+            rec["verdict"] = "IDENTITY_MISMATCH"
+            findings.append({"severity": "CRITICAL",
+                             "kind": "citation_identity_mismatch",
+                             "key": e["key"], "url": e["url"],
+                             "claimed_title": e.get("title"),
+                             "resolved_title": rec.get("title")})
+        elif match is None:
+            findings.append({"severity": "MINOR",
+                             "kind": "identity_unjudgeable",
+                             "key": e["key"], "url": e["url"]})
+    elif verdict == "NOT_FOUND":
+        findings.append({"severity": "CRITICAL", "kind": "false_url_citation",
+                         "key": e["key"], "url": e["url"]})
+    elif verdict == "UNKNOWN_NETWORK":
+        findings.append({"severity": "MAJOR", "kind": "unverifiable_network",
+                         "key": e["key"], "url": e["url"]})
+    else:
+        # NOT_AUTHORITATIVE_URL / REDIRECT_DOMAIN_CHANGED / NOT_HTTPS: the
+        # URL cannot vouch for the work — the entry stands as unverifiable
+        # as if it had no identifier at all
+        if e.get("t4_derived"):
+            findings.append({"severity": "MAJOR", "kind": "unverifiable_citation",
+                             "key": e["key"]})
+        else:
+            findings.append({"severity": "MINOR", "kind": "no_doi",
+                             "key": e["key"]})
+    return {"record": rec, "findings": findings}
 
 
 def _audit_entries(ctx: NodeContext, entries: list[dict[str, Any]]) -> tuple[list, list, Verdict]:
@@ -271,6 +324,16 @@ def _audit_entries(ctx: NodeContext, entries: list[dict[str, Any]]) -> tuple[lis
             # NOT_FOUND and becomes a false_citation, exactly as it should)
             doi = _synth_doi(None, e["eprint"])
             doi_source = "arxiv_synthesized"
+        if not doi and e.get("url"):
+            # authoritative-URL path: works without any DOI exist (W3C RECs,
+            # official software docs). The URL must retrieve, stay on the
+            # authoritative domain, and carry the cited title — a random blog
+            # with a matching title is never 'verified' (consultant brief
+            # 2026-10-01)
+            rec = _verify_url_entry(e)
+            records.append(rec["record"])
+            findings.extend(rec["findings"])
+            continue
         if not doi:
             t4 = e.get("t4_derived", False)
             records.append({"key": e["key"],
@@ -386,6 +449,7 @@ def build_references(ctx: NodeContext) -> NodeOutcome:
         # (citation_identity_mismatch)
         excluded = [f for f in audit.get("findings", [])
                     if f.get("kind") in ("false_citation",
+                                         "false_url_citation",
                                          "citation_identity_mismatch")]
 
     def _excluded(key: str, body: str) -> bool:
@@ -394,7 +458,8 @@ def build_references(ctx: NodeContext) -> NodeOutcome:
         # Findings without a DOI keep the legacy key-only behaviour. The
         # entry's verifiable identifier is the SYNTHESIZED DataCite DOI for
         # eprint-only entries — else a proven-fake arXiv citation survives
-        # every rebuild (reviewer B R2-1).
+        # every rebuild (reviewer B R2-1). URL findings bind to (key, url)
+        # the same way: a corrected URL under the same key survives.
         doi_m = _DOI.search(body)
         ep_m = _EPRINT.search(body)
         entry_doi = (_synth_doi(doi_m.group(1) if doi_m else None,
@@ -402,13 +467,22 @@ def build_references(ctx: NodeContext) -> NodeOutcome:
         # Zotero/web exports write doi={https://doi.org/…} — the ENTRY side is
         # normalized exactly like the finding side (reviewer A P3)
         entry_doi = entry_doi.removeprefix("https://doi.org/").removeprefix("http://doi.org/")
+        entry_url = (_bib_field(body, "url") or "").strip().lower()
         for f in excluded:
             if f.get("key") != key:
                 continue
             f_doi = str(f.get("doi") or "").lower()
             f_doi = f_doi.removeprefix("https://doi.org/").removeprefix("http://doi.org/")
-            if not f_doi or f_doi == entry_doi:
-                return True
+            if f_doi:
+                if f_doi == entry_doi:
+                    return True
+                continue
+            f_url = str(f.get("url") or "").strip().lower()
+            if f_url:
+                if f_url == entry_url:
+                    return True
+                continue
+            return True
         return False
 
     kept, dropped = [], []

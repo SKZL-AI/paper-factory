@@ -643,12 +643,14 @@ def _u4(ctx: NodeContext) -> tuple[str, str]:
     data = json.loads(audit.read_text())
     findings = data.get("findings", [])
     crit = [f for f in findings if f.get("kind") in ("false_citation",
+                                                     "false_url_citation",
                                                      "citation_identity_mismatch")]
-    # defense in depth: a record-level IDENTITY_MISMATCH must fail closure even
-    # when a hand-built/corrupt audit lost its finding (reviewer B B-3)
+    # defense in depth: a record-level IDENTITY_MISMATCH or NOT_FOUND must
+    # fail closure even when a hand-built/corrupt audit lost its finding
+    # (reviewer B B-3; NOT_FOUND asymmetry: reviewer A R3-L1 / B R2 finding 2)
     crit_keys = {f.get("key") for f in crit}
     crit_keys |= {r.get("key") for r in data.get("entries", [])
-                  if r.get("verdict") == "IDENTITY_MISMATCH"}
+                  if r.get("verdict") in ("IDENTITY_MISMATCH", "NOT_FOUND")}
     crit_keys.discard(None)
     if crit_keys:
         return "FAIL", (f"false or identity-mismatched citations: "
@@ -679,9 +681,11 @@ def _u4(ctx: NodeContext) -> tuple[str, str]:
         if unjudgeable:
             parts.append(f"{len(unjudgeable)} resolve but identity not checkable "
                          f"(MINOR): {[f.get('key') for f in unjudgeable]}")
-        return "PASS", (f"all DOI-carrying citations resolve ({src} audit); "
-                        + "; ".join(parts))
-    return "PASS", f"all citations resolve ({src} audit)"
+        return "PASS", (f"all identified citations resolve ({src} audit; "
+                        f"DOI/arXiv via registry, authoritative URLs via live "
+                        f"retrieval); " + "; ".join(parts))
+    return "PASS", (f"all citations resolve ({src} audit; DOI/arXiv via "
+                    f"registry, authoritative URLs via live retrieval)")
 
 
 def _u5(ctx: NodeContext) -> tuple[str, str]:

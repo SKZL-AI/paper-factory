@@ -5696,3 +5696,263 @@ def test_gap_p3_r1_cut_flag_injection_neutralized():
     p.write_text(bib, encoding="utf-8")
     entries = parse_bib(p)
     assert entries[0]["title_cut"] is True, entries
+
+
+# ---------------------------------------------------------------------------
+# Authoritative-URL citation verification (consultant brief A, 2026-10-01):
+# legitimate sources without DOI/arXiv (W3C RECs, official software docs) get
+# a REAL verification path — HTTPS + retrieval + authoritative host +
+# same-domain redirect + title identity — instead of permanent
+# UNVERIFIABLE_T4. A random blog with a matching title is never verified.
+# ---------------------------------------------------------------------------
+
+
+def _fake_urlopen_url(routes):
+    """routes: url-substring -> ('ok', html, final_url) | ('http', code) |
+    ('error',). final_url simulates redirects."""
+    import io
+    import urllib.error
+
+    class _Resp:
+        def __init__(self, payload, final):
+            self._b = payload.encode()
+            self._final = final
+            self.status = 200
+
+        def read(self):
+            return self._b
+
+        def geturl(self):
+            return self._final
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake(req, timeout=20):
+        url = req.full_url
+        for needle, action in routes.items():
+            if needle in url:
+                if action[0] == "ok":
+                    return _Resp(action[1], action[2])
+                if action[0] == "http":
+                    raise urllib.error.HTTPError(url, action[1], "x", {}, None)
+                raise urllib.error.URLError("down")
+        raise urllib.error.URLError("no route")
+    return fake
+
+
+_PAGE = "<html><head><title>%s</title></head><body>doc</body></html>"
+
+
+def test_url_verify_official_source_verified(monkeypatch):
+    """right official URL + matching title → VERIFIED_AUTHORITATIVE_URL with
+    full provenance (hash, bytes, retrieved_at, method)."""
+    from paper_factory.literature import url_verify
+    monkeypatch.setattr(url_verify.urllib.request, "urlopen",
+                        _fake_urlopen_url({"w3.org": ("ok", _PAGE % "PROV-DM: The PROV Data Model",
+                                                      "https://www.w3.org/TR/2013/REC-prov-dm-20130430/")}))
+    rec = url_verify.verify_authoritative_url(
+        "https://www.w3.org/TR/2013/REC-prov-dm-20130430/")
+    assert rec["verdict"] == "VERIFIED_AUTHORITATIVE_URL", rec
+    assert rec["method"] == "authoritative_url"
+    assert rec["title"] == "PROV-DM: The PROV Data Model"
+    assert rec["sha256"] and rec["bytes"] > 0 and rec["retrieved_at"]
+    assert "W3C" in rec["authority"]
+
+
+def test_url_verify_wrong_title_is_identity_mismatch(tmp_path, monkeypatch):
+    """reachable official URL but the page is a DIFFERENT work →
+    IDENTITY_MISMATCH + CRITICAL (never VERIFIED)."""
+    from paper_factory.literature import url_verify, verify
+    monkeypatch.setattr(url_verify.urllib.request, "urlopen",
+                        _fake_urlopen_url({"w3.org": ("ok", _PAGE % "PROV-O: The PROV Ontology",
+                                                      "https://www.w3.org/TR/prov-o/")}))
+    ctx = _ctx_online(tmp_path)
+    entries = [{"key": "provdm", "doi": None, "eprint": None,
+                "title": "PROV-DM: The PROV data model",
+                "url": "https://www.w3.org/TR/prov-o/", "t4_derived": True}]
+    records, findings, _ = verify._audit_entries(ctx, entries)
+    assert records[0]["verdict"] == "IDENTITY_MISMATCH", records
+    assert findings[0]["kind"] == "citation_identity_mismatch"
+    assert findings[0]["severity"] == "CRITICAL"
+
+
+def test_url_verify_cross_domain_redirect_not_verified(monkeypatch):
+    """redirect leaving the official domain → REDIRECT_DOMAIN_CHANGED."""
+    from paper_factory.literature import url_verify
+    monkeypatch.setattr(url_verify.urllib.request, "urlopen",
+                        _fake_urlopen_url({"w3.org": ("ok", _PAGE % "PROV-DM: The PROV Data Model",
+                                                      "https://evil-mirror.example.com/prov-dm")}))
+    rec = url_verify.verify_authoritative_url(
+        "https://www.w3.org/TR/2013/REC-prov-dm-20130430/")
+    assert rec["verdict"] == "REDIRECT_DOMAIN_CHANGED", rec
+
+
+def test_url_verify_same_domain_redirect_allowed(monkeypatch):
+    """canonical redirect within the official domain (host → www.host) is
+    legitimate."""
+    from paper_factory.literature import url_verify
+    monkeypatch.setattr(url_verify.urllib.request, "urlopen",
+                        _fake_urlopen_url({"w3.org": ("ok", _PAGE % "PROV-DM: The PROV Data Model",
+                                                      "https://www.w3.org/TR/2013/REC-prov-dm-20130430/")}))
+    rec = url_verify.verify_authoritative_url("https://w3.org/TR/2013/REC-prov-dm-20130430/")
+    assert rec["verdict"] == "VERIFIED_AUTHORITATIVE_URL", rec
+
+
+def test_url_verify_404_not_found_but_429_unknown(monkeypatch):
+    """404/410 → NOT_FOUND (a real false citation); 429/5xx/network →
+    UNKNOWN_NETWORK, NEVER a false NOT_FOUND."""
+    from paper_factory.literature import url_verify
+    monkeypatch.setattr(url_verify.urllib.request, "urlopen",
+                        _fake_urlopen_url({"w3.org": ("http", 404)}))
+    assert url_verify.verify_authoritative_url(
+        "https://www.w3.org/TR/gone/")["verdict"] == "NOT_FOUND"
+    for code in (429, 500, 503, 403):
+        monkeypatch.setattr(url_verify.urllib.request, "urlopen",
+                            _fake_urlopen_url({"w3.org": ("http", code)}))
+        assert url_verify.verify_authoritative_url(
+            "https://www.w3.org/TR/x/")["verdict"] == "UNKNOWN_NETWORK", code
+    monkeypatch.setattr(url_verify.urllib.request, "urlopen",
+                        _fake_urlopen_url({"w3.org": ("error",)}))
+    assert url_verify.verify_authoritative_url(
+        "https://www.w3.org/TR/x/")["verdict"] == "UNKNOWN_NETWORK"
+
+
+def test_url_verify_blog_with_matching_title_not_authoritative(tmp_path, monkeypatch):
+    """a random blog hosting the matching title is NOT verification — the
+    entry falls back to unverifiable_citation (MAJOR for T4-derived)."""
+    from paper_factory.literature import url_verify, verify
+    monkeypatch.setattr(url_verify.urllib.request, "urlopen",
+                        _fake_urlopen_url({"blog.example": ("ok", _PAGE % "PROV-DM: The PROV Data Model",
+                                                            "https://blog.example/x")}))
+    ctx = _ctx_online(tmp_path)
+    entries = [{"key": "blogref", "doi": None, "eprint": None,
+                "title": "PROV-DM: The PROV data model",
+                "url": "https://blog.example/x", "t4_derived": True}]
+    records, findings, _ = verify._audit_entries(ctx, entries)
+    assert records[0]["verdict"] == "NOT_AUTHORITATIVE_URL", records
+    assert any(f["kind"] == "unverifiable_citation" and f["severity"] == "MAJOR"
+               for f in findings)
+
+
+def test_url_verify_http_scheme_rejected(monkeypatch):
+    from paper_factory.literature import url_verify
+    rec = url_verify.verify_authoritative_url("http://www.w3.org/TR/x/")
+    assert rec["verdict"] == "NOT_HTTPS"
+
+
+def test_url_verify_u4_fails_on_false_url_citation(tmp_path):
+    """U4: a 404'd cited URL fails closure exactly like a false DOI."""
+    from paper_factory.release.closure import _u4
+    ctx = _ctx_online(tmp_path)
+    ctx.workspace.reports_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.reports_dir / "citation_audit.json").write_text(_json.dumps({
+        "offline": False,
+        "entries": [{"key": "gone", "verdict": "NOT_FOUND"}],
+        "findings": [{"severity": "CRITICAL", "kind": "false_url_citation",
+                      "key": "gone", "url": "https://www.w3.org/TR/gone/"}]}))
+    state, note = _u4(ctx)
+    assert state == "FAIL" and "gone" in note
+
+
+def test_url_verify_build_references_drops_bound_url(tmp_path, monkeypatch):
+    """a false_url_citation finding drops exactly that (key, url) entry;
+    the same key with a CORRECTED url survives."""
+    from paper_factory.literature.verify import build_references
+    (tmp_path / "literature").mkdir()
+    (tmp_path / "literature" / "refs.bib").write_text(
+        "@misc{k1, title={A}, url={https://www.w3.org/TR/gone/}}\n"
+        "@misc{k2, title={B}, url={https://www.w3.org/TR/ok/}}\n",
+        encoding="utf-8")
+    ctx = _ctx_online(tmp_path)
+    ctx.workspace.reports_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.reports_dir / "citation_audit.json").write_text(_json.dumps({
+        "findings": [{"kind": "false_url_citation", "key": "k1",
+                      "url": "https://www.w3.org/TR/gone/"}]}))
+    out = build_references(ctx)
+    assert out.verdict == Verdict.PASS
+    built = (ctx.workspace.paper_dir / "references.bib").read_text()
+    assert "k2" in built and "k1" not in built
+
+
+def test_url_verify_pilot_refs_w3c_and_pytorch_live():
+    """LIVE smoke (skipped offline): the two real pilot refs verify via the
+    authoritative path."""
+    import os
+    if os.environ.get("PF_LIVE_NET") != "1":
+        import pytest
+        pytest.skip("live network check — run with PF_LIVE_NET=1")
+    from paper_factory.literature import url_verify
+    from paper_factory.literature.verify import _titles_match
+    rec = url_verify.verify_authoritative_url(
+        "https://www.w3.org/TR/2013/REC-prov-dm-20130430/")
+    assert rec["verdict"] == "VERIFIED_AUTHORITATIVE_URL", rec
+    assert _titles_match("PROV-DM: The PROV data model", rec["title"]) is True
+
+
+def test_url_verify_deceptive_hosts_never_authoritative():
+    """Reviewer A R3-M1: look-alike hosts must never pass the trust boundary
+    (pins the dot-boundary in the suffix match)."""
+    from paper_factory.literature import url_verify
+    for host_url in ("https://evil-w3.org/TR/x/", "https://w3.org.evil.com/TR/x/",
+                     "https://notdocs.pytorch.org/x/", "https://w3.org@evil.com/x/"):
+        rec = url_verify.verify_authoritative_url(host_url)
+        assert rec["verdict"] == "NOT_AUTHORITATIVE_URL", (host_url, rec)
+
+
+def test_url_verify_trailing_prose_punctuation_stripped(monkeypatch):
+    """Reviewer B R2 finding 1/4: 'https://…Adam.html,' from draft prose is
+    normalized before retrieval — a genuine reference must never 404 on
+    citation punctuation."""
+    from paper_factory.literature import url_verify
+    seen = {}
+
+    def spy(req, timeout=20):
+        seen["url"] = req.full_url
+        raise url_verify.urllib.error.HTTPError(req.full_url, 404, "x", {}, None)
+
+    monkeypatch.setattr(url_verify.urllib.request, "urlopen", spy)
+    rec = url_verify.verify_authoritative_url(
+        "https://docs.pytorch.org/docs/2.8/generated/torch.optim.Adam.html,")
+    assert seen["url"].endswith("Adam.html"), seen
+    assert rec["verdict"] == "NOT_FOUND"  # 404 of the CLEAN url
+
+
+def test_url_verify_draft_parser_strips_trailing_comma():
+    """Reviewer B R2 finding 1: the pilot's draftref17 text ('…Adam.html,
+    2026.') must parse to a clean URL."""
+    from paper_factory.literature.draft_refs import parse_markdown_refs
+    bib = parse_markdown_refs(
+        "# References\n\n"
+        "\\[17\\] PyTorch Contributors. Adam — PyTorch 2.8 documentation. "
+        "https://docs.pytorch.org/docs/2.8/generated/torch.optim.Adam.html, "
+        "2026. Documents distinct optimizer behavior.\n")
+    assert "url = {https://docs.pytorch.org/docs/2.8/generated/torch.optim.Adam.html}" in bib, bib
+
+
+def test_url_verify_u4_record_not_found_without_finding_fails(tmp_path):
+    """Reviewer A R3-L1 / B R2 finding 2: record-level NOT_FOUND fails U4 even
+    when the findings list lost its entry (defense in depth)."""
+    from paper_factory.release.closure import _u4
+    ctx = _ctx_online(tmp_path)
+    ctx.workspace.reports_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.reports_dir / "citation_audit.json").write_text(_json.dumps({
+        "offline": False,
+        "entries": [{"key": "gone", "verdict": "NOT_FOUND"}],
+        "findings": []}))
+    state, note = _u4(ctx)
+    assert state == "FAIL" and "gone" in note
+
+
+def test_url_verify_https_downgrade_redirect_rejected(monkeypatch):
+    """Reviewer B R2 nit: a redirect downgrading https→http on the same host
+    is not a verification."""
+    from paper_factory.literature import url_verify
+    monkeypatch.setattr(url_verify.urllib.request, "urlopen",
+                        _fake_urlopen_url({"w3.org": ("ok", _PAGE % "X Y",
+                                                      "http://www.w3.org/TR/x/")}))
+    rec = url_verify.verify_authoritative_url("https://www.w3.org/TR/x/")
+    assert rec["verdict"] == "REDIRECT_DOMAIN_CHANGED", rec
