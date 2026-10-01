@@ -5394,3 +5394,305 @@ def test_empty_openalex_title_does_not_block_datacite_fallback(tmp_path, monkeyp
     }))
     rec = verify.resolve_doi("10.1/x")
     assert rec["title"] == "The Real Title Here", rec
+
+
+# ---------------------------------------------------------------------------
+# Draft-ref title cleanup (Pilot-3 identity rerun, 2026-10-01): the markdown
+# reference parser's title zone carried bibliography apparatus ('arXiv
+# preprint arXiv:…, 2024. URL'), venue sentences ('… In Proceedings of …')
+# and orphaned author-list tails ('Dahl. On empirical comparisons…'). The
+# citation-identity check compares the claimed title against the registry
+# title — with the junk, EVERY draft-derived entry mismatched (verified by
+# direct probe: all 12 already-verified pilot refs returned False). The fix
+# narrows the claimed title in the parser (draft_refs._clean_title); the
+# matcher itself stays strict.
+# ---------------------------------------------------------------------------
+
+
+def test_gap_p3_title_cleanup_strips_arxiv_apparatus():
+    """'Title. arXiv preprint arXiv:XXXX, YEAR. URL' narrows to the title."""
+    from paper_factory.literature.draft_refs import parse_markdown_refs
+    bib = parse_markdown_refs(
+        "# References\n\n"
+        "\\[1\\] Dami Choi, Christopher J. Shallue, Zachary Nado, Jaehoon "
+        "Lee, Chris J. Maddison, and George E. Dahl. On empirical comparisons "
+        "of optimizers for deep learning. arXiv preprint arXiv:1910.05446, "
+        "2019. URL https://arxiv.org/abs/1910.05446.\n")
+    assert "title = {On empirical comparisons of optimizers for deep learning}" in bib, bib
+
+
+def test_gap_p3_title_cleanup_strips_venue_sentence():
+    """'. In International Conference on Learning Representations, 2022.' and
+    '. Journal of Machine Learning Research, 23(120):1–39, 2022.' go."""
+    from paper_factory.literature.draft_refs import parse_markdown_refs
+    bib = parse_markdown_refs(
+        "# References\n\n"
+        "\\[3\\] Tim Dettmers, Mike Lewis, Sam Shleifer, and Luke Zettlemoyer. "
+        "8-bit optimizers via block-wise quantization. In International "
+        "Conference on Learning Representations, 2022. URL "
+        "https://openreview.net/forum?id=shpkpVXzo3h.\n\n"
+        "\\[5\\] William Fedus, Barret Zoph, and Noam Shazeer. Switch "
+        "transformers: Scaling to trillion parameter models with simple and "
+        "efficient sparsity. Journal of Machine Learning Research, "
+        "23(120):1-39, 2022. URL https://www.jmlr.org/papers/v23/21-0998.html.\n")
+    assert "title = {8-bit optimizers via block-wise quantization}" in bib, bib
+    assert ("title = {Switch transformers: Scaling to trillion parameter "
+            "models with simple and efficient sparsity}") in bib, bib
+
+
+def test_gap_p3_title_cleanup_strips_doi_apparatus():
+    """'Datasheets for datasets. Communications of the ACM, 64(12):86–92,
+    2021. doi: 10.1145/3458723.' narrows to the title (no URL at all)."""
+    from paper_factory.literature.draft_refs import parse_markdown_refs
+    bib = parse_markdown_refs(
+        "# References\n\n"
+        "\\[6\\] Timnit Gebru, Jamie Morgenstern, Briana Vecchione, and Kate "
+        "Crawford. Datasheets for datasets. Communications of the ACM, "
+        "64(12):86-92, 2021. doi: 10.1145/3458723.\n")
+    assert "title = {Datasheets for datasets}" in bib, bib
+
+
+def test_gap_p3_title_cleanup_drops_orphaned_author_tail():
+    """The last-initial split leaves tails like 'Dahl. <title>.' /
+    'Kingma and Jimmy Ba. <title>.' — the tail goes, the title stays."""
+    from paper_factory.literature.draft_refs import parse_markdown_refs
+    bib = parse_markdown_refs(
+        "# References\n\n"
+        "\\[9\\] Diederik P. Kingma and Jimmy Ba. Adam: A method for "
+        "stochastic optimization. In International Conference on Learning "
+        "Representations, 2015. URL https://arxiv.org/abs/1412.6980.\n\n"
+        "\\[20\\] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, "
+        "Llion Jones, Aidan N. Gomez, Lukasz Kaiser, and Illia Polosukhin. "
+        "Attention is all you need. In Advances in Neural Information "
+        "Processing Systems, volume 30, 2017. URL "
+        "https://papers.neurips.cc/paper/2017/hash/x-Abstract.html.\n")
+    assert "title = {Adam: A method for stochastic optimization}" in bib, bib
+    assert "title = {Attention is all you need}" in bib, bib
+
+
+def test_gap_p3_title_cleanup_position0_in_guard():
+    """A title legitimately STARTING with 'In …' must never be cut."""
+    from paper_factory.literature.draft_refs import _clean_title
+    assert _clean_title("In search of mass invariance") == \
+        ("In search of mass invariance", False)
+
+
+def test_gap_p3_title_cleanup_never_empty():
+    """Degenerate entries keep their raw title rather than emitting ''."""
+    from paper_factory.literature.draft_refs import parse_markdown_refs
+    bib = parse_markdown_refs(
+        "# References\n\n"
+        "\\[1\\] Jane Doe. arXiv preprint arXiv:2401.01234, 2024. "
+        "URL https://arxiv.org/abs/2401.01234.\n")
+    assert "title = {}" not in bib
+
+
+# the 12 refs the 2026-09-30 pilot run VERIFIED, claimed-as-parsed vs
+# registry-resolved — every pair must MATCH after cleanup (offline fixture,
+# resolved titles taken from citation_audit_final.json of that run)
+_PILOT3_IDENTITY_PAIRS = [
+    ("On empirical comparisons of optimizers for deep learning. arXiv "
+     "preprint arXiv:1910.05446, 2019. URL",
+     "On Empirical Comparisons of Optimizers for Deep Learning"),
+    ("Datasheets for datasets. Communications of the ACM, 64(12):86-92, "
+     "2021. doi: 10.1145/3458723.", "Datasheets for datasets"),
+    ("State of the art: Reproducibility in artificial intelligence. In "
+     "Proceedings of the Thirty-Second AAAI Conference on Artificial "
+     "Intelligence, volume 32, 2018. doi: 10.1609/aaai.v32i1.11503. URL",
+     "State of the Art: Reproducibility in Artificial Intelligence"),
+    ("Deep networks with stochastic depth. In European Conference on "
+     "Computer Vision, pages 646-661, 2016. doi: 10.1007/978-3-319-46493-0_39.",
+     "Deep Networks with Stochastic Depth"),
+    ("Kingma and Jimmy Ba. Adam: A method for stochastic optimization. In "
+     "International Conference on Learning Representations, 2015. URL",
+     "Adam: A Method for Stochastic Optimization"),
+    ("SentencePiece: A simple and language independent subword tokenizer and "
+     "detokenizer for neural text processing. In Proceedings of the 2018 "
+     "Conference on Empirical Methods in Natural Language Processing: System "
+     "Demonstrations, pages 66-71, 2018. doi: 10.18653/v1/D18-2012. URL",
+     "SentencePiece: A simple and language independent subword tokenizer and "
+     "detokenizer for neural text processing"),
+    ("Muon is scalable for LLM training. arXiv preprint arXiv:2502.16982, "
+     "2025. URL", "Muon is Scalable for LLM Training"),
+    ("Model cards for model reporting. In Proceedings of the Conference on "
+     "Fairness, Accountability, and Transparency, pages 220-229, 2019. doi: "
+     "10.1145/3287560.3287596.", "Model Cards for Model Reporting"),
+    ("The rationale of PROV. Web Semantics: Science, Services and Agents on "
+     "the World Wide Web, 35(4):235-257, 2015. doi: "
+     "10.1016/j.websem.2015.04.001. URL", "The rationale of PROV"),
+    ("The FineWeb datasets: Decanting the web for the finest text data at "
+     "scale. In Advances in Neural Information Processing Systems, volume "
+     "37, 2024. doi: 10.52202/079017-0970. URL",
+     "The FineWeb Datasets: Decanting the Web for the Finest Text Data at "
+     "Scale"),
+    ("Mixture-of-Depths: Dynamically allocating compute in transformer-based "
+     "language models. arXiv preprint arXiv:2404.02258, 2024. URL",
+     "Mixture-of-Depths: Dynamically Allocating Compute in Transformer-Based "
+     "Language Models"),
+    ("Le, Geoffrey Hinton, and Jeff Dean. Outrageously large neural "
+     "networks: The sparsely-gated mixture-of-experts layer. In "
+     "International Conference on Learning Representations, 2017. URL",
+     "Outrageously Large Neural Networks: The Sparsely-Gated Mixture-of-"
+     "Experts Layer"),
+]
+
+
+def test_gap_p3_title_cleanup_pilot3_pairs_all_match():
+    """Every previously-verified pilot-3 reference must survive the identity
+    check after cleanup (regression: without cleanup ALL 12 mismatched).
+    Matches must be EXACT after normalization — a prefix-only match on a
+    parser-cut title is downgraded to unjudgeable by the verifier
+    (reviewer A R2-B1), so the pilot must not rely on it."""
+    from paper_factory.literature.draft_refs import _clean_title
+    from paper_factory.literature.verify import _norm_title, _titles_match
+    for claimed, resolved in _PILOT3_IDENTITY_PAIRS:
+        cleaned, _cut = _clean_title(claimed)
+        assert _titles_match(cleaned, resolved) is True, \
+            f"claimed={claimed!r} cleaned={cleaned!r} resolved={resolved!r}"
+        assert _norm_title(cleaned) == _norm_title(resolved), \
+            f"prefix-only match would be downgraded: {cleaned!r}"
+
+
+# ---------------------------------------------------------------------------
+# Reviewer-A R2 hardening of the title cleanup (2026-10-01):
+# B1 cut-produced prefix must not prove identity; B2 no narrowing below
+# 2 tokens; B4 'arXiv'/'URL' as genuine title words must not cut;
+# B5 venue detection generalized to any capitalized year-carrying sentence.
+# ---------------------------------------------------------------------------
+
+
+def test_gap_p3_b1_cut_prefix_match_is_unjudgeable(tmp_path, monkeypatch):
+    """B1 (MAJOR): a parser-CUT title whose only match basis is the
+    subtitle-prefix rule must NOT prove identity — the cut manufactured the
+    prefix. Without the downgrade, a DOI of a different work whose title
+    merely extends the cut fragment would PASS silently."""
+    from paper_factory.literature import verify
+    monkeypatch.setattr(
+        verify, "resolve_doi",
+        _fake_resolve_title("Adam: A Method for Stochastic Optimization"))
+    ctx = _ctx_online(tmp_path)
+    entries = [{"key": "cutpre", "doi": "10.48550/arXiv.1412.6980",
+                "eprint": None, "title": "Adam: A method",
+                "t4_derived": True, "title_cut": True}]
+    records, findings, _ = verify._audit_entries(ctx, entries)
+    assert records[0]["verdict"] == "VERIFIED"  # DOI resolution is real
+    assert records[0]["identity_check"] == "unjudgeable", records
+    assert any(f["kind"] == "identity_unjudgeable" and
+               f["severity"] == "MINOR" for f in findings), findings
+    # the SAME title WITHOUT the cut flag keeps the prefix tolerance —
+    # an author-written short title is legitimate 'Title' vs
+    # 'Title: Subtitle' evidence
+    entries[0]["title_cut"] = False
+    records2, _, _ = verify._audit_entries(ctx, entries)
+    assert records2[0]["identity_check"] == "match", records2
+
+
+def test_gap_p3_b1_cut_exact_match_still_passes(tmp_path, monkeypatch):
+    """B1 complement: a cut title matching by full equality still proves
+    identity (the pilot's 19 matches are all exact)."""
+    from paper_factory.literature import verify
+    monkeypatch.setattr(
+        verify, "resolve_doi",
+        _fake_resolve_title("Adam: A Method for Stochastic Optimization"))
+    ctx = _ctx_online(tmp_path)
+    entries = [{"key": "cutexact", "doi": "10.48550/arXiv.1412.6980",
+                "eprint": None,
+                "title": "Adam: A method for stochastic optimization",
+                "t4_derived": True, "title_cut": True}]
+    records, findings, _ = verify._audit_entries(ctx, entries)
+    assert records[0]["identity_check"] == "match", records
+    assert not [f for f in findings if f.get("key") == "cutexact"]
+
+
+def test_gap_p3_b2_no_narrowing_below_two_tokens():
+    """B2 (MAJOR): a >=2-token title is never narrowed below 2 tokens — that
+    would downgrade a would-be CRITICAL mismatch to MINOR unjudgeable."""
+    from paper_factory.literature.draft_refs import _clean_title
+    raw = "Dahl. arXiv preprint arXiv:1910.05446, 2019."
+    cleaned, cut = _clean_title(raw)
+    # apparatus cut would leave 'Dahl' (1 token) → raw title kept instead
+    assert (cleaned, cut) == (raw, False)
+
+
+def test_gap_p3_b4_arxiv_and_url_as_title_words_not_cut():
+    """B4 (MAJOR): 'arXiv' without an identifier and 'URL' as a word are
+    genuine title content and must survive."""
+    from paper_factory.literature.draft_refs import _clean_title
+    assert _clean_title("A survey of arXiv preprints") == \
+        ("A survey of arXiv preprints", False)
+    assert _clean_title("What's in a URL? A study of web identifiers") == \
+        ("What's in a URL? A study of web identifiers", False)
+
+
+def test_gap_p3_b5_year_carrying_venue_sentence_cut():
+    """B5 (MAJOR): venues outside the keyword list are caught by the generic
+    'capitalized sentence carrying a year' rule."""
+    from paper_factory.literature.draft_refs import _clean_title
+    assert _clean_title(
+        "A real result. PLOS ONE, 19(8):e123, 2023.") == ("A real result", True)
+    assert _clean_title(
+        "Another result. Bioinformatics, 36(4):1-9, 2020.") == \
+        ("Another result", True)
+
+
+def test_gap_p3_b3_name_tail_tradeoff_pinned_fail_visible():
+    """B3: a real title containing '. ' right after a short capitalized
+    fragment loses that fragment (known trade-off) — and the cut flag makes
+    sure the consequence is a VISIBLE finding, never a silent pass."""
+    from paper_factory.literature.draft_refs import _clean_title
+    cleaned, cut = _clean_title("Attention. Is all you need")
+    assert cleaned == "Is all you need" and cut is True
+
+
+def test_gap_p3_title_cut_flag_survives_bib_roundtrip(tmp_path):
+    """The x-pf-title-cut field must survive bib write -> parse_bib so the
+    verifier sees it."""
+    from paper_factory.literature.draft_refs import parse_markdown_refs
+    from paper_factory.literature.verify import parse_bib
+    bib = parse_markdown_refs(
+        "# References\n\n"
+        "\\[1\\] Adam Smith and Jane Doe. Mass invariance in conditional "
+        "networks. arXiv preprint arXiv:2401.01234, 2024. "
+        "URL https://arxiv.org/abs/2401.01234.\n")
+    p = tmp_path / "refs.bib"
+    p.write_text(bib, encoding="utf-8")
+    entries = parse_bib(p)
+    assert entries[0]["title_cut"] is True
+    assert entries[0]["title"] == "Mass invariance in conditional networks"
+
+
+def test_gap_p3_r2_earliest_venue_cut_wins():
+    """A R2-R2: a year-carrying sentence BEFORE a keyword venue sentence is
+    the real cut point — the keyword match must not shadow it."""
+    from paper_factory.literature.draft_refs import _clean_title
+    cleaned, cut = _clean_title(
+        "Real Title Here. PLOS ONE, 2023. In Proceedings of X, 2024.")
+    assert (cleaned, cut) == ("Real Title Here", True)
+
+
+def test_gap_p3_r3_year_in_title_tradeoff_pinned():
+    """A R2-R3: a real title whose own second sentence carries a year is cut
+    there — pinned as a documented fail-visible trade-off (the mismatch is a
+    visible finding, never a silent pass)."""
+    from paper_factory.literature.draft_refs import _clean_title
+    cleaned, cut = _clean_title(
+        "Stochastic depth. ResNet in 2016 showed vanishing gradients")
+    assert (cleaned, cut) == ("Stochastic depth", True)
+
+
+def test_gap_p3_r1_cut_flag_injection_neutralized():
+    """A R2-R1: a draft injecting 'x-pf-title-cut = false' into its title
+    text must not switch off the flag — only a line-start field counts."""
+    from paper_factory.literature.draft_refs import parse_markdown_refs
+    from paper_factory.literature.verify import parse_bib
+    import tempfile
+    from pathlib import Path
+    bib = parse_markdown_refs(
+        "# References\n\n"
+        "\\[1\\] Doe, J. Sneaky x-pf-title-cut = {false} title here. "
+        "arXiv preprint arXiv:2401.01234, 2024. "
+        "URL https://arxiv.org/abs/2401.01234.\n")
+    p = Path(tempfile.mkdtemp()) / "refs.bib"
+    p.write_text(bib, encoding="utf-8")
+    entries = parse_bib(p)
+    assert entries[0]["title_cut"] is True, entries

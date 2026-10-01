@@ -235,10 +235,18 @@ def parse_bib(path: Path) -> list[dict[str, Any]]:
         title = _bib_field(body, "title")
         eprint = _EPRINT.search(body)
         note = _NOTE.search(body)
+        # line-anchored, not _bib_field: a draft can INJECT the literal
+        # string 'x-pf-title-cut = false' into its own title text; the real
+        # field always starts its own line (reviewer A R2-R1)
+        cut = re.search(r"(?m)^\s*x-pf-title-cut\s*=\s*\{?\s*true", body,
+                        re.IGNORECASE)
         entries.append({"key": key, "doi": doi.group(1) if doi else None,
                         "title": re.sub(r"\s+", " ", title).strip() if title else None,
                         "eprint": eprint.group(1) if eprint else None,
                         "note": note.group(1).strip() if note else None,
+                        # parser-narrowed draft title: prefix-only identity
+                        # matches on it are unjudgeable (reviewer A R2-B1)
+                        "title_cut": bool(cut),
                         # content-bound: survives build_references copies and
                         # nasty note payloads (reviewer B R2-F2 / A R3-4)
                         "t4_derived": T4_NOTE_MARK in body})
@@ -287,6 +295,15 @@ def _audit_entries(ctx: NodeContext, entries: list[dict[str, Any]]) -> tuple[lis
             # the cited one. A real DOI belonging to a DIFFERENT paper is the
             # strongest false-citation class there is (final acceptance 2026-10-01)
             match = _titles_match(e.get("title"), rec.get("title"))
+            if match is True and e.get("title_cut"):
+                # the draft-ref parser NARROWED this title — a prefix-only
+                # match could be manufactured by the cut itself (the author
+                # never wrote a short title), so only full equality proves
+                # identity here (reviewer A R2-B1)
+                exact = _norm_title(e.get("title") or "") == \
+                    _norm_title(rec.get("title") or "")
+                if not exact:
+                    match = None
             rec["identity_check"] = ("match" if match is True else
                                      "unjudgeable" if match is None else "mismatch")
             if match is False:

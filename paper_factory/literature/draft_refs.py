@@ -31,6 +31,95 @@ _ARXIV = re.compile(r"arxiv\.org/(?:abs|pdf)/((?:[a-z][a-z\-]*(?:\.[A-Z]{2})?/)?
 _DOI_URL = re.compile(r"doi\.org/([^\s)\]]+)", re.I)
 _DOI_BARE = re.compile(r"\bdoi:\s*(10\.\d{4,9}/[^\s)\]]+)", re.I)
 
+# --- title cleanup ---------------------------------------------------------
+# The raw 'title' zone of a markdown reference carries bibliography apparatus
+# (arXiv/doi/URL markers, venue sentences) and often an author-list tail the
+# author/title split left behind ('Dahl. On empirical comparisons…'). The
+# citation-identity check compares this title against the registry title, so
+# the apparatus must go: claimed 'Title. arXiv preprint arXiv:…, 2024. URL'
+# can never equal resolved 'Title' (pilot-3 identity rerun 2026-10-01 — every
+# one of the 12 already-verified refs would have flipped to CRITICAL
+# identity_mismatch without this).
+# The arXiv alternative requires an actual identifier within reach —
+# 'A survey of arXiv preprints' is a real title and must NOT cut (reviewer
+# A R2-B4). A bare 'URL' word needs no alternative of its own: the marker is
+# always followed by the link, which https?:// already cuts.
+_APPARATUS = re.compile(r"\barxiv\b[^.]{0,25}?\d{4}\.\d{4,5}"
+                        r"|\bdoi\s*:\s*10\.|https?://", re.I)
+# venue sentence lead-in: '. In Proceedings…', '. Journal of…', '. Web
+# Semantics:…' — only AFTER a sentence boundary, so a title legitimately
+# starting with 'In …' is never cut (position-0 guard).
+_VENUE_LEAD = re.compile(
+    r"\.\s+(?=(?:in\s+[A-Z]|the\s+(?:journal|proceedings|transactions)|"
+    r"journal\b|proceedings\b|transactions\b|communications\b|advances\b|"
+    r"nature\b|science\b|ieee\b|acm\b|corr\b|web semantics\b|"
+    r"lecture notes\b|artificial intelligence\b))", re.I)
+# a capitalized sentence that itself carries a year is bibliography
+# apparatus ('. PLOS ONE, 19(8):e123, 2023.', '. Bioinformatics, 36(4)…') —
+# a venue keyword list can never be complete (reviewer A R2-B5)
+_VENUE_YEAR = re.compile(r"\.\s+(?=[A-Z][^.]*\b(?:19|20)\d{2}\b)")
+
+
+def _name_tail(frag: str) -> bool:
+    """A leading fragment like 'Dahl' / 'Kingma and Jimmy Ba' /
+    'Gomez, Lukasz Kaiser, and Illia Polosukhin' the author split orphaned."""
+    tokens = frag.split()
+    if not tokens or len(tokens) > 6:
+        return False
+    if " and " in f" {frag} ":
+        return True
+    return all(re.match(r"[A-Z][\w'’.\-]*,?$", t) for t in tokens)
+
+
+def _clean_title(title: str) -> tuple[str, bool]:
+    """Narrow a raw draft-reference title toward the actual work title:
+    apparatus and venue sentences cut, orphaned author tail dropped.
+
+    Returns (cleaned, cut): cut=True whenever ANY narrowing fired. The
+    verifier treats a prefix-only identity match on a cut title as
+    UNJUDGEABLE, never as proof (reviewer A R2-B1: the cut, not the author,
+    created the prefix constellation the matcher's subtitle tolerance
+    accepts). Narrowing is therefore fail-visible in both directions: a
+    wrong cut surfaces as identity_mismatch/identity_unjudgeable finding, a
+    wrong citation can never ride a cut-produced prefix to 'match'.
+
+    B2 guard: a title of >=2 tokens is never narrowed below 2 tokens (that
+    would downgrade a would-be CRITICAL mismatch to a MINOR unjudgeable);
+    the raw title goes to the matcher instead. Side effect (reviewer A
+    R2-R4): a genuine ONE-WORD title carrying apparatus ('Muon. arXiv
+    preprint…') therefore keeps its junk and mismatches CRITICAL on a
+    correct citation — fail-visible, human-remediable, accepted.
+
+    R3 trade-off (reviewer A R2-R3): a real title whose own second sentence
+    carries a year ('Stochastic depth. ResNet in 2016 showed…') is cut at
+    that sentence — same fail-visible class as the author-tail cut.
+    """
+    raw = title
+    cut = False
+    m = _APPARATUS.search(title)
+    if m:
+        title, cut = title[:m.start()], True
+    # earliest cut wins: a year-carrying apparatus sentence can precede a
+    # keyword venue sentence (reviewer A R2-R2)
+    cuts = [x for x in (_VENUE_LEAD.search(title), _VENUE_YEAR.search(title))
+            if x]
+    if cuts:
+        title, cut = title[:min(x.start() for x in cuts)], True
+    title = title.strip().rstrip(".").strip()
+    if ". " in title:
+        frag, rest = title.split(". ", 1)
+        rest = rest.strip()
+        if len(rest.split()) >= 2 and _name_tail(frag.strip()):
+            # known trade-off (reviewer A R2-B3): a real title containing
+            # '. ' right after a short capitalized fragment ('Attention.
+            # Is all you need') loses that fragment — visible as a
+            # mismatch finding, never silent
+            title, cut = rest, True
+    title = title.strip().rstrip(".").strip()
+    if cut and len(title.split()) < 2 and len(raw.split()) >= 2:
+        return raw, False
+    return title, cut
+
 T4_NOTE_MARK = "parsed from draft reference list"
 _PROVENANCE = (T4_NOTE_MARK + " (T4) — verify before citation")
 
@@ -97,7 +186,14 @@ def parse_markdown_refs(text: str) -> str:
         head = raw[:url_m.start()].strip() if url_m else raw
         head = re.sub(r"\s*,?\s*" + _YEAR.pattern + r"\.?\s*$", "", head)
         authors, title = _split_authors_title(head)
+        cleaned, title_cut = _clean_title(title)
+        title = cleaned or title  # never emit an empty title field
         fields = [f"  title = {{{_esc(title)}}}"]
+        if title_cut and cleaned:
+            # the verifier must know this title was parser-narrowed: a
+            # prefix-only identity match on a CUT title is unjudgeable,
+            # never proof (reviewer A R2-B1)
+            fields.append("  x-pf-title-cut = {true}")
         if authors:
             fields.append(f"  author = {{{_esc(authors)}}}")
         if year:
