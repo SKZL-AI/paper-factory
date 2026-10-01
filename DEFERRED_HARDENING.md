@@ -26,6 +26,50 @@ Jeder Eintrag: Befund · Herkunft · Severity · geplante Richtung.
   haben keinen Live-Writer. Kommentar in `_hash_source`.
 - A-R3-NIT (behoben in R4): in-root symlinkte Dateien → jetzt sichtbare Exclusion.
 
+### Citation Identity (Final Acceptance 2026-10-01, Runden R1–R3)
+
+Dokumentierte Risikoakzeptanz der verbleibenden Kollisionsklassen (Reviewer A
+N9/N11/N12/N13 — alle benötigen einen falschen DOI, dessen Werkstitel nach
+Normalisierung exakt mit dem zitierten Titel kollidiert):
+
+- N9 (MAJOR-Mechanismus, End-zu-End HYPOTHESIS, akzeptiert): LaTeX-Makronamen
+  werden entfernt → Titel, die sich NUR im Makro unterscheiden, kollidieren
+  (`$\Lambda$CDM` vs. `$\omega$CDM` → beide `…cdm…`). Griechische Makros auf
+  Unicode zu mappen wäre die nächste Härtung, ändert aber nichts am
+  Grundproblem: die Norm ist bewusst auf [a-z0-9] reduziert, damit Crossref-
+  Unicode-Titel mit BibTeX-Escapes matchen. Wer so etwas zitiert, hat ohnehin
+  menschliche Reviewer.
+- N11 (MINOR, akzeptiert): ue/oe/ae-Folding kollidiert Namensvarianten
+  (Mueller ≈ Muller ≈ Müller). Gewollt für die BibTeX-Transliterations-
+  konvention (B-1/F6 waren sonst False Positives); Kollisionsrichtung ist
+  „zu tolerant", nie „zu streng".
+- N12 (MINOR, HYPOTHESIS): abgeschnittene Bib-Titel — Trunkierung an
+  Wortgrenze mit Subtitel-Separator bleibt Präfix-Match; mitten im Wort →
+  CRITICAL auf korrekte Zitation. Keine Trunkierungs-Detektion vorhanden.
+- N13 (NIT): der <2-Token-Guard (`unjudgeable`) ist mit zwei Schrott-Tokens
+  umgehbar — ein Angreifer, der Bib-Titel fälscht, wird zusätzlich durch
+  U4-Scope-Note und menschliches P36-Sign-off aufgefangen.
+- A-P2 / B-R3-3 (MINOR, akzeptiert, fail-closed): parenthesisierte Editionen
+  („Attention Is All You Need (Extended Version)") und Punkt-Subtitel
+  („Statistical Learning. With Applications") sind keine erkannten
+  Subtitel-Separatoren → legitime Zitationen dieser Form werden CRITICAL
+  und müssen menschlich aufgelöst werden. Richtung ist nie False-Green;
+  erkannte Separatoren sind `:`, `–`, `—`, ` - ` (Whitespace-gekapselt).
+- A-P4 (MINOR, akzeptiert): Separator-Sibling-False-Negative — ein anderes Werk
+  mit demselben Haupttitel (`Deep Learning: A Different Survey` bzw.
+  `Deep Learning - A Different Survey`; Klasse gilt für ALLE erkannten
+  Separatoren `:`/`–`/`—`/` - `) matcht den Bib-Haupttitel `Deep Learning`
+  über die Subtitel-Regel. Einseitigkeit (nur resolved-Seite, B-R3-2-Fix)
+  schließt die Gegenrichtung; die verbleibende Klasse braucht ein Derivat,
+  das sich den Haupttitel teilt — selten, und die Autoren-/Venue-Daten bleiben
+  im Audit-Record sichtbar.
+- Timestamp-Generationen (NIT, akzeptiert): `utcnow` trägt seit der
+  Identity-Härtung Mikrosekunden; `_ts`-Vergleiche über Formatgenerationen
+  (altes Sekunden-Artefakt vs. neues Micro-Artefakt in derselben Sekunde)
+  ordnen `Z` > `.` — ein altes Final kann in diesem ≤1s-Fenster nach einem
+  Code-Upgrade ein neues P21-Audit „überholen". Selbstheilend beim nächsten
+  Lauf; betrifft auch das Dashboard-`sorted(glob)` für dieselbe Sekunde.
+
 ### GAP-011 (pfget-Label-/Gruppen-Bindung)
 
 - E1 (MINOR, dokumentierte Designwahl): Same-Field-Lockvogel — eine zweite Makro-

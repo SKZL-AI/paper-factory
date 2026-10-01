@@ -4389,7 +4389,9 @@ def test_gap_p3_r4_eprint_version_suffix_stripped(tmp_path, monkeypatch):
                 "title": "t", "t4_derived": False}]
     records, findings, verdict = verify._audit_entries(ctx, entries)
     assert seen["doi"] == "10.48550/arXiv.2401.12345", seen
-    assert not findings
+    # no false_citation CRITICAL; a MINOR identity_unjudgeable is the honest
+    # record for a title-less stub resolve (final-acceptance visibility rule)
+    assert not any(f["severity"] in ("CRITICAL", "MAJOR") for f in findings), findings
 
 
 def test_gap_p3_r4_latex_refs_section_cut(tmp_path):
@@ -4592,3 +4594,581 @@ def test_gap_p3_r5_build_references_preserves_at_sign_entries(tmp_path):
                for f in audit["findings"]), audit["findings"]
     state, note = _u4(ctx)
     assert state == "DEGRADED", (state, note)
+
+
+# ---------------------------------------------------------------------------
+# FINAL ACCEPTANCE (2026-10-01): citation IDENTITY. DOI resolvability alone
+# is not verification — the resolved work must BE the cited work. P21/U4 must
+# never attest a real-but-different DOI as VERIFIED/PASS.
+# ---------------------------------------------------------------------------
+
+
+def _fake_resolve_title(title):
+    def fake(doi, timeout=20):
+        return {"doi": doi, "checked_at": "2026-10-01T00:00:00Z",
+                "sources": {"crossref": {"status": "found", "http": 200}},
+                "verdict": "VERIFIED", "title": title}
+    return fake
+
+
+def test_citation_identity_wrong_paper_doi_never_verified(tmp_path, monkeypatch):
+    """Negative control: the draft cites paper A, the DOI is real and
+    resolvable but belongs to paper B → CRITICAL identity mismatch, never
+    VERIFIED."""
+    from paper_factory.literature import verify
+    monkeypatch.setattr(
+        verify, "resolve_doi",
+        _fake_resolve_title("Deep Residual Learning for Image Recognition"))
+    ctx = _ctx_online(tmp_path)
+    entries = [{"key": "attn", "doi": "10.1000/real-but-other-paper",
+                "eprint": None, "title": "Attention Is All You Need",
+                "t4_derived": False}]
+    records, findings, _verdict = verify._audit_entries(ctx, entries)
+    assert records[0]["verdict"] == "IDENTITY_MISMATCH", records
+    assert records[0]["identity_check"] == "mismatch"
+    assert findings[0]["kind"] == "citation_identity_mismatch"
+    assert findings[0]["severity"] == "CRITICAL"
+    assert findings[0]["key"] == "attn"
+
+
+def test_citation_identity_u4_fails_on_mismatch(tmp_path):
+    """U4 treats an identity mismatch like a false citation: FAIL, named key."""
+    from paper_factory.release.closure import _u4
+    ctx = _ctx_online(tmp_path)
+    ctx.workspace.reports_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.reports_dir / "citation_audit.json").write_text(_json.dumps({
+        "offline": False,
+        "entries": [{"key": "attn", "verdict": "IDENTITY_MISMATCH"}],
+        "findings": [{"severity": "CRITICAL", "kind": "citation_identity_mismatch",
+                      "key": "attn", "doi": "10.1000/x"}]}))
+    state, note = _u4(ctx)
+    assert state == "FAIL", (state, note)
+    assert "attn" in note
+
+
+def test_citation_identity_harmless_title_variants_pass(tmp_path, monkeypatch):
+    """Positive control: punctuation/unicode/whitespace/case variants of the
+    CORRECT title must not fail."""
+    from paper_factory.literature import verify
+    resolved = "Mass Invariance: Schrödinger's Framework for Multi-Scale Systems"
+    monkeypatch.setattr(verify, "resolve_doi", _fake_resolve_title(resolved))
+    variants = [
+        "Mass Invariance: Schrödinger's Framework for Multi-Scale Systems",
+        "mass invariance: schrödinger's framework for multi-scale systems",
+        "  Mass   Invariance:  Schrödinger's Framework  for Multi-Scale Systems ",
+        "Mass Invariance—Schrödinger's Framework for Multi-Scale Systems",
+        "Mass Invariance: Schrödinger's Framework for Multi-Scale Systems.",
+        # accent-free + curly apostrophe + non-breaking hyphen
+        "Mass Invariance: Schrodinger’s Framework for Multi‑Scale Systems",
+    ]
+    for claimed in variants:
+        ctx = _ctx_online(tmp_path)
+        entries = [{"key": "k", "doi": "10.1000/right", "eprint": None,
+                    "title": claimed, "t4_derived": False}]
+        records, findings, _ = verify._audit_entries(ctx, entries)
+        assert records[0]["verdict"] == "VERIFIED", (claimed, records[0])
+        assert records[0]["identity_check"] == "match"
+        assert findings == [], (claimed, findings)
+
+
+def test_citation_identity_unjudgeable_when_title_missing(tmp_path, monkeypatch):
+    """Nothing to compare → no fabricated mismatch; VERIFIED stands on
+    resolvability alone, the record says the identity check could not run,
+    and a MINOR keeps the gap visible instead of silently passing."""
+    from paper_factory.literature import verify
+    monkeypatch.setattr(verify, "resolve_doi", _fake_resolve_title(None))
+    ctx = _ctx_online(tmp_path)
+    entries = [{"key": "k", "doi": "10.1000/x", "eprint": None,
+                "title": None, "t4_derived": False}]
+    records, findings, _ = verify._audit_entries(ctx, entries)
+    assert records[0]["verdict"] == "VERIFIED"
+    assert records[0]["identity_check"] == "unjudgeable"
+    assert findings == [{"severity": "MINOR", "kind": "identity_unjudgeable",
+                         "key": "k", "doi": "10.1000/x"}]
+
+
+def test_citation_identity_build_references_drops_mismatched(tmp_path, monkeypatch):
+    """A proven identity mismatch is excluded from the manuscript bibliography
+    like a false citation — and the exclusion is recorded."""
+    from paper_factory.literature import verify
+    from paper_factory.literature.verify import build_references, run_citation_audit
+    lit = tmp_path / "literature"
+    lit.mkdir()
+    (lit / "refs.bib").write_text(
+        "@article{good, title={The Real Paper}, doi={10.1000/good}}\n"
+        "@article{bad, title={Attention Is All You Need}, doi={10.1000/other}}\n",
+        encoding="utf-8")
+
+    def fake(doi, timeout=20):
+        titles = {"10.1000/good": "The Real Paper",
+                  "10.1000/other": "Deep Residual Learning for Image Recognition"}
+        return {"doi": doi, "verdict": "VERIFIED", "sources": {}, "title": titles[doi]}
+
+    monkeypatch.setattr(verify, "resolve_doi", fake)
+    ctx = _ctx_online(tmp_path)
+    out_audit = run_citation_audit(ctx)
+    assert out_audit.verdict == Verdict.PASS, out_audit.detail  # audit executed
+    out = build_references(ctx)
+    assert "bad" in out.detail["dropped_false"], out.detail
+    built = (ctx.workspace.paper_dir / "references.bib").read_text()
+    assert "good" in built
+    assert "doi={10.1000/other}" not in built
+
+
+def test_citation_identity_remediation_drops_and_resolves(tmp_path, monkeypatch):
+    """Remediation routes citation_identity_mismatch through the citation lane:
+    drop the specific wrong-DOI entry, re-audit, RESOLVED only when the bound
+    key is actually gone."""
+    ctx = _ctx(tmp_path)
+    _g4_claims(ctx)
+    ctx.workspace.paper_dir.mkdir(parents=True, exist_ok=True)
+    bib = ctx.workspace.paper_dir / "references.bib"
+    bib.write_text("@article{x, doi={10.1000/other}, title={Attention Is All You Need}}\n",
+                   encoding="utf-8")
+    _g4_review(ctx, [_g4_finding("F01", kind="citation_identity_mismatch",
+                                 category="citation",
+                                 details={"doi": "10.1000/other"})])
+
+    from paper_factory.literature import verify
+
+    def _rebuild_drops_key(ctx_):
+        bib.write_text("@article{ok, doi={10.1/real}}\n", encoding="utf-8")
+
+    monkeypatch.setattr(verify, "build_references", _rebuild_drops_key)
+    monkeypatch.setattr(verify, "_audit_entries", lambda ctx_, entries: ([], [], None))
+    outcome = run_remediation(ctx)
+    reviews, _ = load_reviews(ctx.workspace.reviews_dir)
+    assert reviews[0].findings[0].disposition == Disposition.RESOLVED
+    assert outcome.verdict == Verdict.PASS
+
+
+# ---------------------------------------------------------------------------
+# Citation identity — Round 2 (Reviewer A F1-F8 / Reviewer B B-1..B-4):
+# the check must hold on the arXiv/DataCite path, on real BibTeX field
+# shapes, and against LaTeX-escaped titles — without flagging correct
+# citations and without stale audits dropping corrected entries.
+# ---------------------------------------------------------------------------
+
+
+def test_citation_identity_openalex_title_feeds_check(tmp_path, monkeypatch):
+    """A-F1: a DOI that resolves ONLY via OpenAlex (all DataCite/arXiv DOIs)
+    previously had rec['title']=None → identity unjudgeable → silent bypass.
+    resolve_doi must take the title from the OpenAlex body as fallback."""
+    import io
+    import urllib.error
+    from paper_factory.literature import verify
+
+    class _Resp:
+        def __init__(self, payload):
+            self._b = _json.dumps(payload).encode()
+
+        def read(self):
+            return self._b
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, timeout=20):
+        url = req.full_url
+        if "crossref" in url:
+            raise urllib.error.HTTPError(url, 404, "nf", {}, io.BytesIO(b""))
+        return _Resp({"title": "The OpenAlex Only Paper"})
+
+    monkeypatch.setattr(verify.urllib.request, "urlopen", fake_urlopen)
+    rec = verify.resolve_doi("10.48550/arXiv.2401.00001")
+    assert rec["verdict"] == "VERIFIED"
+    assert rec["title"] == "The OpenAlex Only Paper", rec
+
+    # and the audit path must therefore catch a wrong arXiv DOI
+    ctx = _ctx_online(tmp_path)
+    entries = [{"key": "k", "doi": None, "eprint": "2401.00001",
+                "title": "A Completely Different Work", "t4_derived": False}]
+    _records, findings, _v = verify._audit_entries(ctx, entries)
+    assert findings[0]["kind"] == "citation_identity_mismatch", findings
+    assert findings[0]["severity"] == "CRITICAL"
+
+
+def test_citation_identity_bib_field_edge_shapes(tmp_path):
+    """A-F2/F8: title as LAST field without trailing comma (legal BibTeX) and
+    titles containing `},` must parse — otherwise claimed_title=None silently
+    bypasses the identity check."""
+    from paper_factory.literature.verify import parse_bib
+    bib = tmp_path / "refs.bib"
+    bib.write_text(
+        "@article{last, doi={10.1/a}, title={The Last Field Title}}\n"
+        "@article{braces, title={Sets {A}, {B} and C}, doi={10.1/b}}\n"
+        "@article{quoted, title=\"A Quoted Title\", doi={10.1/c}}\n"
+        "@article{dbl, title={{Double Braced Title}}, doi={10.1/d}}\n",
+        encoding="utf-8")
+    entries = {e["key"]: e for e in parse_bib(bib)}
+    assert entries["last"]["title"] == "The Last Field Title"
+    assert entries["braces"]["title"] == "Sets {A}, {B} and C"
+    assert entries["quoted"]["title"] == "A Quoted Title"
+    assert entries["dbl"]["title"] == "{Double Braced Title}"
+
+
+def test_citation_identity_latex_accents_and_macros_match(tmp_path, monkeypatch):
+    """B-1/A-F5: standard BibTeX accent escapes and formatting macros in the
+    bib title are the SAME work as the clean Crossref title — never CRITICAL."""
+    from paper_factory.literature import verify
+    pairs = [
+        ("Schr{\\\"o}dinger's Equation in {\\emph{Quantum}} Mechanics",
+         "Schrödinger's Equation in Quantum Mechanics"),
+        ("Caf{\\'e} Society at {\\it Large}", "Café Society at Large"),
+        ("Na{\\\"\\i}ve Bayes Revisited", "Naïve Bayes Revisited"),
+        ("{\\\"U}ber die Masseninvarianz", "Über die Masseninvarianz"),
+        ("{\\`E}tude sur la Th{\\`e}orie", "Ètude sur la Thèorie"),
+    ]
+    for claimed, resolved in pairs:
+        monkeypatch.setattr(verify, "resolve_doi", _fake_resolve_title(resolved))
+        ctx = _ctx_online(tmp_path)
+        entries = [{"key": "k", "doi": "10.1/x", "eprint": None,
+                    "title": claimed, "t4_derived": False}]
+        records, findings, _ = verify._audit_entries(ctx, entries)
+        assert records[0]["verdict"] == "VERIFIED", (claimed, records[0])
+        assert findings == [] or all(f["kind"] != "citation_identity_mismatch"
+                                     for f in findings), (claimed, findings)
+
+
+def test_citation_identity_subtitle_prefix_is_same_work(tmp_path, monkeypatch):
+    """A-F4: Crossref carries 'Title: Subtitle', the bib often only the main
+    title — a token-boundary prefix is the same work."""
+    from paper_factory.literature import verify
+    monkeypatch.setattr(verify, "resolve_doi",
+                        _fake_resolve_title("Deep Learning: Methods and Applications"))
+    ctx = _ctx_online(tmp_path)
+    entries = [{"key": "k", "doi": "10.1/dl", "eprint": None,
+                "title": "Deep Learning", "t4_derived": False}]
+    records, findings, _ = verify._audit_entries(ctx, entries)
+    assert records[0]["verdict"] == "VERIFIED", records[0]
+    assert not any(f["kind"] == "citation_identity_mismatch" for f in findings)
+
+
+def test_citation_identity_umlaut_transliteration_matches(tmp_path, monkeypatch):
+    """A-F6: BibTeX transliteration convention Mueller/Müller is one author."""
+    from paper_factory.literature import verify
+    monkeypatch.setattr(verify, "resolve_doi",
+                        _fake_resolve_title("Müller on Mass Invariance"))
+    ctx = _ctx_online(tmp_path)
+    entries = [{"key": "k", "doi": "10.1/m", "eprint": None,
+                "title": "Mueller on Mass Invariance", "t4_derived": False}]
+    records, findings, _ = verify._audit_entries(ctx, entries)
+    assert records[0]["verdict"] == "VERIFIED", records[0]
+    assert not any(f["kind"] == "citation_identity_mismatch" for f in findings)
+
+
+def test_citation_identity_degenerate_and_short_titles_unjudgeable(tmp_path, monkeypatch):
+    """A-F3/F7: one-word or punctuation-only titles cannot prove identity —
+    honest unjudgeable (visible MINOR), never a silent pass and never a
+    fabricated CRITICAL."""
+    from paper_factory.literature import verify
+    monkeypatch.setattr(verify, "resolve_doi", _fake_resolve_title("Introduction"))
+    for claimed in ("Introduction", "---", "{}"):
+        ctx = _ctx_online(tmp_path)
+        entries = [{"key": "k", "doi": "10.1/x", "eprint": None,
+                    "title": claimed, "t4_derived": False}]
+        records, findings, _ = verify._audit_entries(ctx, entries)
+        assert records[0]["verdict"] == "VERIFIED", (claimed, records[0])
+        assert records[0]["identity_check"] == "unjudgeable", (claimed, records[0])
+        assert not any(f["severity"] == "CRITICAL" for f in findings), (claimed, findings)
+        assert any(f["kind"] == "identity_unjudgeable" and f["severity"] == "MINOR"
+                   for f in findings), (claimed, findings)
+
+
+def test_citation_identity_u4_scopes_unjudgeable_minors(tmp_path):
+    """U4 must not attest blanket resolution when identity was unjudgeable."""
+    from paper_factory.release.closure import _u4
+    ctx = _ctx_online(tmp_path)
+    ctx.workspace.reports_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.reports_dir / "citation_audit.json").write_text(_json.dumps({
+        "offline": False,
+        "entries": [{"key": "k", "verdict": "VERIFIED", "identity_check": "unjudgeable"}],
+        "findings": [{"severity": "MINOR", "kind": "identity_unjudgeable",
+                      "key": "k", "doi": "10.1/x"}]}))
+    state, note = _u4(ctx)
+    assert state == "PASS"
+    assert "all citations resolve" not in note
+    assert "identity" in note.lower()
+
+
+def test_citation_identity_build_references_keeps_corrected_doi(tmp_path):
+    """B-2: exclusion binds (key, doi) — a stale audit finding must not drop
+    an entry whose DOI the author has since corrected under the same key."""
+    from paper_factory.literature.verify import build_references
+    lit = tmp_path / "literature"
+    lit.mkdir()
+    (lit / "refs.bib").write_text(
+        "@article{fixed, title={The Real Paper}, doi={10.1000/corrected}}\n",
+        encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    ctx.workspace.reports_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.reports_dir / "citation_audit.json").write_text(_json.dumps({
+        "offline": False,
+        "entries": [{"key": "fixed", "verdict": "IDENTITY_MISMATCH"}],
+        "findings": [{"severity": "CRITICAL", "kind": "citation_identity_mismatch",
+                      "key": "fixed", "doi": "10.1000/wrong"}]}))
+    out = build_references(ctx)
+    assert out.detail["kept"] == 1, out.detail
+    assert out.detail["dropped_false"] == []
+    built = (ctx.workspace.paper_dir / "references.bib").read_text()
+    assert "10.1000/corrected" in built
+
+
+def test_citation_identity_u4_record_without_finding_still_fails(tmp_path):
+    """B-3 (defense in depth): a record verdict of IDENTITY_MISMATCH must fail
+    U4 even if the findings list is empty/corrupt."""
+    from paper_factory.release.closure import _u4
+    ctx = _ctx_online(tmp_path)
+    ctx.workspace.reports_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.reports_dir / "citation_audit.json").write_text(_json.dumps({
+        "offline": False,
+        "entries": [{"key": "ghost", "verdict": "IDENTITY_MISMATCH"}],
+        "findings": []}))
+    state, note = _u4(ctx)
+    assert state == "FAIL", (state, note)
+    assert "ghost" in note
+
+
+def test_citation_identity_same_second_final_never_masks_audit(tmp_path):
+    """B-4: on a timestamp tie the stricter P21 audit wins — a same-second
+    post-remediation final must not mask a fresh CRITICAL."""
+    from paper_factory.release.closure import _u4
+    ctx = _ctx_online(tmp_path)
+    reports = ctx.workspace.reports_dir
+    reports.mkdir(parents=True, exist_ok=True)
+    ts = "2026-10-01T12:00:00Z"
+    (reports / "citation_audit.json").write_text(_json.dumps({
+        "audited_at": ts, "offline": False, "entries": [],
+        "findings": [{"severity": "CRITICAL", "kind": "citation_identity_mismatch",
+                      "key": "x", "doi": "10.1/x"}]}))
+    (reports / "citation_audit_final.json").write_text(_json.dumps({
+        "audited_at": ts, "offline": False, "entries": [], "findings": [],
+        "post_remediation": True}))
+    state, note = _u4(ctx)
+    assert state == "FAIL", (state, note)
+
+
+# ---------------------------------------------------------------------------
+# Citation identity — Round 3 (Reviewer A N8 / Reviewer B R2-1..R2-3)
+# ---------------------------------------------------------------------------
+
+
+def test_citation_identity_booktitle_not_matched_as_title(tmp_path):
+    """A-N8 (MAJOR): `_bib_field` must not match `title=` inside `booktitle=`
+    or `subtitle=` — the proceedings title is NOT the cited work's title."""
+    from paper_factory.literature.verify import parse_bib
+    bib = tmp_path / "refs.bib"
+    bib.write_text(
+        "@inproceedings{paper,\n"
+        "  booktitle = {Advances in Neural Information Processing Systems 30},\n"
+        "  title = {Attention Is All You Need},\n"
+        "  doi = {10.1/attn}}\n"
+        "@article{sub, subtitle = {A Subtitle Only Entry}, doi={10.1/sub}}\n",
+        encoding="utf-8")
+    entries = {e["key"]: e for e in parse_bib(bib)}
+    assert entries["paper"]["title"] == "Attention Is All You Need"
+    assert entries["sub"]["title"] is None  # subtitle is not the work's title
+
+
+def test_citation_identity_unbraced_accent_keeps_following_space(tmp_path, monkeypatch):
+    """B-R2-2 (MAJOR): `Caf\\'e Central` must normalize with the word boundary
+    intact — the accent macro must not eat the following space."""
+    from paper_factory.literature import verify
+    pairs = [
+        ("Caf\\'e Central Methods", "Café Central Methods"),
+        ("H\\^otels of Z\\~urich", "Hôtels of Zürich"),
+        ("\\`A Propos de Rien", "À Propos de Rien"),
+    ]
+    for claimed, resolved in pairs:
+        monkeypatch.setattr(verify, "resolve_doi", _fake_resolve_title(resolved))
+        ctx = _ctx_online(tmp_path)
+        entries = [{"key": "k", "doi": "10.1/x", "eprint": None,
+                    "title": claimed, "t4_derived": False}]
+        records, findings, _ = verify._audit_entries(ctx, entries)
+        assert records[0]["verdict"] == "VERIFIED", (claimed, records[0])
+        assert not any(f["kind"] == "citation_identity_mismatch"
+                       for f in findings), (claimed, findings)
+
+
+def test_citation_identity_prefix_only_with_subtitle_separator(tmp_path, monkeypatch):
+    """B-R2-3 / A-N10 (MAJOR): the prefix tolerance exists for the
+    'Title: Subtitle' convention ONLY — a plain longer title is a DIFFERENT
+    work ('Gaussian Processes' ≠ 'Gaussian Processes for Machine Learning')."""
+    from paper_factory.literature import verify
+    ctx = _ctx_online(tmp_path)
+    monkeypatch.setattr(verify, "resolve_doi",
+                        _fake_resolve_title("Gaussian Processes for Machine Learning"))
+    entries = [{"key": "gp", "doi": "10.1/gpml", "eprint": None,
+                "title": "Gaussian Processes", "t4_derived": False}]
+    records, findings, _ = verify._audit_entries(ctx, entries)
+    assert records[0]["verdict"] == "IDENTITY_MISMATCH", records[0]
+    assert findings[0]["kind"] == "citation_identity_mismatch"
+    # with a subtitle separator the convention applies and the prefix matches
+    monkeypatch.setattr(verify, "resolve_doi",
+                        _fake_resolve_title("Deep Learning: Methods and Applications"))
+    entries = [{"key": "dl", "doi": "10.1/dl", "eprint": None,
+                "title": "Deep Learning", "t4_derived": False}]
+    records, findings, _ = verify._audit_entries(ctx, entries)
+    assert records[0]["verdict"] == "VERIFIED", records[0]
+    assert not any(f["kind"] == "citation_identity_mismatch" for f in findings)
+
+
+def test_citation_identity_eprint_only_entry_dropped_via_synth_doi(tmp_path):
+    """B-R2-1 (CRITICAL): an eprint-only entry (no doi field) must be dropped
+    when the audit finding carries the SYNTHESIZED DataCite DOI — else the
+    proven-fake citation ships in the manuscript bib forever."""
+    from paper_factory.literature.verify import build_references
+    lit = tmp_path / "literature"
+    lit.mkdir()
+    (lit / "refs.bib").write_text(
+        "@article{fake, title={Invented Results}, eprint={2401.99999}}\n"
+        "@article{real, title={The Real Paper}, doi={10.1/real}}\n",
+        encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    ctx.workspace.reports_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.reports_dir / "citation_audit.json").write_text(_json.dumps({
+        "offline": False,
+        "entries": [{"key": "fake", "verdict": "NOT_FOUND"}],
+        "findings": [{"severity": "CRITICAL", "kind": "false_citation",
+                      "key": "fake", "doi": "10.48550/arXiv.2401.99999"}]}))
+    out = build_references(ctx)
+    assert "fake" in out.detail["dropped_false"], out.detail
+    built = (ctx.workspace.paper_dir / "references.bib").read_text()
+    assert "2401.99999" not in built
+    assert "10.1/real" in built
+
+
+def test_citation_identity_eprint_remediation_resolves_not_vacuous(tmp_path, monkeypatch):
+    """B-R2-1 (CRITICAL): remediation must bind a synthesized-DOI finding to
+    the eprint-only entry (or fall back to the entry key) — never vacuous
+    NOT_APPLICABLE while the toxic entry stays in the manuscript."""
+    ctx = _ctx(tmp_path)
+    _g4_claims(ctx)
+    ctx.workspace.paper_dir.mkdir(parents=True, exist_ok=True)
+    bib = ctx.workspace.paper_dir / "references.bib"
+    bib.write_text("@article{fake, title={Invented Results}, eprint={2401.99999}}\n",
+                   encoding="utf-8")
+    _g4_review(ctx, [_g4_finding("F01", kind="false_citation", category="citation",
+                                 details={"doi": "10.48550/arXiv.2401.99999",
+                                          "key": "fake"})])
+
+    from paper_factory.literature import verify
+
+    def _rebuild_drops_key(ctx_):
+        bib.write_text("@article{ok, doi={10.1/real}}\n", encoding="utf-8")
+
+    monkeypatch.setattr(verify, "build_references", _rebuild_drops_key)
+    monkeypatch.setattr(verify, "_audit_entries", lambda ctx_, entries: ([], [], None))
+    outcome = run_remediation(ctx)
+    reviews, _ = load_reviews(ctx.workspace.reviews_dir)
+    disp = reviews[0].findings[0].disposition
+    assert disp == Disposition.RESOLVED, disp
+    assert outcome.verdict == Verdict.PASS
+
+
+def test_citation_identity_finding_doi_url_prefix_normalized(tmp_path):
+    """NIT hardening: a finding DOI carrying a https://doi.org/ prefix must
+    still bind to the bare entry DOI."""
+    from paper_factory.literature.verify import build_references
+    lit = tmp_path / "literature"
+    lit.mkdir()
+    (lit / "refs.bib").write_text(
+        "@article{x, title={Some Work}, doi={10.1/bad}}\n", encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    ctx.workspace.reports_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.reports_dir / "citation_audit.json").write_text(_json.dumps({
+        "offline": False, "entries": [],
+        "findings": [{"severity": "CRITICAL", "kind": "citation_identity_mismatch",
+                      "key": "x", "doi": "https://doi.org/10.1/bad"}]}))
+    out = build_references(ctx)
+    assert "x" in out.detail["dropped_false"], out.detail
+
+
+# ---------------------------------------------------------------------------
+# Citation identity — Round 4 (Reviewer A P1/P3 / Reviewer B R3-1/R3-2)
+# ---------------------------------------------------------------------------
+
+
+def test_citation_identity_hyphen_subtitle_separator(tmp_path, monkeypatch):
+    """A-P1 (MAJOR): 'Title - Subtitle' (ASCII hyphen, older Springer/
+    DataCite idiom) is the same work — but only with whitespace context,
+    a bare compound hyphen ('Multi-Scale') is not a subtitle separator."""
+    from paper_factory.literature import verify
+    monkeypatch.setattr(verify, "resolve_doi",
+                        _fake_resolve_title("Deep Learning - Methods and Applications"))
+    ctx = _ctx_online(tmp_path)
+    entries = [{"key": "k", "doi": "10.1/dl", "eprint": None,
+                "title": "Deep Learning", "t4_derived": False}]
+    records, findings, _ = verify._audit_entries(ctx, entries)
+    assert records[0]["verdict"] == "VERIFIED", records[0]
+    assert not any(f["kind"] == "citation_identity_mismatch" for f in findings)
+
+
+def test_citation_identity_claimed_side_colon_is_mismatch(tmp_path, monkeypatch):
+    """B-R3-2 (MAJOR): the subtitle tolerance is one-directional — a bib title
+    'X: A Closer Look' resolving to plain 'X' means the DOI points at a
+    DIFFERENT work (parasite/derivative title at the original's DOI)."""
+    from paper_factory.literature import verify
+    monkeypatch.setattr(verify, "resolve_doi",
+                        _fake_resolve_title("Attention Is All You Need"))
+    ctx = _ctx_online(tmp_path)
+    entries = [{"key": "k", "doi": "10.1/attn", "eprint": None,
+                "title": "Attention Is All You Need: A Closer Look",
+                "t4_derived": False}]
+    records, findings, _ = verify._audit_entries(ctx, entries)
+    assert records[0]["verdict"] == "IDENTITY_MISMATCH", records[0]
+    assert findings[0]["kind"] == "citation_identity_mismatch"
+    assert findings[0]["severity"] == "CRITICAL"
+
+
+def test_citation_identity_entry_doi_url_prefix_normalized(tmp_path):
+    """A-P3 (MAJOR): Zotero/web exports write doi={https://doi.org/…} — the
+    ENTRY side of the exclusion binding must be normalized exactly like the
+    finding side, else a proven-mismatched entry survives the drop."""
+    from paper_factory.literature.verify import build_references
+    lit = tmp_path / "literature"
+    lit.mkdir()
+    (lit / "refs.bib").write_text(
+        "@article{x, title={Attention Is All You Need}, "
+        "doi={https://doi.org/10.1000/other}}\n",
+        encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    ctx.workspace.reports_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.reports_dir / "citation_audit.json").write_text(_json.dumps({
+        "offline": False, "entries": [],
+        "findings": [{"severity": "CRITICAL", "kind": "citation_identity_mismatch",
+                      "key": "x", "doi": "10.1000/other"}]}))
+    out = build_references(ctx)
+    assert "x" in out.detail["dropped_false"], out.detail
+
+
+def test_citation_identity_remediation_same_second_u4_not_blocked(tmp_path):
+    """B-R3-1 (MAJOR): with sub-second timestamps a legitimate remediation
+    final written right after the P21 audit WINS the freshness race — a fixed
+    citation must not keep U4 red. (Equal timestamps still fail closed.)"""
+    from paper_factory.release.closure import _u4
+    ctx = _ctx_online(tmp_path)
+    reports = ctx.workspace.reports_dir
+    reports.mkdir(parents=True, exist_ok=True)
+    (reports / "citation_audit.json").write_text(_json.dumps({
+        "audited_at": "2026-10-01T12:00:00.000001Z", "offline": False,
+        "entries": [{"key": "fake", "verdict": "NOT_FOUND"}],
+        "findings": [{"severity": "CRITICAL", "kind": "false_citation",
+                      "key": "fake", "doi": "10.48550/arXiv.2401.99999"}]}))
+    (reports / "citation_audit_final.json").write_text(_json.dumps({
+        "audited_at": "2026-10-01T12:00:00.000002Z", "offline": False,
+        "entries": [], "findings": [], "post_remediation": True}))
+    state, note = _u4(ctx)
+    assert state == "PASS", (state, note)
+
+
+def test_citation_identity_utcnow_subsecond_resolution():
+    """B-R3-1: utcnow must carry sub-second precision so a remediation re-audit
+    directly after P21 in the same second orders correctly (ISO-8601 kept)."""
+    import re as _re
+    from paper_factory.core.util import utcnow
+    ts = utcnow()
+    assert _re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z$", ts), ts

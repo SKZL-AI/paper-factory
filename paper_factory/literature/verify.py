@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -35,6 +36,12 @@ def resolve_doi(doi: str, timeout: int = 20) -> dict[str, Any]:
                 rec["title"] = (msg.get("title") or [None])[0]
                 rec["container"] = (msg.get("container-title") or [None])[0]
                 rec["published"] = msg.get("published-print") or msg.get("published-online")
+            elif name == "openalex" and rec.get("title") is None:
+                # DataCite DOIs (every synthesized arXiv DOI) are never in
+                # Crossref — without this fallback their identity check was
+                # always unjudgeable (reviewer A F1)
+                t = body.get("title") or body.get("display_name")
+                rec["title"] = t if isinstance(t, str) else None
         except urllib.error.HTTPError as exc:
             rec["sources"][name] = {"status": "not_found" if exc.code == 404 else f"http_{exc.code}"}
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
@@ -46,11 +53,119 @@ def resolve_doi(doi: str, timeout: int = 20) -> dict[str, Any]:
 
 
 _DOI = re.compile(r"doi\s*=\s*[{\"]?([^}\s,\"]+)", re.IGNORECASE)
-_TITLE = re.compile(r"title\s*=\s*[\{\"](.+?)[}\"]\s*,", re.DOTALL | re.IGNORECASE)
+
+
+def _bib_field(body: str, name: str) -> str | None:
+    """Brace-aware BibTeX field extraction. A regex with a mandatory trailing
+    comma misses a legal last-field title (reviewer A F2) and truncates titles
+    containing `},` (A F8); balanced-brace scanning handles both."""
+    m = re.search(rf"(?<![A-Za-z]){re.escape(name)}\s*=\s*", body, re.IGNORECASE)
+    if not m:
+        return None
+    i = m.end()
+    while i < len(body) and body[i] in " \t\r\n":
+        i += 1
+    if i >= len(body):
+        return None
+    if body[i] == "{":
+        depth = 0
+        for j in range(i, len(body)):
+            if body[j] == "{":
+                depth += 1
+            elif body[j] == "}":
+                depth -= 1
+                if depth == 0:
+                    return body[i + 1:j]
+        return None
+    if body[i] == '"':
+        end = body.find('"', i + 1)
+        return body[i + 1:end] if end != -1 else None
+    bare = re.match(r"[^,}\s]+", body[i:])
+    return bare.group(0) if bare else None
+
+
+_LATEX_ACCENTS = {"'": "́", '"': "̈", "`": "̀", "^": "̂",
+                  "~": "̃", "=": "̄", ".": "̇", "c": "̧",
+                  "u": "̆", "v": "̌", "H": "̋", "k": "̨"}
+_LATEX_CHARS = {"ss": "ß", "ae": "æ", "oe": "œ", "aa": "å", "o": "ø",
+                "i": "i", "j": "j", "l": "ł",
+                "AE": "Æ", "OE": "Œ", "AA": "Å", "O": "Ø", "L": "Ł"}
+
+
+def _latex_unescape(s: str) -> str:
+    """Resolve standard BibTeX title escapes to Unicode BEFORE normalizing:
+    special chars first (`\\i` must become ASCII i — the dotless ı has no
+    NFKD decomposition and would asymmetrically vanish), then accent macros
+    (`{\\"o}`, `\\'e`, `{\\`e}`…), then formatting macros (`\\emph{…}` keeps
+    its argument). Without this every correctly-escaped bib title mismatches
+    its clean Crossref title (reviewer B B-1 / reviewer A F5)."""
+    s = re.sub(r"\\(ss|ae|oe|aa|AE|OE|AA|[oOiIjJlL])\b",
+               lambda m: _LATEX_CHARS[m.group(1)], s)
+    # no `\s*` after the letter: it would eat the word boundary behind an
+    # unbraced accent (`Caf\'e Central` → `cafécentral`, reviewer B R2-2)
+    s = re.sub(r"\{?\s*\\(['\"`^~=.cuvHk])\s*\{?([A-Za-z])\}?\}?",
+               lambda m: m.group(2) + _LATEX_ACCENTS[m.group(1)], s)
+    return re.sub(r"\\[a-zA-Z]+", "", s)
+
+
+def _norm_title(s: str) -> str:
+    """Canonical title form for identity comparison: LaTeX escapes resolved,
+    unicode-decomposed, diacritics stripped, case folded, BibTeX
+    transliteration folded (Mueller ≈ Müller, reviewer A F6), every
+    non-alphanumeric run (punctuation, dashes, curly quotes, braces,
+    whitespace) becomes one space. Harmless typographic variation must not
+    fail; a DIFFERENT paper's title can never survive this."""
+    s = _latex_unescape(s)
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    s = s.casefold()
+    s = s.replace("ue", "u").replace("oe", "o").replace("ae", "a")
+    return re.sub(r"[^a-z0-9]+", " ", s).strip()
+
+
+def _titles_match(claimed: str | None, resolved: str | None) -> bool | None:
+    """None = unjudgeable: a title is missing or carries fewer than two
+    tokens — a one-word/degenerate title can never prove identity
+    (reviewer A F3/F7) and must never fabricate a mismatch either.
+    True = canonical equality, or a token-boundary prefix where the longer
+    RAW title carries a subtitle separator — the 'Title: Subtitle'
+    convention (A F4). A plain longer title is a different work
+    ('Gaussian Processes' ≠ 'Gaussian Processes for Machine Learning',
+    reviewer B R2-3 / A N10). Deliberately no fuzzy tolerance beyond that."""
+    if not claimed or not resolved:
+        return None
+    a, b = _norm_title(claimed), _norm_title(resolved)
+    if len(a.split()) < 2 or len(b.split()) < 2:
+        return None
+    if a == b:
+        return True
+    # subtitle tolerance is ONE-DIRECTIONAL: only a longer RESOLVED title with
+    # a subtitle separator (':', en/em-dash, or spaced hyphen — the 'Title:
+    # Subtitle' convention, A F4/P1) proves the same work. A claimed-side
+    # extension ('X: A Closer Look' resolving to plain 'X') is a different
+    # work at the original's DOI (reviewer B R3-2).
+    if len(a) < len(b) and re.search(r"[:–—]| - ", resolved):
+        return b.startswith(a + " ")
+    return False
+
+
 _EPRINT = re.compile(r"eprint\s*=\s*[{\"]?([^}\s,\"]+)", re.IGNORECASE)
 # arXiv version suffixes come in any case (v2, V2) — the DataCite namespace is
 # versionless, an unstripped suffix 404s a REAL paper (reviewer A R3-1/R4-1)
 _EPRINT_VERSION = re.compile(r"v\d+$", re.IGNORECASE)
+
+
+def _synth_doi(doi: str | None, eprint: str | None) -> str | None:
+    """The verifiable identifier of an entry: its DOI, or — for arXiv
+    preprints — the official DataCite DOI. The namespace is VERSIONLESS, an
+    unstripped `v2` suffix 404s a real paper (reviewer A R3-1/R4-1). One
+    canonical place: audit, exclusion and remediation must never diverge on
+    this (reviewer B R2-1)."""
+    if doi:
+        return doi
+    if eprint:
+        return f"10.48550/arXiv.{_EPRINT_VERSION.sub('', eprint)}"
+    return None
 _NOTE = re.compile(r"note\s*=\s*[\{\"](.+?)[}\"]\s*(?:[,}]|$)",
                    re.DOTALL | re.IGNORECASE)
 _ENTRY_START = re.compile(r"@\w+\s*\{\s*([^,\s]+)\s*,")
@@ -78,11 +193,11 @@ def parse_bib(path: Path) -> list[dict[str, Any]]:
     entries = []
     for key, body, _raw in _entry_splits(text):
         doi = _DOI.search(body)
-        title = _TITLE.search(body)
+        title = _bib_field(body, "title")
         eprint = _EPRINT.search(body)
         note = _NOTE.search(body)
         entries.append({"key": key, "doi": doi.group(1) if doi else None,
-                        "title": re.sub(r"\s+", " ", title.group(1)).strip() if title else None,
+                        "title": re.sub(r"\s+", " ", title).strip() if title else None,
                         "eprint": eprint.group(1) if eprint else None,
                         "note": note.group(1).strip() if note else None,
                         # content-bound: survives build_references copies and
@@ -106,11 +221,8 @@ def _audit_entries(ctx: NodeContext, entries: list[dict[str, Any]]) -> tuple[lis
             # arXiv preprints carry an official DataCite DOI — verify THAT
             # instead of shrugging "no doi" (reviewer B R2-F1: unverifiable
             # must never masquerade as resolved; a fake arXiv id resolves to
-            # NOT_FOUND and becomes a false_citation, exactly as it should).
-            # The DOI namespace is VERSIONLESS — a `v2` suffix would 404 a
-            # real paper (reviewer A R3-1)
-            eprint = _EPRINT_VERSION.sub("", e["eprint"])
-            doi = f"10.48550/arXiv.{eprint}"
+            # NOT_FOUND and becomes a false_citation, exactly as it should)
+            doi = _synth_doi(None, e["eprint"])
             doi_source = "arxiv_synthesized"
         if not doi:
             t4 = e.get("t4_derived", False)
@@ -131,6 +243,26 @@ def _audit_entries(ctx: NodeContext, entries: list[dict[str, Any]]) -> tuple[lis
         rec["claimed_title"] = e.get("title")
         rec["t4_derived"] = e.get("t4_derived", False)
         rec["doi_source"] = doi_source
+        if rec["verdict"] == "VERIFIED":
+            # resolvable ≠ correct: compare the resolved work's title against
+            # the cited one. A real DOI belonging to a DIFFERENT paper is the
+            # strongest false-citation class there is (final acceptance 2026-10-01)
+            match = _titles_match(e.get("title"), rec.get("title"))
+            rec["identity_check"] = ("match" if match is True else
+                                     "unjudgeable" if match is None else "mismatch")
+            if match is False:
+                rec["verdict"] = "IDENTITY_MISMATCH"
+                findings.append({"severity": "CRITICAL",
+                                 "kind": "citation_identity_mismatch",
+                                 "key": e["key"], "doi": doi,
+                                 "claimed_title": e.get("title"),
+                                 "resolved_title": rec.get("title")})
+            elif match is None:
+                # unjudgeable must be VISIBLE (reviewer A recommendation d):
+                # a MINOR on the record beats a silent bypass hole
+                findings.append({"severity": "MINOR",
+                                 "kind": "identity_unjudgeable",
+                                 "key": e["key"], "doi": doi})
         records.append(rec)
         if rec["verdict"] == "NOT_FOUND":
             findings.append({"severity": "CRITICAL", "kind": "false_citation",
@@ -189,12 +321,40 @@ def build_references(ctx: NodeContext) -> NodeOutcome:
     src_bibs = sorted(root.glob("literature/*.bib")) + sorted(root.glob("*.bib"))
     if not src_bibs:
         return NodeOutcome(Verdict.DEGRADED, {"reason": "no source bibliography"})
-    excluded: set[str] = set()
+    excluded: list[dict] = []
     audit_path = ctx.workspace.reports_dir / "citation_audit.json"
     if audit_path.exists():
         audit = json.loads(audit_path.read_text())
-        excluded = {f["key"] for f in audit.get("findings", [])
-                    if f.get("kind") == "false_citation"}
+        # proven-wrong citations never reach the manuscript bib: the DOI does
+        # not resolve (false_citation) or resolves to a DIFFERENT work
+        # (citation_identity_mismatch)
+        excluded = [f for f in audit.get("findings", [])
+                    if f.get("kind") in ("false_citation",
+                                         "citation_identity_mismatch")]
+
+    def _excluded(key: str, body: str) -> bool:
+        # bound to (key, doi): a stale finding must not drop an entry whose
+        # DOI the author has since corrected under the same key (reviewer B-2).
+        # Findings without a DOI keep the legacy key-only behaviour. The
+        # entry's verifiable identifier is the SYNTHESIZED DataCite DOI for
+        # eprint-only entries — else a proven-fake arXiv citation survives
+        # every rebuild (reviewer B R2-1).
+        doi_m = _DOI.search(body)
+        ep_m = _EPRINT.search(body)
+        entry_doi = (_synth_doi(doi_m.group(1) if doi_m else None,
+                                ep_m.group(1) if ep_m else None) or "").lower()
+        # Zotero/web exports write doi={https://doi.org/…} — the ENTRY side is
+        # normalized exactly like the finding side (reviewer A P3)
+        entry_doi = entry_doi.removeprefix("https://doi.org/").removeprefix("http://doi.org/")
+        for f in excluded:
+            if f.get("key") != key:
+                continue
+            f_doi = str(f.get("doi") or "").lower()
+            f_doi = f_doi.removeprefix("https://doi.org/").removeprefix("http://doi.org/")
+            if not f_doi or f_doi == entry_doi:
+                return True
+        return False
+
     kept, dropped = [], []
     out_lines = []
     for b in src_bibs:
@@ -203,8 +363,8 @@ def build_references(ctx: NodeContext) -> NodeOutcome:
         # inside fields — the T4 provenance note (and with it the MAJOR
         # unverifiable_citation classification downstream) was lost on the
         # manuscript path (reviewer B R4-F1)
-        for key, _body, raw in _entry_splits(text):
-            if key in excluded:
+        for key, body, raw in _entry_splits(text):
+            if _excluded(key, body):
                 dropped.append(key)
                 continue
             kept.append(key)

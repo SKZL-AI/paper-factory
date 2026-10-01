@@ -268,7 +268,8 @@ def _manuscript_surface_files(paper: Path) -> list[Path]:
 
 
 _CLAIM_KINDS = {"unsupported_claim", "significance_without_test"}
-_CITATION_KINDS = {"false_citation", "no_doi", "unverifiable_citation"}
+_CITATION_KINDS = {"false_citation", "citation_identity_mismatch",
+                   "no_doi", "unverifiable_citation"}
 
 
 def _classify_legacy(f: Finding) -> str | None:
@@ -412,17 +413,26 @@ def _remediate_citation_finding(ctx: NodeContext, f: Finding, entry: dict,
                      verification={"result": "deferred", "reason": "no doi/key"})
         counts["deferred"] += 1
         return
-    from ..literature.verify import _audit_entries, build_references, parse_bib
+    from ..literature.verify import _audit_entries, _synth_doi, build_references, parse_bib
 
     bib = ctx.workspace.paper_dir / "references.bib"
 
     def _present(entries: list[dict]) -> bool:
-        # DOIs are case-insensitive per spec (reviewer A-N3)
+        # DOIs are case-insensitive per spec (reviewer A-N3). An eprint-only
+        # entry is bound via its SYNTHESIZED DataCite DOI — a finding carrying
+        # that DOI must find the entry (reviewer B R2-1)
         key_l = key.lower()
-        return any(key_l in (str(e.get("doi") or "").lower(), str(e.get("key") or "").lower())
+        return any(key_l in (str(e.get("doi") or "").lower(),
+                             str(e.get("key") or "").lower(),
+                             str(_synth_doi(e.get("doi"), e.get("eprint")) or "").lower())
                    for e in entries)
 
     pre_entries = parse_bib(bib) if bib.exists() else []
+    if not _present(pre_entries) and f.details.get("key") and f.details["key"] != key:
+        # the finding was bound to a (possibly synthesized) DOI that matches no
+        # entry — fall back to the bib key before declaring the finding stale
+        # (reviewer B R2-1: vacuous NOT_APPLICABLE with a live toxic entry)
+        key = f.details["key"]
     if not _present(pre_entries):
         f.disposition = Disposition.NOT_APPLICABLE
         f.resolved_by = "paper-factory/remediation"

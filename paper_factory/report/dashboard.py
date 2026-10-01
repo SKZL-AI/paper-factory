@@ -217,7 +217,10 @@ def render_dashboard(workspace_reports: Path | None = None, out: Path | None = N
 
 <h2>9 · Git-State</h2>
 <div class="card"><p>repo <code>{html.escape(git['repo'])}</code> · branch <code>{git['branch']}</code>
- · HEAD <code>{git['head']}</code> · commits {git['commits']} · dirty files: {len(git['dirty'])}</p></div>
+ · HEAD <code>{git['head']}</code> · commits {git['commits']} · dirty files: {len(git['dirty'])}</p>
+<p class="muted">Snapshot zum Generierungszeitpunkt — ein committed Dashboard liegt
+immer einen Commit hinter dem Commit, der es enthält (kein Self-Reference-Loop);
+der aktuelle Runtime-HEAD ist nur per <code>git rev-parse</code> verbindlich.</p></div>
 
 {pilot_html}
 </body></html>"""

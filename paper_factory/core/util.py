@@ -9,7 +9,11 @@ from typing import Any
 
 
 def utcnow() -> str:
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    """ISO-8601 UTC with sub-second precision: a remediation re-audit written
+    right after the P21 audit in the SAME second must still order after it
+    (reviewer B R3-1); lexicographic ordering is preserved within one format
+    generation."""
+    return datetime.now(UTC).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def sha256_bytes(data: bytes) -> str:

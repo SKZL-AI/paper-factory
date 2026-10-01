@@ -630,18 +630,29 @@ def _u4(ctx: NodeContext) -> tuple[str, str]:
     if audit.exists():
         chosen = audit
     # a final WITHOUT a readable audited_at never wins the freshness race
-    # (str(None)="None" would lexicographically beat any real timestamp)
+    # (str(None)="None" would lexicographically beat any real timestamp).
+    # Strictly-greater: on a same-second tie the P21 audit wins — a
+    # post-remediation final must never mask a fresh CRITICAL through a
+    # timestamp tie (reviewer B B-4; fail-closed direction)
     if final.exists() and (chosen is None
-                           or (_ts(final) and _ts(final) >= _ts(audit))):
+                           or (_ts(final) and _ts(final) > _ts(audit))):
         chosen = final
     if chosen is None:
         return "NOT_RUN", "no citation audit"
     audit = chosen
     data = json.loads(audit.read_text())
     findings = data.get("findings", [])
-    crit = [f for f in findings if f.get("kind") == "false_citation"]
-    if crit:
-        return "FAIL", f"false citations: {[f.get('key') for f in crit]}"
+    crit = [f for f in findings if f.get("kind") in ("false_citation",
+                                                     "citation_identity_mismatch")]
+    # defense in depth: a record-level IDENTITY_MISMATCH must fail closure even
+    # when a hand-built/corrupt audit lost its finding (reviewer B B-3)
+    crit_keys = {f.get("key") for f in crit}
+    crit_keys |= {r.get("key") for r in data.get("entries", [])
+                  if r.get("verdict") == "IDENTITY_MISMATCH"}
+    crit_keys.discard(None)
+    if crit_keys:
+        return "FAIL", (f"false or identity-mismatched citations: "
+                        f"{sorted(crit_keys)}")
     if data.get("offline"):
         return "NOT_RUN", "citation audit ran offline — verification pending"
     # B R2-F1 (MAJOR): never attest "resolve" for citations nothing verified —
@@ -656,12 +667,20 @@ def _u4(ctx: NodeContext) -> tuple[str, str]:
                             f"{[f.get('key') for f in unverifiable]}")
     src = "post-remediation" if audit.name.endswith("final.json") else "P21"
     no_doi = [f for f in findings if f.get("kind") == "no_doi"]
-    if no_doi:
-        # books/tech reports legitimately lack DOIs — honest scope, not a
-        # blanket "all resolve" claim
+    unjudgeable = [f for f in findings if f.get("kind") == "identity_unjudgeable"]
+    if no_doi or unjudgeable:
+        # books/tech reports legitimately lack DOIs, and a resolved citation
+        # whose identity could not be compared is verified only on
+        # resolvability — honest scope, not a blanket "all resolve" claim
+        parts = []
+        if no_doi:
+            parts.append(f"{len(no_doi)} without DOI not resolvable (MINOR): "
+                         f"{[f.get('key') for f in no_doi]}")
+        if unjudgeable:
+            parts.append(f"{len(unjudgeable)} resolve but identity not checkable "
+                         f"(MINOR): {[f.get('key') for f in unjudgeable]}")
         return "PASS", (f"all DOI-carrying citations resolve ({src} audit); "
-                        f"{len(no_doi)} without DOI not resolvable (MINOR): "
-                        f"{[f.get('key') for f in no_doi]}")
+                        + "; ".join(parts))
     return "PASS", f"all citations resolve ({src} audit)"
 
 
