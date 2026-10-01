@@ -91,6 +91,24 @@ def run_paperpal(ctx: NodeContext) -> NodeOutcome:
                              "item_classes": item_classes,
                              "item_sha256": {p.name: sha256_file(p) for p in inbox_items},
                              "evidence_class": evidence_class}
+    if mode == "word_auto":
+        # versioned DOCX outbox (figures/tables/arxiv-style) + adapter
+        # receipts; the Word session itself is driven by the orchestrating
+        # agent through scripts/run_paperpal_word.py — P31 PASSes only when
+        # real Paperpal-declared inbox evidence exists (bridge unchanged).
+        # NOTE (reviewer B R3-F5): with a broken renderer the state records
+        # docx_outbox_error and NO docx_outbox — a PASS then still requires
+        # external inbox evidence (which is bound to ITS staged DOCX via
+        # sidecar sha256); a fresh build failure never fabricates evidence.
+        from .docx_outbox import build_docx_outbox
+        try:
+            prov = build_docx_outbox(ctx.workspace, ctx.run_id)
+            if prov:
+                state["docx_outbox"] = prov["docx"]["name"]
+                state["docx_outbox_sha256"] = prov["docx"]["sha256"]
+                state["docx_outbox_source_sha256"] = prov["source"]["sha256"]
+        except Exception as e:  # a broken renderer must degrade, not crash P31
+            state["docx_outbox_error"] = str(e)
     write_json(ctx.workspace.reports_dir / "paperpal_state.json", state)
     if evidence_class == "external_paperpal_declared":
         return NodeOutcome(Verdict.PASS, {"bridge": "manual",

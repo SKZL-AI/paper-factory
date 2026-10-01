@@ -1,9 +1,9 @@
 # Paperpal-Automatisierung via Word-Add-in (P31) — Konzept und Recon
 
-Status: **Konzept bestätigt durch Recon 2026-10-01**, Implementierung als
-nächster Block. Ersetzt die manuelle P31-Bridge nicht semantisch — sie
-automatisiert nur den menschlichen Mittelteil (Dokument in Paperpal prüfen
-lassen, Ergebnis zurücklegen).
+Status: **IMPLEMENTIERT und feldverifiziert (2026-10-01)** — der erste reale
+Lauf auf Pilot 3 ist dokumentiert unten. Ersetzt die manuelle P31-Bridge
+nicht semantisch — sie automatisiert nur den menschlichen Mittelteil
+(Dokument in Paperpal prüfen lassen, Ergebnis zurücklegen).
 
 ## Warum kein API/MCP
 
@@ -96,3 +96,56 @@ auf demselben Inbox-Pfad wie bei der manuellen Bridge.
 4. Dashboard/Report aktualisieren.
 
 Verbleibend bewusst menschlich: P36 Sign-off (hartes Gate, designed).
+
+---
+
+# Nachtrag 2026-10-01 — Implementierung und erster realer Lauf
+
+## Was tatsächlich gebaut wurde
+
+- `paper_factory/paperpal/docx_outbox.py` — versionierte DOCX-Outbox
+  (pandoc + generiertes arXiv-Stil-Referenzdokument; Figuren-Einbettung via
+  `![]()`-Umschreibung; Provenienz-Sidecar mit Source-/DOCX-Hashes).
+- `paper_factory/paperpal/word/` — `pfword.ps1` (open/save-copy/close/shot/
+  click/uia-click/uia-find/uia-dump/uia-dump-scope/park/unpark/bg-click/
+  si-click), `driver.py` (State-Machine + append-only `transitions.jsonl`),
+  `classify.py` (SAFE_MECHANICAL / SEMANTICALLY_GUARDED /
+  SCIENTIFIC_OR_AMBIGUOUS), `cdp.py` (stdlib CDP-Client).
+- `scripts/run_paperpal_word.py` — Orchestrierungs-Einstieg.
+
+## Gelernte Implementation Reality (wichtig für spätere Läufe)
+
+1. **Synthetic input in der Pane funktioniert NICHT.** PostMessage,
+   mouse_event und SendInput werden vom WebView2-Chromium der Office-Pane
+   still ignoriert. UIA-Invoke funktioniert nur für Word-Chrome (Ribbon).
+2. **Der funktionierende Pfad ist CDP:** Word mit
+   `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=0`
+   starten, Pane öffnen, Port aus
+   `%LOCALAPPDATA%\Microsoft\Office\16.0\Wef\webview2\*\EBWebView\DevToolsActivePort`
+   lesen, dann DOM-Zugriff auf `office-addin.paperpal.com/taskpane`.
+   Tab-Klicks, Kartenextraktion (virtueller Scroller `div.scroller`),
+   alles deterministisch — ohne Maus, ohne Fokus, Word kann dabei sogar
+   verdeckt sein.
+3. **PrintWindow auf Office liefert schwarze Bilder** (GPU-Rendering) —
+   Fenster-Screenshots nur über kurze Fokus-Borrows mit Rücksprung.
+4. **"Download edits with track changes" ist im Word-Add-in NICHT
+   verfügbar** — die Pane sagt selbst: "This is currently a Web-only
+   feature." Ehrlich dokumentiert; keine Behauptung dieser Funktion.
+5. **Checks-Sektion** (Plagiarism, AI Detector, Reference Checker,
+   Journal Fit, AI Review, Human Expert) sind externe Links in die
+   Paperpal-Web-App, keine In-Add-in-Checks.
+6. Pane-Inhalt ist NICHT im Word-UIA-Baum (nur Pane-Chrome).
+
+## Erster realer Lauf (Pilot 3, 2026-10-01)
+
+- DOCX: `paper-20261001T183040341506Z.docx` (20 Seiten, 2 Figuren, 5
+  Tabellen), SHA-seitig belegt, aus Draft v1.3.1 gerendert.
+- **Grammar: 210 suggestions in 148 sentences; alle 148 Karten via CDP
+  extrahiert**, Kategorien-Verteilung erfasst, alle klassifiziert:
+  14 SAFE_MECHANICAL / 107 SEMANTICALLY_GUARDED / 27 SCIENTIFIC_OR_AMBIGUOUS.
+- **Consistency: "No consistency issues found!"**
+- Track-changes-Export: web-only (nicht erzeugt, ehrlich verbucht).
+- Word-Session ohne Speichern geschlossen (capture-only, Brief F).
+- Inbox: `paperpal_report.json` + `.provenance.json` (`source: paperpal`).
+- Receipts: `receipts/p31-*.png` + `paperpal_word_session.json`
+  (State-Machine DOCX_READY → INBOX_READY).

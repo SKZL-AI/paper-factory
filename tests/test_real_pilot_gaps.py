@@ -5956,3 +5956,478 @@ def test_url_verify_https_downgrade_redirect_rejected(monkeypatch):
                                                       "http://www.w3.org/TR/x/")}))
     rec = url_verify.verify_authoritative_url("https://www.w3.org/TR/x/")
     assert rec["verdict"] == "REDIRECT_DOMAIN_CHANGED", rec
+
+
+# ---------------------------------------------------------------------------
+# P31 DOCX outbox (consultant brief D, 2026-10-01): versioned, provenanced,
+# figures remapped from broken chat-export paths, arXiv-style reference doc.
+# ---------------------------------------------------------------------------
+
+
+def test_p31_image_path_rewrite_basename_and_ordinal(tmp_path):
+    from paper_factory.paperpal.docx_outbox import _rewrite_image_paths
+    (tmp_path / "fig1_event_model.png").write_bytes(b"png1")
+    (tmp_path / "fig2_attribution.png").write_bytes(b"png2")
+    text = ('<img src="/mnt/data/x_media/media/image1.png" title="F1"/>\n'
+            '<img src="/mnt/data/x_media/media/image2.png" title="F2"/>\n')
+    out, mapping = _rewrite_image_paths(text, tmp_path)
+    # raw-HTML <img> becomes pandoc image syntax (docx drops raw HTML)
+    assert "![F1](fig1_event_model.png)" in out
+    assert "![F2](fig2_attribution.png)" in out
+    assert all(m["ok"] for m in mapping)
+
+
+def test_p31_image_path_rewrite_unmappable_is_reported_not_dropped(tmp_path):
+    from paper_factory.paperpal.docx_outbox import _rewrite_image_paths
+    text = '<img src="/mnt/data/z/image7.png" title="F7"/>\n'
+    out, mapping = _rewrite_image_paths(text, tmp_path)
+    assert mapping[0]["ok"] is False and mapping[0]["from"].endswith("image7.png")
+    assert "image7.png" in out  # tag preserved for a human to see
+
+
+def _tiny_png() -> bytes:
+    """A real 1x1 PNG (pandoc silently drops invalid images — the embed
+    assertion needs a decodable file)."""
+    import struct
+    import zlib
+
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        c = struct.pack(">I", len(data)) + tag + data
+        return c + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+
+    ihdr = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)
+    idat = zlib.compress(b"\x00\x00\x00\x00")
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", idat)
+            + chunk(b"IEND", b""))
+
+
+def test_p31_docx_outbox_builds_provenanced_docx(tmp_path):
+    import shutil
+    if shutil.which("pandoc") is None:
+        import pytest
+        pytest.skip("pandoc unavailable — honest env skip")
+    import json
+    from paper_factory.paperpal.docx_outbox import build_docx_outbox
+    (tmp_path / "draft").mkdir()
+    (tmp_path / "draft" / "fig1_event_model.png").write_bytes(_tiny_png())
+    (tmp_path / "draft" / "paper.md").write_text(
+        "# Title\n\nText with **bold** and a table.\n\n"
+        "| a | b |\n|---|---|\n| 1 | 2 |\n\n"
+        '<img src="/mnt/data/m/media/image1.png" title="Figure 1"/>\n',
+        encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    ctx.workspace.paperpal_outbox.mkdir(parents=True, exist_ok=True)
+    prov = build_docx_outbox(ctx.workspace, "run-test")
+    assert prov is not None
+    docx = Path(prov["docx"]["path"])
+    assert docx.exists() and docx.stat().st_size > 1000
+    assert docx.name.startswith("paper-") and docx.suffix == ".docx"
+    sidecar = json.loads((ctx.workspace.paperpal_outbox
+                          / f"{docx.name}.provenance.json").read_text())
+    assert sidecar["docx"]["sha256"] == prov["docx"]["sha256"]
+    assert sidecar["source"]["sha256"] and sidecar["run_id"] == "run-test"
+    assert sidecar["figures"][0]["ok"] is True
+    assert sidecar["conversion"]["method"].startswith("pandoc")
+    # the embedded figure really made it into the docx
+    import zipfile
+    zf = zipfile.ZipFile(docx)
+    assert any(n.startswith("word/media/") for n in zf.namelist())
+
+
+def test_p31_docx_outbox_staging_never_deleted(tmp_path):
+    import shutil
+    if shutil.which("pandoc") is None:
+        import pytest
+        pytest.skip("pandoc unavailable — honest env skip")
+    from paper_factory.paperpal.docx_outbox import build_docx_outbox
+    (tmp_path / "draft").mkdir()
+    (tmp_path / "draft" / "paper.md").write_text("# T\n\nText.\n",
+                                                 encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    ctx.workspace.paperpal_outbox.mkdir(parents=True, exist_ok=True)
+    build_docx_outbox(ctx.workspace, "run-1")
+    build_docx_outbox(ctx.workspace, "run-2")
+    staging = ctx.workspace.paperpal_outbox / "_staging"
+    displaced = list(ctx.workspace.paperpal_outbox.glob("_staging.v1.*"))
+    assert staging.exists() and displaced, "old staging must be versioned, not deleted"
+
+
+# ---------------------------------------------------------------------------
+# P31 Word/Paperpal adapter — offline-testable parts (consultant briefs
+# C/F/H, 2026-10-01). The Word session itself is integration tooling and is
+# verified with real screenshot receipts, never in pytest (no Word in CI).
+# ---------------------------------------------------------------------------
+
+
+def test_p31_classify_suggestion_rules():
+    from paper_factory.paperpal.word.classify import classify_suggestion
+    # SAFE_MECHANICAL: pure typo/punctuation without numbers/claims
+    assert classify_suggestion("spelling", "teh result", "the result") == \
+        "SAFE_MECHANICAL"
+    # numbers anywhere → never mechanical
+    assert classify_suggestion("grammar", "improved by 7.4 points",
+                               "improved by 7.4 fold") == "SCIENTIFIC_OR_AMBIGUOUS"
+    # claim words → scientific
+    assert classify_suggestion("style", "we prove the bound",
+                               "we demonstrate the bound") == \
+        "SCIENTIFIC_OR_AMBIGUOUS"
+    # citation-ish → scientific
+    assert classify_suggestion("grammar", "see [12] for details",
+                               "see [12] for detail") == "SCIENTIFIC_OR_AMBIGUOUS"
+    # plain grammar, no numbers → guarded
+    assert classify_suggestion("grammar", "the model was train",
+                               "the model was trained") == "SEMANTICALLY_GUARDED"
+
+
+def test_p31_wsl_win_path_translation():
+    from paper_factory.paperpal.word.driver import wsl_to_win, win_to_wsl
+    assert wsl_to_win(Path("/mnt/c/Users/SAI/x y.docx")) == \
+        r"C:\Users\SAI\x y.docx"
+    assert win_to_wsl(r"C:\Users\SAI\x.png") == Path("/mnt/c/Users/SAI/x.png")
+    import pytest
+    with pytest.raises(ValueError):
+        wsl_to_win(Path("/home/sai/nope"))
+
+
+def test_p31_transitions_append_only_log(tmp_path):
+    """every recorded transition lands in transitions.jsonl — receipts
+    survive process boundaries (the orchestrator drives stepwise CLIs)."""
+    from paper_factory.paperpal.word.driver import WordPaperpalAdapter
+    ad = WordPaperpalAdapter(receipts_dir=tmp_path)
+    ad.record("DOCX_READY", True, "paper-x.docx staged")
+    ad.record("WORD_OPEN", False, "simulated failure")
+    lines = (tmp_path / "transitions.jsonl").read_text().strip().splitlines()
+    assert len(lines) == 2
+    import json
+    a, b = (json.loads(x) for x in lines)
+    assert a["state"] == "DOCX_READY" and a["ok"] is True
+    assert b["state"] == "WORD_OPEN" and b["ok"] is False
+    # report aggregates the append-only log, not just in-memory state
+    ad2 = WordPaperpalAdapter(receipts_dir=tmp_path)
+    p = ad2.write_report(tmp_path / "report.json", {"k": 1})
+    rep = json.loads(p.read_text())
+    assert rep["states_reached"] == ["DOCX_READY"]
+    assert len(rep["transitions"]) == 2
+
+
+# ---------------------------------------------------------------------------
+# Durable author decisions (real-pilot-3 finding, 2026-10-01): regenerated
+# review files must not wipe a taken AUTHOR_DECISION. decisions.jsonl binds
+# by canonical dedupe_key and is applied on every load_reviews.
+# ---------------------------------------------------------------------------
+
+
+def _mk_finding(kind="number_mismatch", statement="draft number 7.4 contradicts",
+                details=None):
+    from paper_factory.reviews.framework import Finding
+    from paper_factory.core.results import Severity
+    return Finding(finding_id="PX-F01", reviewer="test", severity=Severity.MAJOR,
+                   category="methods", statement=statement, kind=kind,
+                   details=details or {"draft": "draft/paper.md", "value": 7.4},
+                   affected_section="results")
+
+
+def test_decisions_survive_review_regeneration(tmp_path):
+    """The 7.4 wipe scenario: decision recorded, review file REWRITTEN with
+    a fresh disposition-less finding → load_reviews still closes it."""
+    import json
+    from paper_factory.reviews.decisions import record_decision
+    from paper_factory.reviews.framework import (Finding, ReviewReport,
+                                                 load_reviews, save_review)
+    from paper_factory.core.results import Disposition, Severity
+    reviews = tmp_path / "reviews"
+    f = _mk_finding()
+    save_review(reviews, ReviewReport(review_id="P23-methods", reviewer="m",
+                                      findings=[f]))
+    record_decision(reviews, f, disposition=Disposition.AUTHOR_DECISION,
+                    reason="sealed artifact carries ratio=7.4 verbatim",
+                    decided_by="author (delegated, verified)",
+                    evidence={"sha256": "abc"})
+    # run regenerates the review: fresh finding, NO disposition, NEW id
+    fresh = _mk_finding()
+    fresh.finding_id = "P23-methods-F99"
+    save_review(reviews, ReviewReport(review_id="P23-methods", reviewer="m",
+                                      findings=[fresh]))
+    out, invalid = load_reviews(reviews)
+    assert not invalid
+    assert out[0].findings[0].disposition == Disposition.AUTHOR_DECISION
+    assert "sealed artifact" in out[0].findings[0].disposition_reason
+    assert out[0].findings[0].resolved_by == "author (delegated, verified)"
+
+
+def test_decisions_closing_requires_provenance(tmp_path):
+    """A closing decision without reason/decided_by is rejected at record
+    time and never applied."""
+    from paper_factory.core.results import Disposition
+    from paper_factory.reviews.decisions import record_decision
+    import pytest
+    with pytest.raises(ValueError):
+        record_decision(tmp_path, _mk_finding(),
+                        disposition=Disposition.AUTHOR_DECISION,
+                        reason="", decided_by="")
+
+
+def test_decisions_dedupe_key_covers_reviewer_duplicates(tmp_path):
+    """GAP-010: P23/P24/P25 foldings of the same issue share one dedupe key —
+    one decision closes all three."""
+    from paper_factory.reviews.decisions import record_decision
+    from paper_factory.reviews.framework import ReviewReport, load_reviews, save_review
+    from paper_factory.core.results import Disposition
+    reviews = tmp_path / "reviews"
+    f23 = _mk_finding()
+    f24 = _mk_finding(); f24.finding_id = "P24-statistics-F04"; f24.reviewer = "s"
+    f25 = _mk_finding(); f25.finding_id = "P25-adversarial-F04"; f25.reviewer = "a"
+    save_review(reviews, ReviewReport(review_id="P23-methods", reviewer="m", findings=[f23]))
+    save_review(reviews, ReviewReport(review_id="P24-statistics", reviewer="s", findings=[f24]))
+    save_review(reviews, ReviewReport(review_id="P25-adversarial", reviewer="a", findings=[f25]))
+    record_decision(reviews, f23, disposition=Disposition.AUTHOR_DECISION,
+                    reason="evidence-sealed", decided_by="author")
+    out, _ = load_reviews(reviews)
+    assert all(r.findings[0].disposition == Disposition.AUTHOR_DECISION for r in out)
+
+
+def test_decisions_corrupt_line_fails_closed(tmp_path):
+    from paper_factory.reviews.framework import ReviewReport, load_reviews, save_review
+    reviews = tmp_path / "reviews"
+    save_review(reviews, ReviewReport(review_id="P23-methods", reviewer="m",
+                                      findings=[_mk_finding()]))
+    (reviews / "decisions.jsonl").write_text('{"dedupe_key": "x"\nNOT_JSON\n')
+    out, invalid = load_reviews(reviews)
+    assert any("DECISION_ARTIFACT_INVALID" in i["kind"] for i in invalid)
+
+
+def test_decisions_do_not_leak_across_issues(tmp_path):
+    """a decision on issue A must not close issue B (different evidence)."""
+    from paper_factory.reviews.decisions import record_decision
+    from paper_factory.reviews.framework import ReviewReport, load_reviews, save_review
+    from paper_factory.core.results import Disposition
+    reviews = tmp_path / "reviews"
+    fa = _mk_finding(details={"draft": "d.md", "value": 7.4})
+    fb = _mk_finding(details={"draft": "d.md", "value": 42.0})
+    save_review(reviews, ReviewReport(review_id="P23-methods", reviewer="m",
+                                      findings=[fa, fb]))
+    record_decision(reviews, fa, disposition=Disposition.AUTHOR_DECISION,
+                    reason="ok", decided_by="author")
+    out, _ = load_reviews(reviews)
+    fba, fbb = out[0].findings
+    assert fba.disposition == Disposition.AUTHOR_DECISION
+    assert fbb.disposition is None
+
+
+# ---------------------------------------------------------------------------
+# U2/GAP-011 label-binding fixes from the pilot-3 P35 run (2026-10-01):
+# compose names the metric field adjacent to EVERY macro; the checker matches
+# multi-part fields as consecutive phrases (no per-token-min mixing, no
+# dim-token glued fallback).
+# ---------------------------------------------------------------------------
+
+
+def test_gap011_p3_compose_names_field_for_mean_and_n(tmp_path):
+    """The n-macro must have its own adjacent field mention — macro names are
+    ~110 chars, one shared mention falls outside U2's 200-char window."""
+    from paper_factory.manuscript.compose import _compose_section
+    ctx = _ctx(tmp_path)
+    results = tmp_path / "results"
+    results.mkdir()
+    rows = ["seed,load,fpr"]
+    for seed in (42, 43, 44):
+        for load in ("0.90", "0.95"):
+            rows.append(f"{seed},{load},{0.01 + seed * 1e-4 + float(load):.6f}")
+    (results / "data.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    run_statistics(ctx)
+    text = _compose_section("results", ctx)
+    # every pfget use has the field 'fpr' named within the 200-char window
+    from paper_factory.statistics.quantitative import find_pfget_uses_with_spans, normalize_tex
+    body = normalize_tex(text)
+    for name, pos in find_pfget_uses_with_spans(body):
+        window = body[max(0, pos - 200):pos + 200]
+        assert "fpr" in window, (name, window)
+
+
+def test_gap011_p3_nested_field_no_attribution_steal(tmp_path):
+    """nll vs nll_A_rounded: a correctly named long field must pass even when
+    a short nested field exists; a long-field macro labeled only 'nll' must
+    still FAIL (the fix must not weaken the check)."""
+    from paper_factory.release.closure import _labelless_macro_uses
+    metrics = {
+        "runs__a__nll": {"field": "nll", "source": "runs/a"},
+        "runs__b__nll_A_rounded": {"field": "nll_A_rounded", "source": "runs/b"},
+    }
+    paper = tmp_path / "paper"
+    (paper / "sections").mkdir(parents=True)
+    good = (paper / "sections" / "results.tex")
+    good.write_text("The metric \\texttt{nll\\_A\\_rounded} has mean "
+                    "$\\pfget{runsbnllAroundedmean}$; \\texttt{nll\\_A\\_rounded} "
+                    "was measured on n=$\\pfget{runsbnllAroundedn}$ runs.\n",
+                    encoding="utf-8")
+    bad, _ = _labelless_macro_uses(paper, metrics)
+    assert not bad, bad
+    # adversarial: same macro, prose names only the short field
+    good.write_text("The nll value was $\\pfget{runsbnllAroundedmean}$.\n",
+                    encoding="utf-8")
+    bad, _ = _labelless_macro_uses(paper, metrics)
+    assert bad and "nll_A_rounded" in bad[0], bad
+
+
+def test_gap011_p3_dim_token_field_named_phrase_passes(tmp_path):
+    """abs_diff: consecutive dim-token phrase in prose names the field."""
+    from paper_factory.release.closure import _labelless_macro_uses
+    metrics = {"runs__c__abs_diff": {"field": "abs_diff", "source": "runs/c"}}
+    paper = tmp_path / "paper"
+    (paper / "sections").mkdir(parents=True)
+    (paper / "sections" / "results.tex").write_text(
+        "The metric \\texttt{abs\\_diff} has mean $\\pfget{runscabsdiffmean}$; "
+        "\\texttt{abs\\_diff} was measured on n=$\\pfget{runscabsdiffn}$ runs.\n",
+        encoding="utf-8")
+    bad, _ = _labelless_macro_uses(paper, metrics)
+    assert not bad, bad
+    # and unnamed still fails (fail-visible)
+    (paper / "sections" / "results.tex").write_text(
+        "The difference was $\\pfget{runscabsdiffmean}$.\n", encoding="utf-8")
+    bad, _ = _labelless_macro_uses(paper, metrics)
+    assert bad, "unnamed abs_diff macro must fail"
+
+
+# ---------------------------------------------------------------------------
+# Reviewer A R3 / B R3 hardening of the P31 block (2026-10-01): decision-store
+# crash-safety, style-patch effect, ordinal mapping confidence, CDP pong
+# handling, written-out numbers in classification.
+# ---------------------------------------------------------------------------
+
+
+def test_decisions_missing_disposition_is_invalid_not_crash(tmp_path):
+    """A R3-1: a JSON-valid entry WITHOUT 'disposition' must surface as
+    invalid, never crash load_reviews."""
+    from paper_factory.reviews.framework import ReviewReport, load_reviews, save_review
+    reviews = tmp_path / "reviews"
+    save_review(reviews, ReviewReport(review_id="P23-methods", reviewer="m",
+                                      findings=[_mk_finding()]))
+    (reviews / "decisions.jsonl").write_text(
+        '{"dedupe_key": "x", "reason": "r", "decided_by": "a"}\n')
+    out, invalid = load_reviews(reviews)
+    assert any("DECISION_ARTIFACT_INVALID" in i["kind"] for i in invalid)
+    assert out[0].findings[0].disposition is None
+
+
+def test_p31_style_patch_has_real_effect(tmp_path):
+    """B R3-F1: the patch must measurably change the reference docx —
+    Times in theme, 10pt body default, justified body, black headings."""
+    import shutil
+    if shutil.which("pandoc") is None:
+        import pytest
+        pytest.skip("pandoc unavailable — honest env skip")
+    import zipfile
+    from paper_factory.paperpal.docx_outbox import ensure_reference_docx
+    ref = ensure_reference_docx(tmp_path)
+    zf = zipfile.ZipFile(ref)
+    styles = zf.read("word/styles.xml").decode()
+    theme = zf.read("word/theme/theme1.xml").decode()
+    assert 'typeface="Times New Roman"' in theme
+    assert 'Calibri' not in theme
+    assert '<w:sz w:val="20" />' in styles  # 10pt body default
+    assert '<w:jc w:val="both" />' in styles  # justified
+    assert '<w:color w:val="000000" />' in styles  # non-blue headings
+    # schema child order (CT_PPr: jc after spacing; CT_Style: pPr after
+    # qFormat) — wrong order can trip Word's repair dialog (reviewer B R3)
+    import re as _re2
+    bt = _re2.search(r'w:styleId="BodyText".*?</w:style>', styles, _re2.S).group(0)
+    assert bt.index("spacing") < bt.index('jc w:val="both"')
+    fp = _re2.search(r'w:styleId="FirstParagraph".*?</w:style>', styles, _re2.S).group(0)
+    assert fp.index("qFormat") < fp.index("<w:pPr>")
+
+
+def test_p31_ordinal_mapping_marks_confidence(tmp_path):
+    """B R3-F2: ordinal fallback is labeled a guess, basename is exact."""
+    from paper_factory.paperpal.docx_outbox import _rewrite_image_paths
+    (tmp_path / "fig10_limitations.png").write_bytes(b"x")
+    (tmp_path / "fig2_attribution.png").write_bytes(b"x")
+    # basename match
+    _, m1 = _rewrite_image_paths('<img src="/x/fig2_attribution.png"/>', tmp_path)
+    assert m1[0]["confidence"] == "basename"
+    # ordinal fallback (image1 → first sorted figure) marked as guess
+    _, m2 = _rewrite_image_paths('<img src="/x/image1.png"/>', tmp_path)
+    assert m2[0]["confidence"] == "ordinal" and m2[0]["ok"] is True
+
+
+def test_p31_classify_written_out_numbers_not_mechanical():
+    """B R3-F4: 'seven epochs' → 'eight epochs' is scientific, not mechanics."""
+    from paper_factory.paperpal.word.classify import classify_suggestion
+    assert classify_suggestion("spelling", "ran for seven epochs",
+                               "ran for eight epochs") == "SCIENTIFIC_OR_AMBIGUOUS"
+    assert classify_suggestion("grammar", "the first step",
+                               "the first step.") == "SCIENTIFIC_OR_AMBIGUOUS"
+
+
+def _fake_ws_socket(script: list[bytes]) -> object:
+    """A socket stand-in feeding prepared frames (server→client, unmasked)."""
+    class FakeSock:
+        def __init__(self):
+            self.buf = b"".join(script)
+            self.sent = b""
+
+        def sendall(self, b):
+            self.sent += b
+
+        def recv(self, n):
+            out, self.buf = self.buf[:n], self.buf[n:]
+            if not out:
+                raise ConnectionError("closed")
+            return out
+
+        def close(self):
+            pass
+
+        def settimeout(self, t):
+            pass
+
+    return FakeSock()
+
+
+def _srv_frame(opcode: int, payload: bytes) -> bytes:
+    ln = len(payload)
+    if ln < 126:
+        return bytes([0x80 | opcode, ln]) + payload
+    return bytes([0x80 | opcode, 126]) + ln.to_bytes(2, "big") + payload
+
+
+def test_p31_cdp_pong_skipped_and_ping_answered():
+    """B R3-F3: unsolicited pong must not be returned as a message; a ping
+    gets a pong and is skipped too."""
+    import json as _j
+    from paper_factory.paperpal.word import cdp
+    pong = _srv_frame(0xA, b"")
+    ping = _srv_frame(0x9, b"hi")
+    answer = _srv_frame(0x1, _j.dumps({"id": 1, "result": {"ok": 1}}).encode())
+    sock = _fake_ws_socket([pong, ping, answer])
+    import paper_factory.paperpal.word.cdp as mod
+    old = mod._ws_connect
+    mod._ws_connect = lambda url, timeout=10.0: sock
+    try:
+        c = object.__new__(mod.CDP)
+        c._sock = sock
+        c._id = 0
+        r = c.call("Runtime.evaluate", expression="1")
+        assert r == {"ok": 1}
+        # the pong is the LAST frame: header 0x8A with empty-masked payload
+        tail = sock.sent[-6:]
+        assert tail[0] == 0x8A and tail[1] == 0x80, sock.sent
+    finally:
+        mod._ws_connect = old
+
+
+def test_p31_cdp_extended_length_frame():
+    """126-length frames parse correctly (>125 byte payloads)."""
+    import json as _j
+    from paper_factory.paperpal.word import cdp as mod
+    payload = _j.dumps({"id": 1, "result": {"v": "x" * 500}}).encode()
+    sock = _fake_ws_socket([_srv_frame(0x1, payload)])
+    old = mod._ws_connect
+    mod._ws_connect = lambda url, timeout=10.0: sock
+    try:
+        c = object.__new__(mod.CDP)
+        c._sock = sock
+        c._id = 0
+        r = c.call("Runtime.evaluate", expression="1")
+        assert r["v"] == "x" * 500
+    finally:
+        mod._ws_connect = old

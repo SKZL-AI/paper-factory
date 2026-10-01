@@ -71,6 +71,12 @@ def load_reviews(reviews_dir: Path) -> tuple[list[ReviewReport], list[dict[str, 
                     continue  # the genuine P07 artifact
             invalid.append({"kind": "REVIEW_ARTIFACT_INVALID", "path": str(f),
                             "error": f"{type(exc).__name__}: {exc}"})
+    # durable decisions survive review regeneration (real-pilot-3: a hand-set
+    # AUTHOR_DECISION was wiped by the next run's regenerated review files)
+    from .decisions import apply_decisions
+    for marker in apply_decisions(out, reviews_dir):
+        invalid.append({"kind": marker.split(":")[0], "path": "decisions.jsonl",
+                        "error": marker})
     return out, invalid
 
 

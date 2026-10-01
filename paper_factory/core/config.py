@@ -64,7 +64,7 @@ class VerificationCfg(BaseModel):
 
 
 class PaperpalCfg(BaseModel):
-    mode: str = "auto"  # auto | api | manual_bridge | disabled
+    mode: str = "auto"  # auto | api | word_auto | manual_bridge | disabled
     api_if_supported: bool = True
     manual_bridge_if_needed: bool = True
     semantic_diff_after_edit: bool = True

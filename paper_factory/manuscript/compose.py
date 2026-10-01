@@ -66,8 +66,25 @@ def _compose_section(section: str, ctx: NodeContext) -> str:
         for key, m in list(all_metrics.items())[:8]:
             base = bases[key]
             shown = key.replace("_", "\\_")
-            lines.append(f"For \\texttt{{{shown}}} we measured a mean of "
-                         f"$\\pfget{{{base}mean}}$ (n=$\\pfget{{{base}n}}$).")
+            # GAP-011/U2: the prose must NAME the bound metric's field right
+            # next to the macro use — a naked \pfget near foreign field names
+            # is a misattribution risk (pilot-3 resume 2026-10-01: U2 FAILed
+            # on exactly this). No separate design-point parenthetical:
+            # free-standing decimals read as hand-typed to P22.
+            field = str(m.get("field", "") or "")
+            if field:
+                fshown = field.replace("_", "\\_")
+                # the field names BOTH macros: mean and n each get their own
+                # adjacent mention — the macro names are ~110 chars, so a
+                # single mention would fall outside U2's 200-char window for
+                # the n-macro (pilot-3 probe 2026-10-01)
+                lines.append(f"For \\texttt{{{shown}}}, the metric \\texttt{{{fshown}}}"
+                             f" has mean $\\pfget{{{base}mean}}$; "
+                             f"\\texttt{{{fshown}}} was measured on "
+                             f"n=$\\pfget{{{base}n}}$ runs.")
+            else:
+                lines.append(f"For \\texttt{{{shown}}} we measured a mean of "
+                             f"$\\pfget{{{base}mean}}$ (n=$\\pfget{{{base}n}}$).")
         if not metrics.get("metrics"):
             lines.append("% no metrics available — results section stays empty rather than invented")
         return "\n".join(lines) + "\n"

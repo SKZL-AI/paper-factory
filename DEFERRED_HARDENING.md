@@ -142,3 +142,25 @@ Normalisierung exakt mit dem zitierten Titel kollidiert):
 - Paperpal: manuelle Outbox/Inbox-Bridge (kein offizielles API/MCP) — P31 ist
   HUMAN-IN-THE-LOOP; operator_check ≠ external_paperpal (Status-Semantik seit
   Post-Pilot-Audit sauber getrennt).
+
+## 2026-10-01 (P31-Block Review R3) — akzeptierte Restrisiken
+
+- **A R3-2 (Medium, dokumentiert):** `dedupe_key` kollidiert, wenn ein Finding
+  NUR claim_refs als Identität trägt (kein value/doi/span/bound_metrics) — eine
+  durable Decision könnte dann ein fremdes Issue mit derselben claim_ref-Menge
+  stillschließen. Richtung: false-close. Existiert schon in GAP-010-Dedupe;
+  durable Store vergrößert die Tragweite. TODO: claim-only Keys um
+  Statement-Hash verfeinern, wenn ein realer Kollisionsfall auftritt.
+- **A R3-3 (Low, false-green Richtung):** die Phrasen-Brücke `{0,8}` matcht
+  zufällige Prosa-Koinzidenz ("The nll, a rounded error estimate" nennt
+  `nll_A_rounded` fälschlich). Und: Single-Part-Feld `nll` matcht weiterhin
+  innerhalb von `nll_A_rounded`. Beides lockert nur U2's Label-Check; der
+  Group-/Design-Point-Check darunter ist unverändert scharf.
+- **A R3-4 (Low, false-fail Richtung):** umgeordnete Feldteile ("the rounded
+  nll value") matchen nicht mehr — legitime Prosa muss die Feldreihenfolge
+  einhalten. Fail-visible, bewusst akzeptiert.
+- **B R3-F5 (dokumentiert):** `word_auto` + kaputter Renderer + echte
+  Inbox-Evidenz → P31 PASS steht (Evidenz ist an ihr eigenes staged DOCX via
+  Sidecar-sha256 gebunden); der State trägt `docx_outbox_error` sichtbar.
+- Paperpal "Download edits with track changes" ist im Word-Add-in web-only —
+  nicht verfügbar, ehrlich verbucht (kein Export-Artefakt).

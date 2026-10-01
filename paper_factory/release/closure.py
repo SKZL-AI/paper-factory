@@ -264,17 +264,25 @@ def _labelless_macro_uses(paper: Path, metrics: dict[str, Any]) -> tuple[list[st
             stem = re.escape(alias)
             positions += [m.start() for m in re.finditer(
                 rf"(?<![a-z0-9]){stem}(?:e?s)?(?![a-z0-9])", w)]
+        # Multi-part fields match as ONE consecutive phrase built from ALL
+        # name parts — including short middle parts ('nll_A_rounded' →
+        # nll/a/rounded). Dropping short parts breaks the bridge (the 'a' is
+        # alphanumeric and kills a non-alnum gap pattern); per-token minima
+        # mix mentions across the window and let a short nested field ('nll')
+        # steal attribution (pilot-3 probes 2026-10-01). Dim-token fields
+        # (abs_diff) are safe here precisely BECAUSE the phrase is
+        # consecutive — scattered 'abs'/'diff' words never match.
+        split = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", field)
+        parts = [t for t in re.split(r"[^a-z0-9]+", split.lower()) if t]
+        if len(parts) >= 2:
+            pat = r"[^a-z0-9]{0,8}".join(re.escape(t) for t in parts)
+            positions += [m.start() for m in re.finditer(
+                rf"(?<![a-z0-9]){pat}(?![a-z0-9])", w)]
+            return positions
         content = _content_tokens(field)
         if content:
-            hits = []
-            for t in content:
-                hs = [m.start() for m in re.finditer(
-                    rf"(?<![a-z0-9]){re.escape(t)}(?![a-z0-9])", w)]
-                if not hs:
-                    hits = []
-                    break
-                hits.append(min(hs))
-            positions += hits
+            positions += [m.start() for m in re.finditer(
+                rf"(?<![a-z0-9]){re.escape(content[0])}(?![a-z0-9])", w)]
         return positions
 
     # siblings per (source, field): for the group-dimension check. Group and
