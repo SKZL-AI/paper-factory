@@ -149,3 +149,44 @@ Beweispflicht.
 - citation_audit_final.json (2026-10-01T14:12Z): 19× VERIFIED/match,
   2× UNVERIFIABLE_T4, 0 CRITICAL.
 - Dashboard: Sektion 13 aktualisiert (run_id, headline, gaps).
+
+---
+
+# ADDENDUM 2 — 2026-10-01 (Abend): P35 PASS, U1–U16 16/16 (Commit cdc32cf)
+
+## Endstand des Tages
+
+- **P35 Global Closure: PASS** — alle 16 Invarianten grün.
+- **P21 PASS** — 21/21 Referenzen verifiziert (19 DOI/arXiv mit Identity-Match,
+  2 über den neuen Authoritative-URL-Pfad: PyTorch-Doku + W3C PROV-DM, beide
+  mit Retrieval-Beleg: final URL, HTTP 200, SHA-256, Titel-Identität).
+- **P31 PASS** — Paperpal real aus dem Word-Add-in automatisiert:
+  Grammar 210 Vorschläge/148 Sätze (alle Karten via CDP extrahiert und
+  klassifiziert), Consistency "no issues", capture-only (nichts appliziert).
+  Track-changes-Export ist im Add-in web-only — ehrlich verbucht.
+- **P33/P34 PASS** — Clean Export + Secret-Scan clean, unabhängiger Rebuild.
+- **Overall: HUMAN_REQUIRED** — einzig P36 (final sign-off, designed) bleibt.
+  Exit-Code 3 per CLI-Vertrag.
+
+## Neue echte Core-Befunde aus diesem Lauf (alle gefixt, dual reviewt)
+
+1. **Durable Decisions** (`reviews/decisions.py`): Review-Nodes regenerieren
+   ihre JSONs pro Run und löschten dabei die gesetzte AUTHOR_DECISION (7.4)
+   — U5 flappte. Append-only `decisions.jsonl`, kanonisch an dedupe_key
+   gebunden, Provenance-Pflicht, fail-closed bei Korruption.
+2. **U2-Labelbindung** (`closure.py`, `compose.py`): (a) Per-Token-Minima
+   vermischten Fenster-Mentions → 'nll' stahl 'nll_A_rounded' die Attribution;
+   (b) Dim-Token-Felder (abs_diff) waren überhaupt nicht benennbar (geglueder
+   Fallback-Token kommt in Prosa nie vor); (c) Composer nannte das Feld nicht
+   adjazent zum n-Macro (110-Zeichen-Macros > 200-Zeichen-Fenster).
+   Fix: consecutive-phrase Matching über ALLE Namensteile + Composer benennt
+   das Feld bei mean UND n.
+3. **Paperpal-Pane ist synthetischen Maus-Events gegenüber immun**
+   (PostMessage/mouse_event/SendInput wirkungslos) — Lösung: CDP über
+   WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS, Port aus DevToolsActivePort.
+   Deterministische DOM-Kontrolle ohne Maus/Fokus (User-Anforderung).
+
+## Suite
+
+510 passed + 2 ehrliche Skips (live-net opt-in; HoH-Receipt env).
+Reviews: A JA (R3 nach Crash-Fix), B JA (R3 nach Styles/Confidence/Pong-Fixen).
