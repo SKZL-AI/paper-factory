@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+import html
 import unicodedata
 import urllib.error
 import urllib.parse
@@ -18,13 +19,20 @@ from ..dag.executor import NodeContext, NodeOutcome
 
 CROSSREF = "https://api.crossref.org/works/"
 OPENALEX = "https://api.openalex.org/works/doi:"
+# DataCite is the REGISTRY of every arXiv DOI — OpenAlex does not index them
+# all (10.48550/arXiv.1706.03762 404s on OpenAlex while DataCite resolves it,
+# pilot-3 prep 2026-10-01); without this source a real arXiv citation becomes
+# a false false_citation CRITICAL
+DATACITE = "https://api.datacite.org/dois/"
 _UA = {"User-Agent": "paper-factory/0.1 (mailto:paper-factory@local)"}
 
 
 def resolve_doi(doi: str, timeout: int = 20) -> dict[str, Any]:
-    """Verify a DOI against Crossref, then OpenAlex as a second source."""
+    """Verify a DOI against Crossref, then OpenAlex and DataCite as second
+    sources."""
     rec: dict[str, Any] = {"doi": doi, "checked_at": utcnow(), "sources": {}}
-    for name, base in (("crossref", CROSSREF), ("openalex", OPENALEX)):
+    for name, base in (("crossref", CROSSREF), ("openalex", OPENALEX),
+                       ("datacite", DATACITE)):
         url = base + urllib.parse.quote(doi)
         try:
             req = urllib.request.Request(url, headers=_UA)
@@ -37,18 +45,46 @@ def resolve_doi(doi: str, timeout: int = 20) -> dict[str, Any]:
                 rec["container"] = (msg.get("container-title") or [None])[0]
                 rec["published"] = msg.get("published-print") or msg.get("published-online")
             elif name == "openalex" and rec.get("title") is None:
-                # DataCite DOIs (every synthesized arXiv DOI) are never in
-                # Crossref — without this fallback their identity check was
-                # always unjudgeable (reviewer A F1)
+                # DataCite-registered DOIs are never in Crossref — without
+                # these fallbacks their identity check was always unjudgeable
+                # (reviewer A F1). An EMPTY string is no title and must not
+                # block the next fallback (reviewer A D3)
                 t = body.get("title") or body.get("display_name")
-                rec["title"] = t if isinstance(t, str) else None
+                rec["title"] = t if isinstance(t, str) and t.strip() else None
+            elif name == "datacite" and rec.get("title") is None:
+                # registrant payloads are noisy: data/attributes may be null
+                # or non-dict (JSON:API allows data:null) — never crash the
+                # whole audit on one odd payload (reviewer A D1 / B R5-1).
+                # Prefer the original (untyped, lang-less) title over
+                # translations (reviewer B R5-3)
+                data = body.get("data")
+                attrs = data.get("attributes") if isinstance(data, dict) else None
+                titles = attrs.get("titles") if isinstance(attrs, dict) else None
+                if isinstance(titles, list):
+                    cands = [x for x in titles if isinstance(x, dict)]
+                    # original title first: untyped beats TranslatedTitle,
+                    # lang-less/English beats other languages — even when ALL
+                    # entries carry a lang (reviewer B R6-1)
+                    cands.sort(key=lambda x: (x.get("titleType") is not None,
+                                              (x.get("lang") or "en") != "en"))
+                    rec["title"] = next(
+                        (v for x in cands
+                         if isinstance((v := x.get("title")), str) and v.strip()),
+                        None)
         except urllib.error.HTTPError as exc:
             rec["sources"][name] = {"status": "not_found" if exc.code == 404 else f"http_{exc.code}"}
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
             rec["sources"][name] = {"status": "error", "error": str(exc)[:200]}
     found = any(s.get("status") == "found" for s in rec["sources"].values())
-    errors = all(s.get("status") == "error" for s in rec["sources"].values())
-    rec["verdict"] = "VERIFIED" if found else ("UNKNOWN_NETWORK" if errors else "NOT_FOUND")
+    # only an answered 404 is evidence of absence — rate limits (429), 5xx
+    # and network errors all mean we cannot KNOW (reviewer A D2 / B R6):
+    # NOT_FOUND (CRITICAL, entry dropped) requires every reachable registry
+    # to have answered 404, anything less stays UNKNOWN_NETWORK (entry kept)
+    statuses = [str(s.get("status")) for s in rec["sources"].values()]
+    # 404 is recorded as "not_found"; any "http_<code>" here is non-404
+    # (429, 5xx) — a server answer that is NOT evidence of absence
+    unknowable = any(s == "error" or s.startswith("http_") for s in statuses)
+    rec["verdict"] = "VERIFIED" if found else ("UNKNOWN_NETWORK" if unknowable else "NOT_FOUND")
     return rec
 
 
@@ -115,6 +151,9 @@ def _norm_title(s: str) -> str:
     non-alphanumeric run (punctuation, dashes, curly quotes, braces,
     whitespace) becomes one space. Harmless typographic variation must not
     fail; a DIFFERENT paper's title can never survive this."""
+    # HTML entities first — registrant-supplied DataCite titles carry &amp;
+    # etc. (reviewer B R5-2); applied to BOTH sides via this one function
+    s = html.unescape(s)
     s = _latex_unescape(s)
     s = unicodedata.normalize("NFKD", s)
     s = "".join(c for c in s if not unicodedata.combining(c))

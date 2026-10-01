@@ -5172,3 +5172,225 @@ def test_citation_identity_utcnow_subsecond_resolution():
     from paper_factory.core.util import utcnow
     ts = utcnow()
     assert _re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z$", ts), ts
+
+
+# ---------------------------------------------------------------------------
+# DataCite coverage (Pilot-3-Prep, 2026-10-01): OpenAlex does not index every
+# registered DataCite DOI (e.g. 10.48550/arXiv.1706.03762 — the most-cited
+# paper in the field 404s on OpenAlex while resolving fine on DataCite).
+# Without a DataCite source a REAL arXiv citation becomes a false
+# false_citation CRITICAL. resolve_doi therefore checks Crossref, OpenAlex
+# AND DataCite; the DataCite title feeds the identity check as fallback.
+# ---------------------------------------------------------------------------
+
+
+def _fake_urlopen_route(routes):
+    """routes: url-substring -> ('ok', payload) | ('http', code) | ('error',)"""
+    import io
+    import urllib.error
+
+    class _Resp:
+        def __init__(self, payload):
+            self._b = _json.dumps(payload).encode()
+
+        def read(self):
+            return self._b
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake(req, timeout=20):
+        url = req.full_url
+        for needle, action in routes.items():
+            if needle in url:
+                if action[0] == "ok":
+                    return _Resp(action[1])
+                if action[0] == "http":
+                    raise urllib.error.HTTPError(url, action[1], "x", {},
+                                                 io.BytesIO(b""))
+                raise urllib.error.URLError("down")
+        raise AssertionError(f"unrouted url {url}")
+    return fake
+
+
+def test_datacite_third_source_resolves_real_arxiv_doi(tmp_path, monkeypatch):
+    """Real-world repro 2026-10-01: Crossref never carries DataCite DOIs and
+    OpenAlex missed 10.48550/arXiv.1706.03762 — only DataCite resolves it.
+    A correct citation must be VERIFIED, not false_citation."""
+    from paper_factory.literature import verify
+    monkeypatch.setattr(verify.urllib.request, "urlopen", _fake_urlopen_route({
+        "api.crossref.org": ("http", 404),
+        "api.openalex.org": ("http", 404),
+        "api.datacite.org": ("ok", {"data": {"attributes": {
+            "titles": [{"title": "Attention Is All You Need"}]}}}),
+    }))
+    rec = verify.resolve_doi("10.48550/arXiv.1706.03762")
+    assert rec["verdict"] == "VERIFIED", rec
+    assert rec["title"] == "Attention Is All You Need"
+    assert rec["sources"]["datacite"]["status"] == "found"
+
+    # and the identity check consumes the DataCite title (wrong title fails)
+    ctx = _ctx_online(tmp_path)
+    entries = [{"key": "attn", "doi": None, "eprint": "1706.03762",
+                "title": "A Completely Different Paper", "t4_derived": False}]
+    records, findings, _ = verify._audit_entries(ctx, entries)
+    assert records[0]["verdict"] == "IDENTITY_MISMATCH", records[0]
+    assert findings[0]["kind"] == "citation_identity_mismatch"
+
+
+def test_datacite_down_but_404_elsewhere_is_unknown_network(tmp_path, monkeypatch):
+    """Source mix: one outage among 404s means we cannot KNOW the DOI is
+    unregistered — UNKNOWN_NETWORK (A-D2 semantics), never a false
+    NOT_FOUND/CRITICAL on a possibly real citation."""
+    from paper_factory.literature import verify
+    monkeypatch.setattr(verify.urllib.request, "urlopen", _fake_urlopen_route({
+        "api.crossref.org": ("http", 404),
+        "api.openalex.org": ("http", 404),
+        "api.datacite.org": ("error",),
+    }))
+    rec = verify.resolve_doi("10.48550/arXiv.9999.99999")
+    assert rec["verdict"] == "UNKNOWN_NETWORK", rec
+
+
+def test_datacite_malformed_payload_no_crash(tmp_path, monkeypatch):
+    """A DataCite payload without titles must not crash; title stays None and
+    the identity check honestly reports unjudgeable."""
+    from paper_factory.literature import verify
+    monkeypatch.setattr(verify.urllib.request, "urlopen", _fake_urlopen_route({
+        "api.crossref.org": ("http", 404),
+        "api.openalex.org": ("http", 404),
+        "api.datacite.org": ("ok", {"data": {"attributes": {}}}),
+    }))
+    rec = verify.resolve_doi("10.48550/arXiv.1706.03762")
+    assert rec["verdict"] == "VERIFIED"
+    assert rec.get("title") is None
+
+
+# ---------------------------------------------------------------------------
+# DataCite hardening (Reviewer A R5 D1-D3 / Reviewer B R5-1..R5-3)
+# ---------------------------------------------------------------------------
+
+
+def test_datacite_null_data_payloads_no_crash(tmp_path, monkeypatch):
+    """A-D1/B-R5-1 (MAJOR): JSON:API-conformant `data: null` and non-dict
+    payloads must never crash the whole citation audit — title stays None,
+    the entry is VERIFIED on resolvability, identity honestly unjudgeable."""
+    from paper_factory.literature import verify
+    for payload in ({"data": None}, {"data": "oops"},
+                    {"data": {"attributes": None}},
+                    {"data": {"attributes": "oops"}},
+                    {"data": {"attributes": {"titles": "oops"}}},
+                    {"data": {"attributes": {"titles": [None, 42]}}}):
+        monkeypatch.setattr(verify.urllib.request, "urlopen", _fake_urlopen_route({
+            "api.crossref.org": ("http", 404),
+            "api.openalex.org": ("http", 404),
+            "api.datacite.org": ("ok", payload),
+        }))
+        rec = verify.resolve_doi("10.48550/arXiv.1706.03762")
+        assert rec["verdict"] == "VERIFIED", (payload, rec)
+        assert rec.get("title") is None, (payload, rec)
+
+
+def test_datacite_html_entities_match_clean_bib_title(tmp_path, monkeypatch):
+    """B-R5-2 (MAJOR): DataCite titles are registrant-supplied and may carry
+    HTML entities — 'Pros &amp; Cons' must match the bib's 'Pros & Cons',
+    never a false CRITICAL. Unescaping lives in _norm_title (both sides)."""
+    from paper_factory.literature import verify
+    monkeypatch.setattr(verify.urllib.request, "urlopen", _fake_urlopen_route({
+        "api.crossref.org": ("http", 404),
+        "api.openalex.org": ("http", 404),
+        "api.datacite.org": ("ok", {"data": {"attributes": {
+            "titles": [{"title": "Pros &amp; Cons of Attention"}]}}}),
+    }))
+    rec = verify.resolve_doi("10.1/x")
+    assert rec["title"] == "Pros &amp; Cons of Attention"  # raw stored…
+    ctx = _ctx_online(tmp_path)
+    entries = [{"key": "k", "doi": "10.1/x", "eprint": None,
+                "title": "Pros & Cons of Attention", "t4_derived": False}]
+    records, findings, _ = verify._audit_entries(ctx, entries)
+    assert records[0]["verdict"] == "VERIFIED", records[0]
+    assert not any(f["kind"] == "citation_identity_mismatch" for f in findings)
+
+
+def test_datacite_prefers_original_over_translated_title(tmp_path, monkeypatch):
+    """B-R5-3 (MINOR): with multiple titles (translations first), prefer the
+    entry without lang/titleType — the original work title."""
+    from paper_factory.literature import verify
+    monkeypatch.setattr(verify.urllib.request, "urlopen", _fake_urlopen_route({
+        "api.crossref.org": ("http", 404),
+        "api.openalex.org": ("http", 404),
+        "api.datacite.org": ("ok", {"data": {"attributes": {"titles": [
+            {"title": "Aufmerksamkeit ist alles", "lang": "de"},
+            {"title": "Attention Is All You Need"}]}}}),
+    }))
+    rec = verify.resolve_doi("10.48550/arXiv.1706.03762")
+    assert rec["title"] == "Attention Is All You Need", rec
+
+
+def test_datacite_all_lang_titles_prefer_english_original(tmp_path, monkeypatch):
+    """B-R6-1: when EVERY title carries a lang, the preference must still
+    pick the English original over a first-listed translation."""
+    from paper_factory.literature import verify
+    monkeypatch.setattr(verify.urllib.request, "urlopen", _fake_urlopen_route({
+        "api.crossref.org": ("http", 404),
+        "api.openalex.org": ("http", 404),
+        "api.datacite.org": ("ok", {"data": {"attributes": {"titles": [
+            {"title": "Aufmerksamkeit ist alles", "lang": "de",
+             "titleType": "TranslatedTitle"},
+            {"title": "Attention Is All You Need", "lang": "en"}]}}}),
+    }))
+    rec = verify.resolve_doi("10.48550/arXiv.1706.03762")
+    assert rec["title"] == "Attention Is All You Need", rec
+
+
+def test_error_mix_is_unknown_network_not_false_not_found(tmp_path, monkeypatch):
+    """A-D2: with ANY source unreachable the audit cannot KNOW the DOI is
+    unregistered — 404+404+error must be UNKNOWN_NETWORK (MAJOR, entry stays),
+    never NOT_FOUND (CRITICAL, entry dropped)."""
+    from paper_factory.literature import verify
+    monkeypatch.setattr(verify.urllib.request, "urlopen", _fake_urlopen_route({
+        "api.crossref.org": ("error",),
+        "api.openalex.org": ("http", 404),
+        "api.datacite.org": ("error",),
+    }))
+    rec = verify.resolve_doi("10.1/maybe-real")
+    assert rec["verdict"] == "UNKNOWN_NETWORK", rec
+
+
+def test_http_500_mix_is_unknown_network_not_not_found(tmp_path, monkeypatch):
+    """B-R6: a 5xx/rate-limit answer is not evidence of absence — a DOI that
+    three flaky registries failed to serve must stay UNKNOWN_NETWORK (entry
+    kept, MAJOR), never NOT_FOUND (CRITICAL, entry dropped)."""
+    from paper_factory.literature import verify
+    monkeypatch.setattr(verify.urllib.request, "urlopen", _fake_urlopen_route({
+        "api.crossref.org": ("http", 500),
+        "api.openalex.org": ("http", 429),
+        "api.datacite.org": ("http", 503),
+    }))
+    rec = verify.resolve_doi("10.1/flaky")
+    assert rec["verdict"] == "UNKNOWN_NETWORK", rec
+    # and the all-404 case is still a true NOT_FOUND
+    monkeypatch.setattr(verify.urllib.request, "urlopen", _fake_urlopen_route({
+        "api.crossref.org": ("http", 404),
+        "api.openalex.org": ("http", 404),
+        "api.datacite.org": ("http", 404),
+    }))
+    rec = verify.resolve_doi("10.1/really-gone")
+    assert rec["verdict"] == "NOT_FOUND", rec
+
+
+def test_empty_openalex_title_does_not_block_datacite_fallback(tmp_path, monkeypatch):
+    """A-D3: an empty-string OpenAlex title must not block the DataCite
+    fallback title."""
+    from paper_factory.literature import verify
+    monkeypatch.setattr(verify.urllib.request, "urlopen", _fake_urlopen_route({
+        "api.crossref.org": ("http", 404),
+        "api.openalex.org": ("ok", {"title": ""}),
+        "api.datacite.org": ("ok", {"data": {"attributes": {
+            "titles": [{"title": "The Real Title Here"}]}}}),
+    }))
+    rec = verify.resolve_doi("10.1/x")
+    assert rec["title"] == "The Real Title Here", rec

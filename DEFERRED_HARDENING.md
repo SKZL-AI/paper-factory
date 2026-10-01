@@ -69,6 +69,10 @@ Normalisierung exakt mit dem zitierten Titel kollidiert):
   ordnen `Z` > `.` — ein altes Final kann in diesem ≤1s-Fenster nach einem
   Code-Upgrade ein neues P21-Audit „überholen". Selbstheilend beim nächsten
   Lauf; betrifft auch das Dashboard-`sorted(glob)` für dieselbe Sekunde.
+- B-R6-2 (NIT, akzeptiert): doppelt-eskapierte HTML-Entities in DataCite-
+  Titeln (`&amp;amp;`) hinterlassen nach einmaligem `html.unescape` ein
+  `&amp;`-Token-Residuum → fail-closed False-Mismatch auf Registranten-Noise;
+  sehr selten, Richtung nie False-Green.
 
 ### GAP-011 (pfget-Label-/Gruppen-Bindung)
 
