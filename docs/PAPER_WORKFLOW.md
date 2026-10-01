@@ -23,7 +23,8 @@ P19 discussion/limitations · P20 abstract/title · P21 citation audit ·
 P22 numbers/units · P23 methods review · P24 statistics review ·
 P25 adversarial review · P26 reproducibility review · P27 remediation ·
 P28 scientific freeze · P29 language review · P30 semantic diff ·
-P31 paperpal (manual bridge → HUMAN_REQUIRED) · P32 venue compliance ·
+P31 paperpal (manual bridge → HUMAN_REQUIRED; Automatisierung via
+Word-Add-in in Umsetzung — `docs/PAPERPAL_AUTOMATION.md`) · P32 venue compliance ·
 P33 clean export + secret scan · P34 independent clean rebuild ·
 P35 global closure (U1–U16) · P36 human final sign-off ·
 P37 optional external submission (never automatic).
