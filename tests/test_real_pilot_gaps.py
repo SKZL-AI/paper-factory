@@ -6956,3 +6956,367 @@ def test_p31_word_auto_converges_after_delivery(tmp_path, monkeypatch):
     assert len(builds) == 1, builds  # the livelock is broken
     _, states = _closure_states(ctx)
     assert states["U9"] == "PASS", states
+
+
+def test_tikz_generator_emits_expected_labels(tmp_path):
+    """(a) The spec-to-tex generator must emit every chain label, the
+    headline numbers, and the section titles of both pilot-03 diagrams."""
+    from paper_factory.figures.tikz_diagrams import (
+        pilot3_fig1_event_model_spec, pilot3_fig2_attribution_spec,
+        spec_to_tex)
+
+    tex1 = spec_to_tex(pilot3_fig1_event_model_spec())
+    for label in ("Stored", "Graph-present", "Executed",
+                  "Gradient", "Update-", "Moved",
+                  "766,771,200 / 1,020,057,600", "75.17\\%",
+                  "Interpretation guardrail", "Audited d3072/L24/r6 case",
+                  "Operational participation is measured as distinct"):
+        assert label in tex1, label
+    tex2 = spec_to_tex(pilot3_fig2_attribution_spec())
+    for label in ("Historical MMAV path", "Corrected arm A",
+                  "Final attestation sweep", "168 tensors",
+                  "72 target matrices", "19 attested artifacts",
+                  "7 direct GREEN + 12 exact", "INVALID",
+                  "Parameter-local ownership and final internal attestation",
+                  "Interpretation"):
+        assert label in tex2, label
+
+
+def test_tikz_pdflatex_produces_valid_pdf(tmp_path):
+    """(b) pdflatex must turn both generated specs into non-empty PDFs.
+    Skipped (not failed) when pdflatex is unavailable."""
+    import shutil
+
+    import pytest
+
+    if not shutil.which("pdflatex"):
+        pytest.skip("pdflatex not installed")
+    from paper_factory.figures.tikz_diagrams import render_pilot3_diagrams
+
+    out = render_pilot3_diagrams(tmp_path)
+    assert set(out) == {"fig1_event_model", "fig2_attribution_attestation"}
+    for entry in out.values():
+        pdf = entry["pdf"]
+        assert pdf.exists() and pdf.stat().st_size > 1000
+        assert pdf.read_bytes()[:5] == b"%PDF-"
+
+
+def test_tikz_compile_error_raises_with_log_tail(tmp_path):
+    """(c) Broken TikZ must raise TikZCompileError carrying the log tail —
+    never a silent failure or a missing PDF."""
+    import shutil
+
+    import pytest
+
+    if not shutil.which("pdflatex"):
+        pytest.skip("pdflatex not installed")
+    from paper_factory.figures.tikz_diagrams import (
+        TikZCompileError, render_diagram)
+
+    broken = {"nodes": [{"id": "a", "pos": "(0,0)", "title": "A"}],
+              "arrows": [("a", "nonexistent_node")]}
+    with pytest.raises(TikZCompileError) as excinfo:
+        render_diagram(broken, tmp_path, "broken_fig")
+    msg = str(excinfo.value)
+    assert "pdflatex failed" in msg and "log tail" in msg
+    assert not (tmp_path / "broken_fig.pdf").exists()
+
+
+# ---------------------------------------------------------------------------
+# arXiv-look render + export package (2026-10-02): full-manuscript LaTeX
+# ---------------------------------------------------------------------------
+
+def test_latex_render_citations_and_structure(tmp_path):
+    """Full-manuscript render: draft [N] cites become \\cite{draftrefN}, the
+    manual reference list is replaced by the bibliography, head metadata is
+    parsed, unicode is mapped, image paths are rewritten."""
+    from paper_factory.manuscript.latex_render import render_full_manuscript
+    draft = tmp_path / "draft"
+    draft.mkdir()
+    (tmp_path / ".paper-factory" / "paper").mkdir(parents=True)
+    (tmp_path / ".paper-factory" / "paper" / "references.bib").write_text(
+        "@misc{draftref4, title={T}, author={A}, year={2020}}\n", encoding="utf-8")
+    (draft / "fig1_event_model.png").write_bytes(b"\x89PNG")  # placeholder
+    (draft / "paper.md").write_text(
+        "**A Title Here**\n\nJane Doe  \nLab | jane@example.org  \n"
+        "Original manuscript: 1 January 2026 \\| final\n\n"
+        "**Abstract.** We study Θ-grams.\n\n**Keywords:** x; y\n\n"
+        "# 1. Introduction\n\nClaims need support \\[4\\].\n\n"
+        "<img src=\"/mnt/data/media/image1.png\">\n\n"
+        "# References\n\n\\[4\\] A. Author. Title. 2020.\n", encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    prov = render_full_manuscript(ctx.workspace, tmp_path / "out", "t")
+    tex = (tmp_path / "out" / "main.tex").read_text(encoding="utf-8")
+    assert "\\cite{draftref4}" in tex
+    assert "A. Author. Title. 2020" not in tex  # manual list replaced
+    assert "$\\Theta$-grams" in tex  # unicode mapped
+    assert "\\title{A Title Here}" in tex
+    assert prov["citations_remapped"] >= 2  # body cite + stripped list entry
+    assert prov["source"]["sha256"]
+
+
+def test_latex_render_strips_heading_numbers(tmp_path):
+    from paper_factory.manuscript.latex_render import _strip_numbering
+    assert _strip_numbering("# 1. Introduction\n## 2.3 Sub\n# Conclusion\n") == \
+        "# Introduction\n## Sub\n# Conclusion\n"
+
+
+def test_strip_comments_safe(tmp_path):
+    from paper_factory.release.export import _strip_comments
+    src = ("top\n% full-line comment\nkeep 50\\% of this % drop this\n"
+           "\\begin{verbatim}\n% not a comment\n\\end{verbatim}\n"
+           "\n\\par\n")
+    out = _strip_comments(src)
+    assert "full-line comment" not in out
+    assert "keep 50\\% of this" in out and "drop this" not in out
+    assert "% not a comment" in out  # verbatim preserved
+    assert "\n\n\\par\n" in out  # blank line (paragraph break) preserved
+
+
+def test_p34_missing_package_is_unsupported_environment(tmp_path, monkeypatch):
+    """1.4: a missing .sty must surface as UNSUPPORTED_ENVIRONMENT with the
+    package name, not as a bare FAIL."""
+    from paper_factory.release.export import _compile_tex
+    fake = tmp_path / "pdflatex"
+    fake.write_text("#!/bin/sh\nprintf '%s\\n' '! LaTeX Error: File `newtxtext.sty'\"'\"' not found.'\n")
+    fake.chmod(0o755)
+    rep = _compile_tex(tmp_path, tmp_path / "build", str(fake), None)
+    assert rep["missing_package"] == "newtxtext.sty"
+    assert rep["hard_errors"]
+
+
+# --- release audit R6: stripper/packaging/head-preservation hardening --------
+
+def test_strip_comments_verbatim_star_and_comment_marker_trap(tmp_path):
+    """B F-CRIT-1 / F-MAJ-1: % inside verbatim*/lstlisting is CONTENT; a
+    \\begin{verbatim} mentioned INSIDE a comment must not disable stripping."""
+    from paper_factory.release.export import _strip_comments
+    src = ("line % internal note\n"
+           "% a comment mentioning \\begin{verbatim} inline\n"
+           "% another secret note\n"
+           "\\begin{verbatim*}\n100% coverage of $x$ here\n\\end{verbatim*}\n"
+           "\\begin{lstlisting}\n50% done\n\\end{lstlisting}\n")
+    out = _strip_comments(src)
+    assert "internal note" not in out
+    assert "secret note" not in out  # comment-quoted marker did not leak it
+    assert "100% coverage of $x$ here" in out  # verbatim* content untouched
+    assert "50% done" in out
+
+
+def test_paper_id_rejects_traversal(tmp_path):
+    """B F-MAJ-4: paper.id becomes a directory name — never a path."""
+    import pytest
+
+    from paper_factory.release.export import _paper_id
+    ctx = _ctx(tmp_path)
+    ctx.config.paper.id = "../escape"
+    with pytest.raises(ValueError):
+        _paper_id(ctx)
+
+
+def test_arxiv_skipped_only_without_markdown_source(tmp_path):
+    """B F-MAJ-3: render crash WITH a markdown draft must not report the
+    benign 'skipped' status."""
+    from paper_factory.release.export import _build_arxiv_package
+    ctx = _ctx(tmp_path)
+    (tmp_path / "draft").mkdir()
+    (tmp_path / "draft" / "paper.md").write_text("# x\n", encoding="utf-8")
+    rel = tmp_path / ".paper-factory" / "release" / "proj"
+    rel.mkdir(parents=True)
+    rep = _build_arxiv_package(ctx, rel, "proj", "pdflatex", None)
+    assert rep["status"] == "render_failed", rep
+    # without any markdown source the skip is honest
+    (tmp_path / "draft" / "paper.md").rename(tmp_path / "draft" / "paper.md.v1")
+    rep = _build_arxiv_package(ctx, rel, "proj", "pdflatex", None)
+    assert rep["status"] == "skipped", rep
+
+
+def test_arxiv_symlink_in_src_rejected(tmp_path):
+    """B F-MAJ-2: a symlink inside arxiv_src must fail verification, never
+    be dereferenced into the tarball."""
+    from paper_factory.release.export import _build_arxiv_package
+    ctx = _ctx(tmp_path)
+    (tmp_path / "draft").mkdir()
+    (tmp_path / "draft" / "paper.md").write_text("# x\n", encoding="utf-8")
+    rel = tmp_path / ".paper-factory" / "release" / "proj"
+    src = rel / "arxiv_src"
+    src.mkdir(parents=True)
+    (src / "main.tex").write_text(
+        "\\documentclass{article}\\begin{document}x\\end{document}\n",
+        encoding="utf-8")
+    (src / "evil.png").symlink_to("/etc/hostname")
+    rep = _build_arxiv_package(ctx, rel, "proj", "pdflatex", "bibtex")
+    assert rep["status"] == "verification_failed"
+    assert rep["symlinks_rejected"] == ["evil.png"]
+
+
+def test_head_preservation_accounting(tmp_path):
+    """A CRIT-1/2: every non-empty head line is claimed or kept — keywords
+    multi-line, version lines complete, series position kept in body."""
+    from paper_factory.manuscript.latex_render import _split_head
+    text = ("**My Title\nSpans Lines**\n\nJane Doe  \nLab | jane@x.org  \n"
+            "Original manuscript: 1 January 2026 \\| rev 2\n"
+            "Final pre-deposition manuscript v1.3.0  \n\n"
+            "**Abstract.** An abstract.\n\n**Keywords:** a; b;\nc; d\n\n"
+            "**Series position.** This manuscript is X.\n\n# 1. Intro\n\nBody.\n")
+    meta, body, acc = _split_head(text)
+    assert meta["title"] == "My Title Spans Lines"
+    assert meta["keywords"] == "a; b; c; d"
+    assert "v1.3.0" in meta["date_line"] and "1 January 2026" in meta["date_line"]
+    assert "This manuscript is X." in body  # series position survives
+    assert acc["consumed"] + acc["kept_in_body"] == acc["head_lines_nonempty"]
+
+
+def test_citation_remap_bound_check(tmp_path):
+    from paper_factory.manuscript.latex_render import _remap_citations
+    out, mapped, unmapped = _remap_citations(r"x \[4,99\] y", {"draftref4"})
+    assert mapped == 0 and unmapped == ["4,99"]
+    assert "\\cite" not in out  # out-of-range stays literal
+    out, mapped, unmapped = _remap_citations(r"x \[4\] y", {"draftref4"})
+    assert mapped == 1 and not unmapped and "\\cite{draftref4}" in out
+
+
+def test_tikz_vector_upgrade_actually_substitutes(tmp_path):
+    """A MAJ-4: when a TikZ spec exists for a figure stem, main.tex must
+    reference the vector PDF, and the provenance must not claim otherwise."""
+    from paper_factory.manuscript import latex_render as lr
+    from paper_factory.figures.tikz_diagrams import KNOWN_SPECS
+    if "fig1_event_model" not in KNOWN_SPECS:
+        import pytest
+        pytest.skip("no known specs")
+    draft = tmp_path / "draft"
+    draft.mkdir()
+    (tmp_path / ".paper-factory" / "paper").mkdir(parents=True)
+    (tmp_path / ".paper-factory" / "paper" / "references.bib").write_text(
+        "", encoding="utf-8")
+    (draft / "fig1_event_model.png").write_bytes(b"\x89PNG")
+    (draft / "paper.md").write_text(
+        "**T**\n\n**Abstract.** A.\n\n# 1. S\n\n"
+        "<img src=\"/mnt/data/media/image1.png\">\n\n# References\n",
+        encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    prov = lr.render_full_manuscript(ctx.workspace, tmp_path / "out", "t")
+    tex = (tmp_path / "out" / "main.tex").read_text(encoding="utf-8")
+    if "fig1_event_model" in prov["figures_tikz_vector"]:
+        assert "figures/fig1_event_model.pdf" in tex
+        assert "figures/fig1_event_model.png" not in tex
+    else:
+        assert "fig1_event_model" in prov["figures_tikz_errors"]
+
+
+# --- release audit R7 (reviewer round 3): stripper/id/URL/head minors --------
+
+def test_strip_comments_single_line_verbatim_and_space_variant(tmp_path):
+    """B R2-MAJ-1 / R2-MIN-1: single-line verbatim must not stick the
+    stripper open; '\\begin {verbatim}' (legal space) is an env too."""
+    from paper_factory.release.export import _strip_comments
+    src = ("\\begin{verbatim}a%b\\end{verbatim}\n"
+           "% INTERNAL-NOTE-AFTER-SINGLELINE-VERB\n"
+           "body % drop me\n"
+           "\\begin {verbatim}\nkeep 100% raw\n\\end {verbatim}\n")
+    out = _strip_comments(src)
+    assert "INTERNAL-NOTE" not in out
+    assert "drop me" not in out
+    assert "a%b" in out and "keep 100% raw" in out
+
+
+def test_arxiv_abs_refs_do_not_flag_urls(tmp_path):
+    """B R2-MAJ-2: https:// URLs must NOT trip the absolute-path check."""
+    from paper_factory.release.export import _ARXIV_NAME_RE  # noqa
+    import re as _re
+    pat = _re.compile(r"(/home/|/mnt/|/etc/|/Users/|~/|"
+                      r"\b[A-Za-z]:[\\/]|(?<![\w.:])//)")
+    assert not pat.search(r"\url{https://example.com/paper}")
+    assert not pat.search("see http://arxiv.org/abs/2103.03098")
+    assert pat.search(r"\includegraphics{/home/sai/fig.pdf}")
+    assert pat.search("file=/mnt/e/secret.pdf")
+    assert pat.search(r"C:\Users\sai\x")
+
+
+def test_paper_id_rejects_dot_entries(tmp_path):
+    import pytest
+
+    from paper_factory.release.export import _paper_id
+    ctx = _ctx(tmp_path)
+    for bad in (".", "..", "../x", ".hidden", "a/b"):
+        ctx.config.paper.id = bad
+        with pytest.raises(ValueError):
+            _paper_id(ctx)
+    ctx.config.paper.id = "massinv_paper1"
+    assert _paper_id(ctx) == "massinv_paper1"
+
+
+def test_claim_block_stops_at_next_label(tmp_path):
+    """A R2-A4: keywords directly after the abstract (no blank line) must
+    not be absorbed into the abstract."""
+    from paper_factory.manuscript.latex_render import _split_head
+    meta, body, acc = _split_head(
+        "**T**\n\n**Abstract.** First part.\n**Keywords:** a; b\n\n# S\n\nBody.\n")
+    assert meta["abstract"] == "First part."
+    assert meta["keywords"] == "a; b"
+
+
+def test_date_continuation_needs_hard_break(tmp_path):
+    """A R2-A3: a short content line after a date line is only consumed when
+    the previous line forced a markdown hard break (two trailing spaces)."""
+    from paper_factory.manuscript.latex_render import _split_head
+    meta, body, _ = _split_head(
+        "**T**\n\nJane Doe  \nFinal manuscript v1.0  \nunchanged\n\n"
+        "This content sentence must stay.\n\n# S\n\nBody.\n")
+    assert "unchanged" in meta.get("date_line", "")
+    assert "This content sentence must stay." in body
+    meta2, body2, _ = _split_head(
+        "**T**\n\nJane Doe  \nFinal manuscript v1.0\n"
+        "Short content line.\n\n# S\n\nBody.\n")
+    assert "Short content line." in body2  # no hard break -> body
+
+
+def test_institution_line_is_not_author(tmp_path):
+    """A R2-A2: 'Max Planck Institute for Informatics' is not a person."""
+    from paper_factory.manuscript.latex_render import _split_head
+    meta, body, _ = _split_head(
+        "**T**\n\nJane Doe  \nMax Planck Institute for Informatics  \n"
+        "Lab | j@x.org  \n\n**Abstract.** A.\n\n# S\n\nBody.\n")
+    assert meta.get("author") == "Jane Doe"
+    assert "Max Planck Institute" in body
+
+
+def test_strip_note_fields_nested_braces(tmp_path):
+    from paper_factory.manuscript.latex_render import _strip_note_fields
+    bib = ("@misc{k,\n  title = {T},\n  note = {outer {INNER} tail},\n"
+           "  year = {2020}\n}\n")
+    out = _strip_note_fields(bib)
+    assert "INNER" not in out and "title = {T}" in out and "year = {2020}" in out
+
+
+def test_compile_tex_real_bibtex_cycle(tmp_path):
+    """B R3-CRIT-1: the pdflatex+bibtex cycle must resolve citations on this
+    machine (openout_any=p forbids absolute bibtex output paths). Skipped
+    when no TeX is installed."""
+    import shutil
+
+    import pytest
+
+    if not (shutil.which("pdflatex") and shutil.which("bibtex")):
+        pytest.skip("no TeX toolchain")
+    from paper_factory.release.export import _compile_tex
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "main.tex").write_text(
+        "\\documentclass{article}\n"
+        "\\usepackage[numbers]{natbib}\n"
+        "\\begin{document}\nCited \\cite{knuth1984}.\n"
+        "\\bibliographystyle{unsrtnat}\n\\bibliography{references}\n"
+        "\\end{document}\n", encoding="utf-8")
+    (src / "references.bib").write_text(
+        "@book{knuth1984, title={The TeXbook}, author={Knuth, Donald},"
+        " year={1984}, publisher={Addison-Wesley}}\n", encoding="utf-8")
+    rep = _compile_tex(src, tmp_path / "build", shutil.which("pdflatex"),
+                       shutil.which("bibtex"))
+    assert rep["pdf_produced"], rep
+    assert rep["hard_errors"] == []
+    assert not rep["unresolved_citations"], rep  # the R3-CRIT-1 gate
+    import subprocess
+    text = subprocess.run(["pdftotext", rep["pdf_path"], "-"],
+                          capture_output=True, text=True).stdout
+    assert "Knuth" in text and "1984" in text

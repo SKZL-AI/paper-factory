@@ -177,7 +177,10 @@ def parse_markdown_refs(text: str) -> str:
         url_m = _URL.search(raw)
         url = url_m.group(0) if url_m else None
         year_m = None
-        for ym in _YEAR.finditer(raw):
+        # the URL is citation syntax, not prose: '1910' inside an arXiv URL
+        # must not become the publication year (release-audit MAJ-3)
+        year_zone = raw[:url_m.start()] + raw[url_m.end():] if url_m else raw
+        for ym in _YEAR.finditer(year_zone):
             year_m = ym  # last year wins (access dates come last)
         year = year_m.group(0) if year_m else None
         # authors/title: text before the first sentence boundary that
@@ -201,6 +204,11 @@ def parse_markdown_refs(text: str) -> str:
         ax = _ARXIV.search(url or "")
         doi_m = _DOI_URL.search(url or "") or _DOI_BARE.search(raw)
         doi = doi_m.group(1).rstrip(".") if doi_m else None
+        if ax and not year:
+            # arXiv eprint YYMM.NNNNN encodes the submission year; the draft
+            # prose sometimes lacks it (release-audit MAJ-3: 1910 ≠ 2019)
+            yy = int(ax.group(1).rstrip(".").split(".")[0][:2])
+            year = str(2000 + yy if yy <= 49 else 1900 + yy)
         if ax:
             # trailing sentence punctuation must not leak into the eprint —
             # it feeds the synthesized DataCite DOI downstream

@@ -164,3 +164,22 @@ Normalisierung exakt mit dem zitierten Titel kollidiert):
   Sidecar-sha256 gebunden); der State trägt `docx_outbox_error` sichtbar.
 - Paperpal "Download edits with track changes" ist im Word-Add-in web-only —
   nicht verfügbar, ehrlich verbucht (kein Export-Artefakt).
+
+
+## 2026-10-02 — Release-Audit Phase 1/2 (arXiv-Render + Export)
+
+- **B R3-MIN-1 (Residual):** absolute-path-Erkennung ist Allowlist
+  (`/home/`, `/mnt/`, `/etc/`, `/Users/`, `/tmp/`, `~/`, `C:\`, UNC `//`);
+  Backslash-UNC (`\\server\share`), `/var/`, `/opt/` entgehen. Langfristig:
+  generischer Absolutpfad-Detektor.
+- **B NIT:** custom `.bst` im Source-Dir wird von bibtex nicht gefunden
+  (kein BSTINPUTS) → leere .bbl → unresolved-Gate fängt fail-closed.
+- **B NIT:** undefined *References* (\ref) gaten nicht, nur Citations.
+- **A R2-A2/A3-Kanten:** Head-Heuristik kann Institutszeilen/Inhalte in
+  Ausnahmefällen falsch zuordnen — immer sichtbar (nie still), Accounting
+  in render_provenance.json.
+- **A NIT:** `×10^-4` rendert als Text-Caret („10ˆ-4") — Ziffern korrekt,
+  kosmetisch.
+- **A NIT:** citations_remapped zählt inkl. gestrippter Referenzlisten-Marker
+  (unmapped separat ausgewiesen).
+- **B NIT:** `paper.id="a."` akzeptiert (Linux-legal; Windows-irrelevant hier).

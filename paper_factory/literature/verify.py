@@ -44,6 +44,14 @@ def resolve_doi(doi: str, timeout: int = 20) -> dict[str, Any]:
                 rec["title"] = (msg.get("title") or [None])[0]
                 rec["container"] = (msg.get("container-title") or [None])[0]
                 rec["published"] = msg.get("published-print") or msg.get("published-online")
+                auths = [f"{a.get('family', '')}, {a.get('given', '')}".strip(", ")
+                         for a in (msg.get("author") or []) if isinstance(a, dict)]
+                if auths:
+                    rec["authors"] = auths
+                pub = rec["published"] if isinstance(rec["published"], dict) else {}
+                yr = (pub.get("date-parts") or [[None]])[0][0]
+                if yr:
+                    rec["year"] = yr
             elif name == "openalex" and rec.get("title") is None:
                 # DataCite-registered DOIs are never in Crossref — without
                 # these fallbacks their identity check was always unjudgeable
@@ -51,26 +59,47 @@ def resolve_doi(doi: str, timeout: int = 20) -> dict[str, Any]:
                 # block the next fallback (reviewer A D3)
                 t = body.get("title") or body.get("display_name")
                 rec["title"] = t if isinstance(t, str) and t.strip() else None
-            elif name == "datacite" and rec.get("title") is None:
-                # registrant payloads are noisy: data/attributes may be null
-                # or non-dict (JSON:API allows data:null) — never crash the
-                # whole audit on one odd payload (reviewer A D1 / B R5-1).
-                # Prefer the original (untyped, lang-less) title over
-                # translations (reviewer B R5-3)
+            if name == "openalex":
+                if not rec.get("authors"):
+                    auths = [((a.get("author") or {}).get("display_name") or "").strip()
+                             for a in (body.get("authorships") or [])
+                             if isinstance(a, dict)]
+                    auths = [a for a in auths if a]
+                    if auths:
+                        rec["authors"] = auths
+                if not rec.get("year") and body.get("publication_year"):
+                    rec["year"] = body["publication_year"]
+            elif name == "datacite":
                 data = body.get("data")
                 attrs = data.get("attributes") if isinstance(data, dict) else None
-                titles = attrs.get("titles") if isinstance(attrs, dict) else None
-                if isinstance(titles, list):
-                    cands = [x for x in titles if isinstance(x, dict)]
-                    # original title first: untyped beats TranslatedTitle,
-                    # lang-less/English beats other languages — even when ALL
-                    # entries carry a lang (reviewer B R6-1)
-                    cands.sort(key=lambda x: (x.get("titleType") is not None,
-                                              (x.get("lang") or "en") != "en"))
-                    rec["title"] = next(
-                        (v for x in cands
-                         if isinstance((v := x.get("title")), str) and v.strip()),
-                        None)
+                if isinstance(attrs, dict):
+                    if not rec.get("authors"):
+                        creators = [str(c.get("name", "")).strip()
+                                    for c in (attrs.get("creators") or [])
+                                    if isinstance(c, dict)]
+                        creators = [c for c in creators if c]
+                        if creators:
+                            rec["authors"] = creators
+                    if not rec.get("year") and attrs.get("publicationYear"):
+                        rec["year"] = attrs["publicationYear"]
+                if rec.get("title") is None:
+                    # registrant payloads are noisy: data/attributes may be null
+                    # or non-dict (JSON:API allows data:null) — never crash the
+                    # whole audit on one odd payload (reviewer A D1 / B R5-1).
+                    # Prefer the original (untyped, lang-less) title over
+                    # translations (reviewer B R5-3)
+                    titles = attrs.get("titles") if isinstance(attrs, dict) else None
+                    if isinstance(titles, list):
+                        cands = [x for x in titles if isinstance(x, dict)]
+                        # original title first: untyped beats TranslatedTitle,
+                        # lang-less/English beats other languages — even when ALL
+                        # entries carry a lang (reviewer B R6-1)
+                        cands.sort(key=lambda x: (x.get("titleType") is not None,
+                                                  (x.get("lang") or "en") != "en"))
+                        rec["title"] = next(
+                            (v for x in cands
+                             if isinstance((v := x.get("title")), str) and v.strip()),
+                            None)
         except urllib.error.HTTPError as exc:
             rec["sources"][name] = {"status": "not_found" if exc.code == 404 else f"http_{exc.code}"}
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
@@ -452,8 +481,7 @@ def build_references(ctx: NodeContext) -> NodeOutcome:
                                          "false_url_citation",
                                          "citation_identity_mismatch")]
 
-    def _excluded(key: str, body: str) -> bool:
-        # bound to (key, doi): a stale finding must not drop an entry whose
+    def _excluded(key: str, body: str) -> bool:        # bound to (key, doi): a stale finding must not drop an entry whose
         # DOI the author has since corrected under the same key (reviewer B-2).
         # Findings without a DOI keep the legacy key-only behaviour. The
         # entry's verifiable identifier is the SYNTHESIZED DataCite DOI for
@@ -485,8 +513,42 @@ def build_references(ctx: NodeContext) -> NodeOutcome:
             return True
         return False
 
-    kept, dropped = [], []
+    kept, dropped, upgraded = [], [], []
     out_lines = []
+    # verified-metadata upgrade (release audit A MAJ-3): draft parsing can
+    # truncate authors and misread years (URL digits); when the citation audit
+    # VERIFIED the entry with an identity match, the shipped bibliography is
+    # rewritten from the registry metadata instead of the T4 parse
+    verified: dict[str, dict] = {}
+    if audit_path.exists():
+        for r in audit.get("entries", []):
+            if (r.get("verdict") in ("VERIFIED", "VERIFIED_AUTHORITATIVE_URL")
+                    and r.get("identity_check") in ("match", None)
+                    and r.get("title") and r.get("authors")):
+                verified[r.get("key")] = r
+
+    def _esc(s: str) -> str:
+        return str(s).replace("{", "").replace("}", "")
+
+    def _strip_internal_note(raw: str) -> str:
+        # the parser provenance note is pipeline-internal; shipped it would
+        # PRINT in the rendered bibliography (unsrtnat prints note)
+        return re.sub(r"\n\s*note\s*=\s*\{[^{}]*\},?", "", raw)
+
+    def _rebuild_entry(key: str, rec: dict, body: str) -> str:
+        fields = [f"  title = {{{_esc(rec['title'])}}}",
+                  f"  author = {{{_esc(' and '.join(rec['authors']))}}}"]
+        if rec.get("year"):
+            fields.append(f"  year = {{{int(rec['year'])}}}")
+        for src_name, bib_name in (("doi", "doi"), ("eprint", "eprint"),
+                                   ("url", "url")):
+            v = _bib_field(body, bib_name)
+            if v:
+                fields.append(f"  {bib_name} = {{{_esc(v)}}}")
+        if _bib_field(body, "eprint"):
+            fields.append("  archivePrefix = {arXiv}")
+        return "@misc{%s,\n%s\n}" % (key, ",\n".join(fields))
+
     for b in src_bibs:
         text = b.read_text(encoding="utf-8", errors="replace")
         # span-delimited copy: the old _BIB_ENTRY ([^@]* body) truncated at '@'
@@ -498,10 +560,21 @@ def build_references(ctx: NodeContext) -> NodeOutcome:
                 dropped.append(key)
                 continue
             kept.append(key)
-            out_lines.append(raw + "\n")
+            rec = verified.get(key)
+            if rec:
+                upgraded.append(key)
+                out_lines.append(_rebuild_entry(key, rec, body) + "\n")
+            else:
+                # keep the note field here: parse_bib binds T4 provenance to
+                # the entry span, and stripping it would break downstream
+                # classification (regression test gap_p3_r3). The SHIPPED
+                # arXiv copy strips it instead (latex_render).
+                out_lines.append(raw + "\n")
     dest = ctx.workspace.paper_dir / "references.bib"
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text("\n".join(out_lines), encoding="utf-8")
     write_json(ctx.workspace.reports_dir / "references_build.json",
-               {"built_at": utcnow(), "kept": kept, "dropped_false": sorted(dropped)})
-    return NodeOutcome(Verdict.PASS, {"kept": len(kept), "dropped_false": sorted(dropped)})
+               {"built_at": utcnow(), "kept": kept, "dropped_false": sorted(dropped),
+                "upgraded_from_verified_metadata": sorted(upgraded)})
+    return NodeOutcome(Verdict.PASS, {"kept": len(kept), "dropped_false": sorted(dropped),
+                                      "upgraded": sorted(upgraded)})

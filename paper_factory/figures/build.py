@@ -158,7 +158,7 @@ def _render_figure(ctx: NodeContext, fig: dict[str, Any], plt: Any, out_dir: Pat
         "parameters": {"kind": fig["kind"], "x_field": fig["x_field"],
                        "y_field": fig["y_field"], "group_field": fig["group_field"],
                        "palette": "okabe-ito", "series_encoding": "color+marker+linestyle",
-                       "png_dpi": 150},
+                       "png_dpi": 300},
         "caption": fig["caption"],
         "files": {}, "validation": {},
     }
@@ -169,7 +169,7 @@ def _render_figure(ctx: NodeContext, fig: dict[str, Any], plt: Any, out_dir: Pat
     entry["input_data_hashes"][fig["source"]] = sha256_file(csv_path)
     _fields, rows, _kinds = _column_kinds(csv_path)
 
-    figobj, ax = plt.subplots(figsize=(6, 4))
+    figobj, ax = plt.subplots(figsize=(6.3, 6.3 / 1.618))  # full-text width, golden ratio
     if fig["kind"] == "line":
         groups = sorted({(r.get(fig["group_field"]) or "").strip() for r in rows})
         for i, g in enumerate(groups):
@@ -219,7 +219,7 @@ def _render_figure(ctx: NodeContext, fig: dict[str, Any], plt: Any, out_dir: Pat
     for ext in ("pdf", "svg", "png"):
         p = out_dir / f"{fid}.{ext}"
         if ext == "png":
-            figobj.savefig(p, dpi=150, bbox_inches="tight")
+            figobj.savefig(p, dpi=300, bbox_inches="tight")
         else:
             figobj.savefig(p, bbox_inches="tight")
         if p.exists() and p.stat().st_size > 0:
@@ -261,14 +261,19 @@ def run_figure_generation(ctx: NodeContext) -> NodeOutcome:
         "source_script": _SOURCE_SCRIPT,
         "build_command": f"{sys.executable} -m paper_factory.figures.build --target {ctx.workspace.target_root}",
         "plan_sha256": sha256_file(plan_path),
+        "stylesheet": "paper_factory/figures/paper.mplstyle",
         "figures": [],
     }
     failures: list[str] = []
-    for fig in figures:
-        entry, err = _render_figure(ctx, fig, plt, out_dir)
-        manifest["figures"].append(entry)
-        if err:
-            failures.append(err)
+    # publication styling (GAP: arXiv-look 2026-10-02): STIX serif ~ Times,
+    # spines off, fonttype 42, constrained layout — style file versioned
+    # in-repo, no usetex (CI-robust)
+    with matplotlib.style.context(str(Path(__file__).with_name("paper.mplstyle"))):
+        for fig in figures:
+            entry, err = _render_figure(ctx, fig, plt, out_dir)
+            manifest["figures"].append(entry)
+            if err:
+                failures.append(err)
     write_json(ctx.workspace.reports_dir / "figures_manifest.json", manifest)
     if failures:
         return NodeOutcome(Verdict.FAIL, {"failed": failures,

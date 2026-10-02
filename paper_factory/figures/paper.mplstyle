@@ -1,0 +1,23 @@
+# paper-factory publication style (arXiv single-column, mathptmx/Times look).
+# Research basis: SciencePlots 'science/ieee' conventions, Okabe-Ito palette
+# (set in code), STIX serif as Times-compatible mathtext, no usetex (CI-robust).
+font.family:      serif
+font.serif:       STIXGeneral, DejaVu Serif
+mathtext.fontset: stix
+font.size:        9
+axes.titlesize:   9
+axes.labelsize:   9
+xtick.labelsize:  8
+ytick.labelsize:  8
+legend.fontsize:  8
+axes.spines.top:    False
+axes.spines.right:  False
+axes.linewidth:   0.8
+xtick.direction:  out
+ytick.direction:  out
+legend.framealpha: 0.9
+legend.edgecolor: 0.8
+pdf.fonttype:     42
+ps.fonttype:      42
+figure.constrained_layout.use: True
+savefig.pad_inches: 0.015
