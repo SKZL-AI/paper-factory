@@ -229,14 +229,14 @@ def main() -> int:
     ad.record("OUTPUT_SAVED", True, str(delivered))
     print(f"[6] delivered -> {delivered.name} (bound to {staged_sha[:12]}…)")
 
-    _ps("$w = Get-Process WINWORD -ErrorAction SilentlyContinue;"
-        " if ($w) { $word = [Runtime.InteropServices.Marshal]::GetActiveObject('Word.Application');"
-        " $word.DisplayAlerts = 0; $word.Quit() }", timeout=60)
+    closed = ad.close_word_robust()
     ad.record("PROVENANCE_WRITTEN", True, "inbox sidecar via deliver()")
     ad.record("INBOX_READY", True, delivered.name)
     ad.write_report(receipts / "paperpal_word_session.json",
                     {"finished": True, "staged_docx_sha256": staged_sha})
-    print("[7] Word closed, session report written")
+    print(f"[7] Word close: {closed}; session report written")
+    if closed != "closed":
+        return 1
     return 0
 
 

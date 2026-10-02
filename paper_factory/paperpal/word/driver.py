@@ -97,6 +97,15 @@ class WordPaperpalAdapter:
                              (line or stderr.strip() or "no output"))
         return line[len("PFWORD OK "):]
 
+    def _ps_raw(self, command: str, timeout: int = 180) -> str:
+        """Raw PowerShell -Command (no pfword.ps1 verb protocol). For COM
+        operations that must not raise StepFailed (modal-dialog handling)."""
+        out = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-Command", command],
+            capture_output=True, timeout=timeout)
+        return (out.stdout.decode("utf-8", errors="replace")
+                + out.stderr.decode("utf-8", errors="replace")).strip()
+
     def record(self, state: str, ok: bool, detail: str = "",
                receipt: Path | None = None) -> None:
         self.receipts_dir.mkdir(parents=True, exist_ok=True)
@@ -167,6 +176,44 @@ class WordPaperpalAdapter:
 
     def close_word(self) -> str:
         return self._ps("close")
+
+    def close_word_robust(self) -> str:
+        """Close Word WITHOUT saving, surviving the modal save dialog.
+
+        Opening a DOCX in compatibility mode (or an add-in touching fields)
+        marks the document dirty even in a capture-only session — Word then
+        shows 'Änderungen speichern?' on quit, COM rejects calls while the
+        modal dialog is up (RPC_E_CALL_REJECTED), and a naive Quit() leaves
+        Word running with the dialog open. Order: COM close (alerts off,
+        SaveChanges=0) → on rejection, UIA-invoke the discard button → verify
+        the process is gone. Capture-only is never negotiable: we never save."""
+        try:
+            self._ps("close")
+        except Exception:
+            pass
+        for attempt in range(3):
+            rc = self._ps_raw(
+                "try { $w = [Runtime.InteropServices.Marshal]::GetActiveObject("
+                "'Word.Application'); $w.DisplayAlerts = 0;"
+                " foreach ($d in @($w.Documents)) { $d.Close(0) }; $w.Quit();"
+                " 'ok' } catch { 'rejected: ' + $_.Exception.HResult }")
+            if "rejected" not in rc:
+                break
+            # modal dialog up — dismiss via UIA (no mouse): discard
+            for label in ("Nicht speichern", "Don't Save", "Don't save"):
+                try:
+                    found = self.uia_find(label)
+                    if found.startswith("matches=") and len(found) > 9:
+                        self.uia_click(label)
+                        break
+                except Exception:
+                    continue
+        gone = self._ps_raw(
+            "if (Get-Process WINWORD -ErrorAction SilentlyContinue)"
+            " { 'alive' } else { 'gone' }")
+        ok = "gone" in gone
+        self.record("WORD_CLOSED", ok, f"process {'gone' if ok else 'STILL RUNNING'}")
+        return "closed" if ok else "FAILED: WINWORD still running"
 
     # -- report ------------------------------------------------------------
     def write_report(self, path: Path, extra: dict[str, Any]) -> Path:
