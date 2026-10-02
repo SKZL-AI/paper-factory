@@ -70,19 +70,40 @@ def _ps(cmd: str, timeout: int = 180) -> str:
     return (r.stdout or "").strip()
 
 
-def _find_cdp_port() -> int:
-    """The WebView2 user-data dir carries DevToolsActivePort (port + path)."""
+def _find_cdp_port(not_before: float = 0.0) -> int:
+    """The WebView2 user-data dir carries DevToolsActivePort (port + path).
+    Stale files from previous Word sessions linger — accept only ports that
+    (a) answer /json AND (b) whose port file is fresh (>= our Word start)."""
+    import urllib.request
+
     base = (r"C:\Users\SAI\AppData\Local\Microsoft\Office\16.0\Wef")
     out = _ps(f'Get-ChildItem -Recurse -Filter DevToolsActivePort "{base}" '
               '| Select-Object -ExpandProperty FullName')
+    candidates: list[tuple[float, int]] = []
     for line in out.splitlines():
         p = line.strip()
         if not p:
             continue
-        content = win_to_wsl(p).read_text().splitlines()
-        return int(content[0].strip())
-    raise RuntimeError("no DevToolsActivePort found — is Word running with "
-                       "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS?")
+        try:
+            wsl = win_to_wsl(p)
+            mtime = wsl.stat().st_mtime
+            content = wsl.read_text().splitlines()
+            port = int(content[0].strip())
+        except (OSError, ValueError, IndexError):
+            continue
+        if mtime < not_before:
+            continue  # stale file from an earlier Word session
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/json",
+                                        timeout=3) as r:
+                json.loads(r.read().decode())
+            candidates.append((mtime, port))
+        except Exception:
+            continue  # dead port
+    if not candidates:
+        raise RuntimeError("no live, fresh DevToolsActivePort found")
+    candidates.sort()
+    return candidates[-1][1]  # newest live port
 
 
 def _click(cdp: CDP, text: str) -> bool:
@@ -126,35 +147,36 @@ def main() -> int:
     ad.record("DOCX_READY", True, f"{docx.name} staged sha={staged_sha[:12]}")
     print(f"[1] staged {docx.name} ({staged_sha[:12]}…)")
 
-    # open Word headless-friendly with WebView2 CDP enabled
-    _ps("$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS='--remote-debugging-port=0';"
-        " $w = New-Object -ComObject Word.Application; $w.Visible = $true;"
-        f" $w.Documents.Open('{win}') | Out-Null;"
-        " $w.ActiveWindow.WindowState = 2", timeout=120)  # 2 = minimize
-    ad.record("WORD_OPEN", True, win)
-    print("[2] Word opened (minimized) — waiting for Paperpal pane")
+    # open Word ownership-scoped (WebView2 CDP flag is set inside the ps1
+    # verb; the window is minimized — the operator's session is not disturbed)
+    ownership = ad.open_word_owned(win, staged_sha,
+                                   run_id=f"paperpal-{utcnow()}")
+    print(f"[2] Word opened owned pid={ownership['word_pid']} "
+          f"running_before={ownership['word_running_before']} "
+          f"foreign_docs={len(ownership['foreign_docs_at_open'])}")
 
+    word_started_at = time.time()
     port = None
     for _ in range(30):
         try:
-            port = _find_cdp_port()
+            port = _find_cdp_port(not_before=word_started_at - 10)
             break
         except Exception:
             time.sleep(2)
     if port is None:
-        # pane not open yet: click the Paperpal ribbon via UIA, retry
-        print("[2b] no CDP port — opening Paperpal pane via UIA")
-        subprocess.run([sys.executable,
-                        str(Path(__file__).with_name("run_paperpal_word.py")),
-                        "--root", str(root), "uia-click", "Paperpal"],
-                       capture_output=True, timeout=120)
-        subprocess.run([sys.executable,
-                        str(Path(__file__).with_name("run_paperpal_word.py")),
-                        "--root", str(root), "uia-click", "Open Paperpal"],
-                       capture_output=True, timeout=120)
+        # pane not open yet: click the Paperpal ribbon via UIA — scoped to
+        # OUR Word pid, never another Word window the operator may have open
+        print("[2b] no CDP port — opening Paperpal pane via pid-owned UIA")
+        pid = str(ownership["word_pid"])
+        for name in ("Paperpal", "Open Paperpal"):
+            subprocess.run([sys.executable,
+                            str(Path(__file__).with_name("run_paperpal_word.py")),
+                            "--root", str(root), "uia-click-owned", name, pid],
+                           capture_output=True, timeout=120)
+            time.sleep(2)
         for _ in range(30):
             try:
-                port = _find_cdp_port()
+                port = _find_cdp_port(not_before=word_started_at - 10)
                 break
             except Exception:
                 time.sleep(2)
@@ -229,7 +251,7 @@ def main() -> int:
     ad.record("OUTPUT_SAVED", True, str(delivered))
     print(f"[6] delivered -> {delivered.name} (bound to {staged_sha[:12]}…)")
 
-    closed = ad.close_word_robust()
+    closed = ad.close_word_robust(ownership)
     ad.record("PROVENANCE_WRITTEN", True, "inbox sidecar via deliver()")
     ad.record("INBOX_READY", True, delivered.name)
     ad.write_report(receipts / "paperpal_word_session.json",

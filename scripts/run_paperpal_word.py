@@ -55,6 +55,10 @@ def main() -> int:
             print(ad._ps("si-click", "-Arg1", rest[1], "-Arg2", rest[2]))
         elif cmd == "uia-click":
             print(ad.uia_click(rest[1]))
+        elif cmd == "uia-click-owned":
+            print(ad._ps("uia-click-owned", "-Arg1", rest[1], "-Arg2", rest[2]))
+        elif cmd == "uia-find-owned":
+            print(ad._ps("uia-find-owned", "-Arg1", rest[1], "-Arg2", rest[2]))
         elif cmd == "uia-find":
             print(ad.uia_find(rest[1]))
         elif cmd == "uia-dump":
@@ -71,7 +75,9 @@ def main() -> int:
         elif cmd == "save-copy":
             print(ad.save_copy(WIN_EXCHANGE + "\\" + rest[1]))
         elif cmd == "close":
-            print(ad.close_word())
+            # ownership-scoped only: never a global Word close — without an
+            # ownership record this refuses to touch Word at all
+            print(ad.close_word_robust())
         elif cmd == "report":
             extra = json.loads(rest[1]) if len(rest) > 1 else {}
             p = ad.write_report(receipts / "paperpal_word_session.json", extra)

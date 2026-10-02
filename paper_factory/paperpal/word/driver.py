@@ -20,6 +20,7 @@ proposals; SCIENTIFIC_OR_AMBIGUOUS items are surfaced to U16/P36.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -123,8 +124,54 @@ class WordPaperpalAdapter:
         self.record("WORD_OPEN", True, detail)
         return detail
 
+    def open_word_owned(self, win_docx: str, docx_sha256: str, run_id: str
+                        ) -> dict[str, Any]:
+        """Open the staged DOCX and persist the OWNERSHIP record:
+        Word PID, exact document FullName, docx sha, run_id, whether Word
+        pre-existed and which foreign documents were open. Every later
+        cleanup action is scoped to this record — Paper Factory never
+        touches a Word instance or document it cannot prove ownership of."""
+        detail = self._ps("open-owned", "-Arg1", win_docx)
+        m = re.match(r"pid=(\d+) hwnd=(\S+) doc=(.*?) runningBefore=(\S+) "
+                     r"startedByPF=(\S+) foreign=(.*)$", detail)
+        if not m:
+            raise StepFailed("WORD_OPEN", f"unparseable open-owned: {detail[:200]}")
+        ownership = {
+            "word_pid": int(m.group(1)),
+            "hwnd": m.group(2),
+            "docx_fullname_win": m.group(3),
+            "docx_sha256": docx_sha256,
+            "run_id": run_id,
+            # multi-process Word: ownership is per-PID — quitting OUR pid is
+            # safe even when other WINWORD processes host foreign documents
+            "word_running_before": m.group(4) == "True",
+            "started_by_pf": m.group(5) == "True",
+            "foreign_docs_at_open": [x for x in m.group(6).split(";") if x],
+            "opened_at": utcnow(),
+        }
+        path = self.receipts_dir / "word_ownership.json"
+        write_json(path, ownership)
+        self.record("WORD_OPEN", True,
+                    f"owned pid={ownership['word_pid']} doc={Path(m.group(3)).name} "
+                    f"running_before={ownership['word_running_before']} "
+                    f"foreign={len(ownership['foreign_docs_at_open'])}")
+        return ownership
+
     def word_state(self) -> str:
         return self._ps("word-state")
+
+    def word_docs(self) -> dict[str, Any]:
+        """Read-only: open document FullNames across ALL Word processes (ROT
+        enumeration — per-process COM would hide foreign documents)."""
+        detail = self._ps("word-docs")
+        m = re.match(r"docs=(.*)$", detail)
+        docs = [x for x in m.group(1).split(";") if x] if m else []
+        return {"docs": docs}
+
+    def doc_open(self, fullname_win: str) -> bool:
+        """True IFF this exact document is open in any Word process."""
+        return "open=true" in self._ps("doc-open", "-Arg1", fullname_win)
+
 
     def screenshot(self, name: str) -> Path:
         win_path = WIN_EXCHANGE + "\\" + name
@@ -177,43 +224,87 @@ class WordPaperpalAdapter:
     def close_word(self) -> str:
         return self._ps("close")
 
-    def close_word_robust(self) -> str:
-        """Close Word WITHOUT saving, surviving the modal save dialog.
+    def close_word_robust(self, ownership: dict[str, Any] | None = None) -> str:
+        """Close the OWNED staged DOCX without saving — scoped, never global.
 
-        Opening a DOCX in compatibility mode (or an add-in touching fields)
-        marks the document dirty even in a capture-only session — Word then
-        shows 'Änderungen speichern?' on quit, COM rejects calls while the
-        modal dialog is up (RPC_E_CALL_REJECTED), and a naive Quit() leaves
-        Word running with the dialog open. Order: COM close (alerts off,
-        SaveChanges=0) → on rejection, UIA-invoke the discard button → verify
-        the process is gone. Capture-only is never negotiable: we never save."""
-        try:
-            self._ps("close")
-        except Exception:
-            pass
+        Ownership contract (release audit 2026-10-02): the record identifies
+        the exact document (FullName + sha256), the Word PID and whether Word
+        pre-existed with foreign documents. Cleanup rules:
+          - close ONLY the document whose FullName matches the record
+            (SaveChanges=0 — capture-only is never negotiable)
+          - Quit the Word instance ONLY when Paper Factory opened Word itself
+            (not word_running_before) AND no foreign documents remain
+          - the modal-save-dialog fallback (UIA, cursor-free) is scoped to
+            windows OWNED by the recorded PID — a global 'Nicht speichern'
+            search could dismiss somebody else's dialog
+          - if our document is not open or ownership is missing/unclear:
+            fail closed, touch nothing
+        """
+        if ownership is None:
+            o_path = self.receipts_dir / "word_ownership.json"
+            ownership = json.loads(o_path.read_text(encoding="utf-8")) \
+                if o_path.exists() else None
+        if not ownership or not ownership.get("docx_fullname_win"):
+            self.record("WORD_CLOSED", False, "no ownership record — nothing touched")
+            return "FAILED: no ownership record — refusing to touch Word"
+        fullname = ownership["docx_fullname_win"]
+        pid = int(ownership.get("word_pid") or 0)
+        # quit only a process PF itself started; an adopted/foreign instance
+        # (or an ambiguous record) is never quit
+        may_quit = "1" if ownership.get("started_by_pf") else "0"
+
+        def _close_once() -> str:
+            return self._ps("close-owned", "-Arg1", fullname, "-Arg2", may_quit)
+
         for attempt in range(3):
-            rc = self._ps_raw(
-                "try { $w = [Runtime.InteropServices.Marshal]::GetActiveObject("
-                "'Word.Application'); $w.DisplayAlerts = 0;"
-                " foreach ($d in @($w.Documents)) { $d.Close(0) }; $w.Quit();"
-                " 'ok' } catch { 'rejected: ' + $_.Exception.HResult }")
-            if "rejected" not in rc:
-                break
-            # modal dialog up — dismiss via UIA (no mouse): discard
-            for label in ("Nicht speichern", "Don't Save", "Don't save"):
-                try:
-                    found = self.uia_find(label)
-                    if found.startswith("matches=") and len(found) > 9:
-                        self.uia_click(label)
-                        break
-                except Exception:
-                    continue
-        gone = self._ps_raw(
-            "if (Get-Process WINWORD -ErrorAction SilentlyContinue)"
-            " { 'alive' } else { 'gone' }")
-        ok = "gone" in gone
-        self.record("WORD_CLOSED", ok, f"process {'gone' if ok else 'STILL RUNNING'}")
-        return "closed" if ok else "FAILED: WINWORD still running"
+            try:
+                rc = _close_once()
+            except StepFailed as e:
+                # modal dialog up → Word rejects COM (RPC_E_CALL_REJECTED);
+                # dismiss ONLY dialogs owned by OUR pid
+                if "our-doc-not-open" in str(e.detail):
+                    self.record("WORD_CLOSED", False,
+                                f"owned document not open: {e.detail}")
+                    return f"FAILED: {e.detail}"
+                dismissed = False
+                for label in ("Nicht speichern", "Don't Save", "Don't save"):
+                    try:
+                        found = self._ps("uia-find-owned", "-Arg1", label,
+                                         "-Arg2", str(pid))
+                        if found.startswith("matches=") and len(found) > 9:
+                            self._ps("uia-click-owned", "-Arg1", label,
+                                     "-Arg2", str(pid))
+                            dismissed = True
+                            break
+                    except StepFailed:
+                        continue
+                if not dismissed:
+                    self.record("WORD_CLOSED", False,
+                                "modal dialog present but none scoped to our pid")
+                    return ("FAILED: modal save dialog not attributable to our "
+                            "Word pid — left untouched")
+                continue
+            break
+        else:
+            self.record("WORD_CLOSED", False, "close attempts exhausted")
+            return "FAILED: close attempts exhausted"
+
+        # verify: our document must be gone; foreign documents must be intact
+        state = self.word_docs()
+        if fullname in state["docs"]:
+            self.record("WORD_CLOSED", False, "owned document still open")
+            return "FAILED: owned document still open"
+        foreign_left = [d for d in ownership.get("foreign_docs_at_open", [])
+                        if d in state["docs"]]
+        if len(foreign_left) != len(ownership.get("foreign_docs_at_open", [])):
+            self.record("WORD_CLOSED", False,
+                        f"foreign documents changed: {ownership.get('foreign_docs_at_open')} "
+                        f"→ now {state['docs']}")
+            return "FAILED: foreign document set changed — incident"
+        self.record("WORD_CLOSED", True,
+                    f"owned doc closed; foreign docs intact ({len(foreign_left)}); "
+                    f"word {'quit (owned instance)' if not state['docs'] else 'left running'}")
+        return "closed"
 
     # -- report ------------------------------------------------------------
     def write_report(self, path: Path, extra: dict[str, Any]) -> Path:

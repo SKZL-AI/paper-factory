@@ -7344,3 +7344,121 @@ def test_p21_audits_before_building_references(tmp_path):
     finally:
         lv.run_citation_audit, lv.build_references = orig_a, orig_b
     assert calls == ["audit", "build"], calls
+
+
+# --- Word-Ownership (release audit 2026-10-02): scoped close, never global ---
+
+def _ownership(**kw):
+    base = {"word_pid": 4242, "hwnd": "1234",
+            "docx_fullname_win": "C:\\ex\\paper-X.docx",
+            "docx_sha256": "abc", "run_id": "r1",
+            "word_running_before": False, "started_by_pf": True,
+            "foreign_docs_at_open": []}
+    base.update(kw)
+    return base
+
+
+def _adapter_with_ps(tmp_path, scripted):
+    """WordPaperpalAdapter whose _ps runs a scripted handler; records calls."""
+    from paper_factory.paperpal.word.driver import WordPaperpalAdapter
+    ad = WordPaperpalAdapter(receipts_dir=tmp_path / "receipts")
+    calls: list[tuple] = []
+
+    def fake_ps(*args, **kw):
+        calls.append(args)
+        return scripted(*args)
+
+    ad._ps = fake_ps
+    return ad, calls
+
+
+def test_close_without_ownership_touches_nothing(tmp_path):
+    ad, calls = _adapter_with_ps(tmp_path, lambda *a: (_ for _ in ()).throw(
+        AssertionError("ps must not be called")))
+    ad.receipts_dir.mkdir(parents=True, exist_ok=True)
+    assert ad.close_word_robust(None).startswith("FAILED")
+    assert calls == []
+
+
+def test_close_scoped_quit_gating(tmp_path):
+    """may_quit=1 only for a process PF itself started (started_by_pf);
+    an adopted/foreign instance is never quit."""
+    from paper_factory.paperpal.word.driver import StepFailed
+    seen = {}
+
+    def script(*args):
+        if args[0] == "close-owned":
+            seen["may_quit"] = args[4]  # ("close-owned", "-Arg1", doc, "-Arg2", may_quit)
+            return "closed-doc+quit-owned-instance"
+        if args[0] == "word-docs":
+            return "docs="
+        raise AssertionError(args)
+
+    ad, calls = _adapter_with_ps(tmp_path, script)
+    assert ad.close_word_robust(_ownership(started_by_pf=True)) == "closed"
+    assert seen["may_quit"] == "1"
+
+    ad2, _ = _adapter_with_ps(tmp_path, script)
+    ad2.close_word_robust(_ownership(word_running_before=True, started_by_pf=False))
+    assert seen["may_quit"] == "0"
+
+
+def test_close_refuses_when_our_doc_not_open(tmp_path):
+    """Fail-closed: the owned document is not open → nothing else happens."""
+    from paper_factory.paperpal.word.driver import StepFailed
+
+    def script(*args):
+        if args[0] == "close-owned":
+            raise StepFailed("close-owned", "our-doc-not-open:X")
+        raise AssertionError(f"unexpected call: {args}")
+
+    ad, calls = _adapter_with_ps(tmp_path, script)
+    out = ad.close_word_robust(_ownership())
+    assert out.startswith("FAILED")
+    # exactly ONE ps call (the close attempt) — no UIA, no word-docs poking
+    assert [c[0] for c in calls] == ["close-owned"]
+
+
+def test_close_modal_dialog_scoped_to_our_pid(tmp_path):
+    """Modal save dialog → UIA dismissal, but ONLY via pid-owned windows."""
+    from paper_factory.paperpal.word.driver import StepFailed
+    state = {"closed": False}
+    uia_calls: list[tuple] = []
+
+    def script(*args):
+        if args[0] == "close-owned":
+            if not state["closed"]:
+                raise StepFailed("close-owned", "RPC_E_CALL_REJECTED")
+            return "closed-doc+quit-owned-instance"
+        if args[0] == "uia-find-owned":
+            uia_calls.append(args)
+            return "matches=Nicht speichern"
+        if args[0] == "uia-click-owned":
+            uia_calls.append(args)
+            state["closed"] = True
+            return "invoked=Nicht speichern pid=4242"
+        if args[0] == "word-docs":
+            return "docs="
+        raise AssertionError(args)
+
+    ad, _ = _adapter_with_ps(tmp_path, script)
+    assert ad.close_word_robust(_ownership()) == "closed"
+    # every UIA call carried our pid as Arg2
+    assert all("4242" in c for c in uia_calls), uia_calls
+
+
+def test_close_detects_foreign_doc_loss(tmp_path):
+    """The foreign document from open-time must still be there afterwards —
+    a disappearance is an incident, not a success."""
+    def script(*args):
+        if args[0] == "close-owned":
+            return "closed-doc+quit-owned-instance"
+        if args[0] == "word-docs":
+            return "docs="  # foreign doc GONE
+        raise AssertionError(args)
+
+    ad, _ = _adapter_with_ps(tmp_path, script)
+    out = ad.close_word_robust(
+        _ownership(foreign_docs_at_open=["C:\\user\\thesis.docx"]))
+    assert out.startswith("FAILED")
+    assert "foreign" in out

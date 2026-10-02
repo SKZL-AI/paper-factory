@@ -19,6 +19,35 @@ function Get-WordApp {
     catch { return $null }
 }
 
+function Get-RotDocPaths {
+    # All documents open in ANY Word process, via the Running Object Table —
+    # multi-process Word hides foreign documents from per-instance COM.
+    $src = @'
+using System; using System.Collections.Generic; using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
+public static class RotEnum {
+  [DllImport("ole32.dll")] static extern int GetRunningObjectTable(uint r, out IRunningObjectTable rot);
+  [DllImport("ole32.dll")] static extern int CreateBindCtx(uint r, out IBindCtx ctx);
+  public static List<string> DocPaths() {
+    var res = new List<string>();
+    IRunningObjectTable rot;
+    if (GetRunningObjectTable(0, out rot) != 0) return res;
+    IEnumMoniker e; rot.EnumRunning(out e); e.Reset();
+    IBindCtx ctx; CreateBindCtx(0, out ctx);
+    var mon = new IMoniker[1];
+    while (e.Next(1, mon, IntPtr.Zero) == 0) {
+      string name = null;
+      try { mon[0].GetDisplayName(ctx, null, out name); } catch { }
+      if (name != null && (name.EndsWith(".docx") || name.EndsWith(".doc"))) res.Add(name);
+    }
+    return res;
+  }
+}
+'@
+    try { Add-Type -TypeDefinition $src -ErrorAction Stop } catch {}
+    try { return [RotEnum]::DocPaths() } catch { return @() }
+}
+
 switch ($Verb) {
     'open' {
         # Arg1 = docx path (Windows form). Opens visible + maximized.
@@ -83,6 +112,137 @@ switch ($Verb) {
             [W32PF.U32]::mouse_event(2, 0, 0, 0, 0)
             [W32PF.U32]::mouse_event(4, 0, 0, 0, 0)
             Out-Status $true "clicked=$Arg1,$Arg2"
+        } catch { Out-Status $false $_.Exception.Message }
+    }
+    'open-owned' {
+        # Arg1 = docx (Windows path). Opens the document and reports the
+        # ownership facts Paper Factory needs: Word PID, whether Word was
+        # already running, and which FOREIGN documents are open. PF never
+        # touches foreign documents (release-audit ownership requirement).
+        # The WebView2 CDP debug flag must be set in the environment of the
+        # process that STARTS Word — powershell.exe's env is inherited by the
+        # COM-spawned WINWORD.
+        try {
+            $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=0'
+            $prePids = @(Get-Process WINWORD -ErrorAction SilentlyContinue | Select-Object -Expand Id)
+            $foreignBefore = @(Get-RotDocPaths)
+            $w = New-Object -ComObject Word.Application
+            $w.Visible = $true
+            $doc = $w.Documents.Open($Arg1)
+            Start-Sleep -Seconds 2
+            $hwnd = $w.ActiveWindow.Hwnd
+            Add-Type -MemberDefinition '[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(System.IntPtr h, out uint pid);' -Name PfPid -Namespace PFOwn -ErrorAction SilentlyContinue
+            $procId = 0
+            [void][PFOwn.PfPid]::GetWindowThreadProcessId([IntPtr]$hwnd, [ref]$procId)
+            # startedByPF: the process that opened our document did not exist
+            # before this call (multi-process Word: foreign docs can live in
+            # other PIDs — ownership is per-PID + per-document)
+            $startedByPF = ($prePids -notcontains $procId)
+            $w.ActiveWindow.WindowState = 2   # minimize: the operator's session is not disturbed
+            Out-Status $true ("pid=$procId hwnd=$hwnd doc=" + $doc.FullName +
+                              " runningBefore=" + ($prePids.Count -gt 0) +
+                              " startedByPF=$startedByPF foreign=" + ($foreignBefore -join ';'))
+        } catch { Out-Status $false $_.Exception.Message }
+    }
+    'doc-open' {
+        # Arg1 = docx FullName. Precise per-path probe: the ROT registers open
+        # documents by path — BindToMoniker succeeds IFF that exact document
+        # is open in ANY Word process.
+        try {
+            $doc = [Runtime.InteropServices.Marshal]::BindToMoniker($Arg1)
+            if ($null -eq $doc) { Out-Status $true 'open=false' }
+            else { Out-Status $true ('open=true saved=' + $doc.Saved) }
+        } catch { Out-Status $true 'open=false' }
+    }
+    'word-docs' {
+        # List all open documents across ALL Word processes (ROT) — per-process
+        # COM sees only its own instance.
+        $docs = @(Get-RotDocPaths)
+        Out-Status $true ("docs=" + ($docs -join ';'))
+    }
+    'close-owned' {
+        # Arg1 = docx FullName (Windows), Arg2 = '1' only when PF started the
+        # Word process itself. Closes ONLY that document, never saving
+        # (SaveChanges=0). Multi-process Word: GetActiveObject binds an
+        # arbitrary instance — the open DOCUMENT is instead resolved through
+        # the Running Object Table by its path (BindToMoniker), so we always
+        # act on the process that actually owns our file (field-test finding:
+        # foreign instance answered first → our-doc-not-open).
+        try {
+            $doc = $null
+            $w = Get-WordApp
+            if ($null -ne $w) {
+                foreach ($d in @($w.Documents)) {
+                    if ($d.FullName -eq $Arg1) { $doc = $d; break }
+                }
+            }
+            if ($null -eq $doc) {
+                $doc = [Runtime.InteropServices.Marshal]::BindToMoniker($Arg1)
+            }
+            if ($null -eq $doc) { Out-Status $false "our-doc-not-open:$Arg1"; break }
+            $app = $doc.Application
+            $remaining = @()
+            foreach ($d in @($app.Documents)) {
+                if ($d.FullName -ne $Arg1) { $remaining += $d.FullName }
+            }
+            $doc.Close(0)   # wdDoNotSaveChanges
+            Start-Sleep -Seconds 1
+            if ($remaining.Count -eq 0 -and $Arg2 -eq '1') {
+                $app.Quit()
+                Out-Status $true 'closed-doc+quit-owned-instance'
+            } else {
+                Out-Status $true ('closed-doc-only remaining=' + $remaining.Count)
+            }
+        } catch { Out-Status $false $_.Exception.Message }
+    }
+    'uia-find-owned' {
+        # Arg1 = substring, Arg2 = owner PID. Like uia-find but scoped to
+        # top-level windows OWNED BY that process — a global search could
+        # dismiss somebody else's dialog (release-audit ownership).
+        try {
+            Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+            $root = [System.Windows.Automation.AutomationElement]::RootElement
+            $tops = $root.FindAll([System.Windows.Automation.TreeScope]::Children,
+                [System.Windows.Automation.Condition]::TrueCondition)
+            $hits = @()
+            foreach ($top in $tops) {
+                if ($top.Current.ProcessId -ne [int]$Arg2) { continue }
+                $all = $top.FindAll([System.Windows.Automation.TreeScope]::Descendants,
+                    [System.Windows.Automation.Condition]::TrueCondition)
+                foreach ($e in $all) {
+                    $n = $e.Current.Name
+                    if ($n -and $n -like "*$Arg1*") { $hits += $n }
+                    if ($hits.Count -ge 40) { break }
+                }
+            }
+            Out-Status $true ("matches=" + ($hits -join ' | '))
+        } catch { Out-Status $false $_.Exception.Message }
+    }
+    'uia-click-owned' {
+        # Arg1 = exact element name, Arg2 = owner PID. InvokePattern only,
+        # scoped to windows of that PID (never another app's dialog).
+        try {
+            Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+            $root = [System.Windows.Automation.AutomationElement]::RootElement
+            $tops = $root.FindAll([System.Windows.Automation.TreeScope]::Children,
+                [System.Windows.Automation.Condition]::TrueCondition)
+            $done = $false
+            foreach ($top in $tops) {
+                if ($top.Current.ProcessId -ne [int]$Arg2) { continue }
+                $nm = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, $Arg1)
+                $els = $top.FindAll([System.Windows.Automation.TreeScope]::Descendants, $nm)
+                foreach ($el in $els) {
+                    try {
+                        $ip = $el.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+                        $ip.Invoke()
+                        Out-Status $true "invoked=$Arg1 pid=$Arg2"
+                        $done = $true
+                        break
+                    } catch { }
+                }
+                if ($done) { break }
+            }
+            if (-not $done) { Out-Status $false "no-invoke-owned:$Arg1 pid=$Arg2" }
         } catch { Out-Status $false $_.Exception.Message }
     }
     'uia-click' {
