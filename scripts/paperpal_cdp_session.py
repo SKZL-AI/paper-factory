@@ -107,9 +107,17 @@ def _find_cdp_port(not_before: float = 0.0) -> int:
 
 
 def _click(cdp: CDP, text: str) -> bool:
+    """Click a pane button by VISIBLE label — whitespace-tolerant
+    ('ChecksChecks' / 'Checks Checks' / aria-label variants)."""
+    needle = text.lower().replace(" ", "")
     return bool(cdp.js(
-        "(() => { const b = [...document.querySelectorAll('button, [role=button]')]"
-        f".find(e => e.textContent.trim() === {json.dumps(text)});"
+        "(() => { const els = [...document.querySelectorAll('button, [role=button]')];"
+        " const b = els.find(e => {"
+        "   const t = (e.textContent || '').trim().toLowerCase().replace(/\\s+/g, '');"
+        "   const a = (e.getAttribute('aria-label') || '').toLowerCase().replace(/\\s+/g, '');"
+        f"   return t === {json.dumps(needle)} || a === {json.dumps(needle)}"
+        f"       || t.startsWith({json.dumps(needle)});"
+        " });"
         " if (b) { b.click(); return true; } return false;})()"))
 
 
@@ -199,6 +207,24 @@ def main() -> int:
     ad.record("PAPERPAL_VISIBLE", True, f"cdp port {port} target {cdp.target}")
     print(f"[3] CDP attached: {cdp.target.get('title', '')[:60]}")
 
+    # the pane loads asynchronously — wait until the checks UI exists
+    ready = False
+    for _ in range(45):
+        ready = bool(cdp.js(
+            "(() => !!([...document.querySelectorAll('button, [role=button]')]"
+            ".find(e => { const t = (e.textContent || '').trim().toLowerCase();"
+            " return t === 'grammar' || t === 'checks checks' || t === 'checks'; })))()"))
+        if ready:
+            break
+        time.sleep(2)
+    if not ready:
+        ad.record("CHECK_CONFIGURED", False, "pane UI never became ready")
+        ad.write_report(receipts / "paperpal_word_session.json",
+                        {"aborted": True, "failure": "pane not ready"})
+        print("FAILED: pane UI not ready", file=sys.stderr)
+        return 1
+    ad.record("CHECK_CONFIGURED", True, "pane ready")
+
     results: dict[str, dict] = {}
     for check in ("Grammar", "Consistency"):
         if not _click(cdp, check):
@@ -240,6 +266,16 @@ def main() -> int:
             " || (e.getAttribute('aria-label')||'').includes('Back'));"
             " if (b) b.click(); return true;})()")
         time.sleep(2)
+
+    if not results or all("error" in r for r in results.values()):
+        # never deliver an empty check report as if it were evidence —
+        # the delivery binds to the staged DOCX and would pass P31 hollow
+        ad.record("RESULT_CAPTURED", False, f"no check data: {results}")
+        ad.write_report(receipts / "paperpal_word_session.json",
+                        {"aborted": True, "failure": f"checks failed: {results}"})
+        print(f"FAILED: no Paperpal check data captured: {results}",
+              file=sys.stderr)
+        return 1
 
     report = {
         "generated_at": utcnow(),

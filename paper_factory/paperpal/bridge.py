@@ -39,6 +39,26 @@ Paper Factory has no usable Paperpal API integration on this machine.
 _SOURCE_HEADER = re.compile(r"(?im)^\s*source\s*:\s*([a-z0-9_-]+)\s*$")
 
 
+def _word_report_content_valid(item: Path) -> bool:
+    """Content validation for word_auto JSON reports: a report whose checks
+    all carry an 'error' (or which has no checks at all) is a hollow artifact
+    — real Paperpal evidence needs at least one check with actual results.
+    Only applied to JSON reports with a 'checks' object; plain-text reports
+    are unaffected."""
+    if item.suffix.lower() != ".json":
+        return True
+    try:
+        d = json.loads(item.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return False
+    checks = d.get("checks")
+    if not isinstance(checks, dict):
+        return True  # not a word-session report shape — provenance decides
+    if not checks:
+        return False
+    return any(isinstance(c, dict) and "error" not in c for c in checks.values())
+
+
 def _norm_sha(v: Any) -> str | None:
     """Normalize a sha256 for comparison (case/whitespace-tolerant; reviewer
     B5). Non-strings are coerced; a missing value stays None."""
@@ -138,13 +158,26 @@ def run_paperpal(ctx: NodeContext) -> NodeOutcome:
     inbox_items = sorted(p for p in inbox.glob("*") if p.is_file()
                          and not p.name.endswith(".provenance.json")) if inbox.exists() else []
     item_classes = {p.name: _classify_inbox_item(p) for p in inbox_items}
+    # content validation for word-session JSON reports: a report whose checks
+    # all errored is a hollow artifact, not Paperpal evidence (observed
+    # 2026-10-02: pane tab-click failure delivered an error-only report that
+    # would otherwise have passed P31 on provenance+binding alone)
+    invalid_items = [p.name for p in inbox_items
+                     if item_classes[p.name] == "external_paperpal_declared"
+                     and not _word_report_content_valid(p)]
+    for name in invalid_items:
+        item_classes[name] = "invalid_hollow_report"
     evidence_class = ("external_paperpal_declared"
                       if any(c == "external_paperpal_declared" for c in item_classes.values())
-                      else ("operator_check" if item_classes else "none"))
+                      else ("operator_check" if any(c == "operator_check"
+                                                    for c in item_classes.values())
+                            else ("invalid" if invalid_items else
+                                  ("operator_check" if item_classes else "none"))))
     state: dict[str, Any] = {"checked_at": utcnow(), "run_id": ctx.run_id,
                              "outbox": out_candidate.name,
                              "inbox_items": [p.name for p in inbox_items],
                              "item_classes": item_classes,
+                             "invalid_items": invalid_items,
                              "item_sha256": {p.name: sha256_file(p) for p in inbox_items},
                              "evidence_class": evidence_class}
     if mode == "word_auto":

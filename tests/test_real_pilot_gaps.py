@@ -7498,3 +7498,36 @@ def test_close_pid_mismatch_never_retries(tmp_path):
     out = ad.close_word_robust(_ownership())
     assert out.startswith("FAILED")
     assert [c[0] for c in calls] == ["close-owned"]  # exactly one attempt
+
+
+def test_p31_hollow_word_report_is_not_evidence(tmp_path, monkeypatch):
+    """A word-session report whose checks ALL errored (pane tab failure,
+    observed 2026-10-02) is a hollow artifact — never external evidence."""
+    ctx, real_sha = _word_auto_ctx(tmp_path, monkeypatch)
+    inbox = ctx.workspace.paperpal_inbox
+    inbox.mkdir(parents=True, exist_ok=True)
+    (inbox / "paperpal_report.json").write_text(json.dumps({
+        "checks": {"Grammar": {"error": "tab not found"},
+                   "Consistency": {"error": "tab not found"}}}), encoding="utf-8")
+    (inbox / "paperpal_report.json.provenance.json").write_text(json.dumps({
+        "source": "paperpal", "docx_sha256_staged": real_sha}), encoding="utf-8")
+    outcome = run_paperpal(ctx)
+    state = json.loads((ctx.workspace.reports_dir / "paperpal_state.json").read_text())
+    assert state["evidence_class"] == "invalid"
+    assert state["invalid_items"] == ["paperpal_report.json"]
+    assert outcome.verdict == Verdict.HUMAN_REQUIRED, outcome.detail
+
+
+def test_p31_valid_word_report_passes_content_gate(tmp_path, monkeypatch):
+    ctx, real_sha = _word_auto_ctx(tmp_path, monkeypatch)
+    inbox = ctx.workspace.paperpal_inbox
+    inbox.mkdir(parents=True, exist_ok=True)
+    (inbox / "paperpal_report.json").write_text(json.dumps({
+        "checks": {"Grammar": {"cards": 3, "suggestions": []},
+                   "Consistency": {"result": "clean"}}}), encoding="utf-8")
+    (inbox / "paperpal_report.json.provenance.json").write_text(json.dumps({
+        "source": "paperpal", "docx_sha256_staged": real_sha}), encoding="utf-8")
+    outcome = run_paperpal(ctx)
+    state = json.loads((ctx.workspace.reports_dir / "paperpal_state.json").read_text())
+    assert state["evidence_class"] == "external_paperpal_declared"
+    assert outcome.verdict == Verdict.PASS, outcome.detail
