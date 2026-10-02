@@ -76,6 +76,12 @@ def main() -> int:
             extra = json.loads(rest[1]) if len(rest) > 1 else {}
             p = ad.write_report(receipts / "paperpal_word_session.json", extra)
             print(f"report={p}")
+        elif cmd == "deliver":
+            # deliver <captured-report.json> <staged.docx> — production writer
+            # for the inbox provenance sidecar (binds the report to the EXACT
+            # staged DOCX sha256; never hand-write the sidecar)
+            inbox = root / ".paper-factory" / "paperpal" / "inbox"
+            print(f"delivered={ad.deliver(inbox, Path(rest[1]), Path(rest[2]))}")
         elif cmd == "mark":
             # mark STATE "detail" [receipt] — a verified transition made by
             # the orchestrator (e.g. PAPERPAL_VISIBLE after a screenshot)

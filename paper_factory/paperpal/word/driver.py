@@ -183,6 +183,29 @@ class WordPaperpalAdapter:
         write_json(path, report)
         return path
 
+    def deliver(self, inbox: Path, report: Path, staged_docx: Path) -> Path:
+        """Production writer for the exact-artifact binding (reviewer B3):
+        copy the captured Paperpal report into the bridge inbox and write the
+        provenance sidecar bound to the EXACT staged DOCX sha256 — never let
+        a human/agent hand-write `docx_sha256_staged` (the value must come
+        from the artifact that actually went through Word)."""
+        import shutil
+
+        inbox.mkdir(parents=True, exist_ok=True)
+        target = inbox / report.name
+        shutil.copy2(report, target)
+        sha = sha256_file(staged_docx)
+        write_json(target.with_name(target.name + ".provenance.json"), {
+            "source": "paperpal",
+            "docx_sha256_staged": sha,
+            "staged_docx": staged_docx.name,
+            "delivered_at": utcnow(),
+            "delivered_by": "WordPaperpalAdapter/v1",
+        })
+        self.record("INBOX_READY", True,
+                    f"{target.name} bound to {staged_docx.name} ({sha[:12]}…)")
+        return target
+
 
 def wsl_to_win_ps1() -> str:
     """The ps1 asset lives in the WSL repo; copy it to the Windows exchange

@@ -936,6 +936,96 @@ def _u8(ctx: NodeContext) -> tuple[str, str]:
                     f"{len(manifest)} files hash-pinned")
 
 
+def _revalidate_paperpal_chain(ctx: NodeContext, data: dict) -> str | None:
+    """B1 (reviewer B, release audit): never TRUST a paperpal_state.json —
+    recompute the artifact chain against what is on disk NOW. A state file
+    may predate the current run (P31 skipped on resume), be hand-written, or
+    reference a staged DOCX that has since changed. Returns None when the
+    chain is intact, else a human-readable reason.
+
+    R-B2: the named DOCX must also be the NEWEST render in the outbox and its
+    recorded source must still hash identically (a later render or a source
+    edit out-of-band makes the evidence stale). R-B3: the name is sanitized
+    like U8 (no absolute paths, no '..'). R-B4: a partial binding (only one
+    of name/sha) is not revalidatable."""
+    docx_name = data.get("docx_outbox")
+    docx_sha = data.get("docx_outbox_sha256")
+    if not docx_name and not docx_sha:
+        if data.get("artifact_binding") is not None:
+            return ("state claims an artifact binding but carries no "
+                    "revalidatable DOCX identity (R-B4)")
+        return None  # manual-bridge state without DOCX staging: nothing to recompute
+    if not docx_name or not docx_sha:
+        return "partial DOCX binding in paperpal_state.json — cannot revalidate"
+    name = str(docx_name)
+    p = Path(name)
+    if p.is_absolute() or ".." in p.parts or p.name != name:
+        return f"docx_outbox path escapes the outbox perimeter: {name!r}"
+    from ..paperpal.bridge import _bound_staged_sha, _classify_inbox_item
+    from ..paperpal.docx_outbox import DOCX_NAME_RE, _future_dated
+    outbox = ctx.workspace.paperpal_outbox
+    docx = outbox / name
+    if docx.is_symlink():
+        return f"staged DOCX '{name}' is a symlink — rejected (R3-B3)"
+    if not docx.is_file():
+        return f"staged DOCX '{name}' named in paperpal_state.json no longer exists"
+    current = sha256_file(docx).lower()
+    if current != str(docx_sha).strip().lower():
+        return f"staged DOCX '{name}' changed since the paperpal run"
+    # R-B2a: the bound DOCX must be the newest render in the outbox — a later
+    # versioned render means the current artifact was never Paperpal-checked.
+    # Only timestamp-patterned, non-future-dated names count (a planted
+    # lookalike must not be able to gate-DoS a valid chain).
+    siblings = [q for q in outbox.glob("paper-*.docx")
+                if q.is_file() and DOCX_NAME_RE.match(q.name)
+                and not _future_dated(q.name)]
+    if siblings:
+        newest = max(siblings, key=lambda q: q.name)
+        if newest.name != name:
+            return (f"staged DOCX '{name}' is superseded by newer render "
+                    f"'{newest.name}' — evidence is stale")
+    # R-B2b: the recorded source must still hash identically (source drift
+    # after the Paperpal run invalidates the check on the derived artifact)
+    sidecar = outbox / (name + ".provenance.json")
+    if not sidecar.exists():
+        return f"no provenance sidecar for staged DOCX '{name}'"
+    try:
+        prov = json.loads(sidecar.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        return f"provenance sidecar for staged DOCX unreadable: {exc}"
+    src = prov.get("source") or {}
+    src_path, src_sha = src.get("path"), src.get("sha256")
+    if not src_path or not src_sha:
+        return f"provenance sidecar for '{name}' lacks source binding"
+    src_file = Path(src_path)
+    if src_file.is_symlink():
+        return f"paperpal source '{src_path}' is a symlink — rejected (R3-B3)"
+    if not src_file.is_file():
+        return f"paperpal source '{src_path}' no longer exists"
+    # R3-B2: the source must live inside the target perimeter — a sidecar
+    # must not make closure hash (and thereby bless) arbitrary outside files
+    try:
+        if not src_file.resolve().is_relative_to(ctx.workspace.target_root.resolve()):
+            return f"paperpal source '{src_path}' escapes the target root"
+    except OSError as exc:
+        return f"paperpal source '{src_path}' unresolvable: {exc}"
+    if sha256_file(src_file).lower() != str(src_sha).strip().lower():
+        return f"paperpal source '{src_path}' changed since the paperpal run"
+    if prov.get("docx", {}).get("sha256") and \
+            str(prov["docx"]["sha256"]).strip().lower() != current:
+        return f"provenance sidecar docx hash disagrees with the file for '{name}'"
+    inbox = ctx.workspace.paperpal_inbox
+    items = [q for q in (inbox.glob("*") if inbox.exists() else [])
+             if q.is_file() and not q.name.endswith(".provenance.json")]
+    bound = [q.name for q in items
+             if _classify_inbox_item(q) == "external_paperpal_declared"
+             and _bound_staged_sha(q) == current]
+    if not bound:
+        return ("no external inbox item currently binds to the staged DOCX "
+                f"{name} ({current[:12]}…)")
+    return None
+
+
 def _u9(ctx: NodeContext) -> tuple[str, str]:
     state = ctx.workspace.reports_dir / "paperpal_state.json"
     if not state.exists():
@@ -945,6 +1035,14 @@ def _u9(ctx: NodeContext) -> tuple[str, str]:
         return "HUMAN_REQUIRED", "paperpal manual bridge pending"
     ev = data.get("evidence_class")
     if ev == "external_paperpal_declared":
+        binding = data.get("artifact_binding")
+        if binding is not None and binding != "exact":
+            return ("HUMAN_REQUIRED",
+                    f"paperpal evidence not bound to the current staged DOCX "
+                    f"(artifact_binding={binding})")
+        stale = _revalidate_paperpal_chain(ctx, data)
+        if stale:
+            return "HUMAN_REQUIRED", f"paperpal artifact chain broken: {stale}"
         return "PASS", "external paperpal results delivered (declared provenance)"
     if ev == "operator_check":
         return "DEGRADED", "manual operator check only — no external Paperpal evidence"
@@ -1053,6 +1151,14 @@ def _u16(ctx: NodeContext) -> tuple[str, str]:
         # an operator check rewrites nothing external — there is nothing to
         # reconcile, and claiming reconciliation would be fabricated evidence
         return "NOT_RUN", "no external edits — operator check needs no reconciliation"
+    binding = data.get("artifact_binding")
+    if binding is not None and binding != "exact":
+        # reconciliation against a stale render reconciles the wrong artifact
+        return ("HUMAN_REQUIRED",
+                f"external edits bound to a stale DOCX (artifact_binding={binding})")
+    stale = _revalidate_paperpal_chain(ctx, data)
+    if stale:
+        return "HUMAN_REQUIRED", f"paperpal artifact chain broken: {stale}"
     diff = ctx.workspace.reports_dir / "semantic_diff.json"
     if not diff.exists():
         return "FAIL", "external edits without semantic reconciliation"

@@ -25,6 +25,7 @@ in the workspace and is itself hashed.
 """
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess
@@ -143,20 +144,99 @@ def ensure_reference_docx(cache_dir: Path) -> Path:
     return ref
 
 
+def _find_source(ws: Any) -> tuple[Path, str] | None:
+    """The manuscript source the DOCX renders from (draft markdown preferred,
+    else the composed LaTeX)."""
+    root = ws.target_root
+    drafts = sorted(root.glob("draft/*.md"))
+    if drafts:
+        return drafts[0], "markdown"
+    if (ws.paper_dir / "main.tex").exists():
+        return ws.paper_dir / "main.tex", "latex"
+    return None
+
+
+#: versioned outbox renders carry a fixed-width UTC timestamp in the name —
+#: name order == time order, and planted lookalikes are not "versions"
+DOCX_NAME_RE = re.compile(r"^paper-(\d{8})T(\d+)Z\.docx$")
+
+
+def _future_dated(name: str, skew_hours: int = 24) -> bool:
+    """True when the embedded timestamp is unparseable or in the future
+    (reviewer B R4 N-B1: a planted far-future but regex-conform name must not
+    become 'newest' and gate-DoS the chain)."""
+    from datetime import datetime, timedelta, timezone
+
+    m = DOCX_NAME_RE.match(name)
+    if not m:
+        return False
+    try:
+        ts = datetime.strptime(m.group(1) + m.group(2)[:6], "%Y%m%d%H%M%S")
+        ts = ts.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return True  # unparseable timestamps are not legitimate renders
+    return ts > datetime.now(timezone.utc) + timedelta(hours=skew_hours)
+
+
+def reuse_or_build_docx_outbox(workspace: Any, run_id: str) -> dict[str, Any] | None:
+    """Render-skip (reviewer B R3-B1, livelock fix): P31 runs on every
+    pipeline pass, and every fresh render would instantly stale the evidence
+    an operator bound to the previous DOCX — the binding could never converge.
+    When the newest versioned DOCX is anchored by ALL of: provenance sidecar
+    (source hash == current source), file hash == sidecar hash, AND an
+    append-only render event in the workspace ledger (reviewer B R4 N-B2:
+    sidecar alone proves File==Record, not File==Render(Source) — a
+    content-swapped DOCX with an updated sidecar must NOT be reused), the
+    artifact is unchanged: reuse it. Anything else renders fresh."""
+    ws = workspace
+    found = _find_source(ws)
+    if not found:
+        return None
+    source, _kind = found
+    src_sha = sha256_file(source)
+    outbox = ws.paperpal_outbox
+    versions = sorted(p for p in outbox.glob("paper-*.docx")
+                      if p.is_file() and DOCX_NAME_RE.match(p.name)
+                      and not _future_dated(p.name))
+    if versions:
+        newest = versions[-1]
+        try:
+            prov = json.loads(
+                (outbox / f"{newest.name}.provenance.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            prov = None
+        if prov and not newest.is_symlink():
+            docx_sha = (prov.get("docx") or {}).get("sha256")
+            if ((prov.get("source") or {}).get("sha256") == src_sha
+                    and docx_sha == sha256_file(newest)
+                    and _render_event_anchored(ws, newest.name, docx_sha, src_sha)):
+                prov = dict(prov)
+                prov["reused"] = True
+                prov["reused_at"] = utcnow()
+                return prov
+    return build_docx_outbox(workspace, run_id)
+
+
+def _render_event_anchored(ws: Any, name: str, docx_sha: str, src_sha: str) -> bool:
+    """The workspace ledger holds an append-only event for every real render
+    (written by build_docx_outbox). Reuse requires the exact triple
+    (name, docx_sha256, source_sha256) to exist there."""
+    for ev in ws.events_of_kind("paperpal_docx_rendered"):
+        p = ev.get("payload") or {}
+        if (p.get("name") == name and p.get("docx_sha256") == docx_sha
+                and p.get("source_sha256") == src_sha):
+            return True
+    return False
+
+
 def build_docx_outbox(workspace: Any, run_id: str) -> dict[str, Any] | None:
     """Render the versioned Paperpal DOCX. Returns the provenance dict
     (also written as sidecar), or None when no manuscript source exists."""
     ws = workspace
-    root = ws.target_root
-    drafts = sorted(root.glob("draft/*.md"))
-    if drafts:
-        source = drafts[0]
-        kind = "markdown"
-    elif (ws.paper_dir / "main.tex").exists():
-        source = ws.paper_dir / "main.tex"
-        kind = "latex"
-    else:
+    found = _find_source(ws)
+    if not found:
         return None
+    source, kind = found
 
     staging = ws.paperpal_outbox / "_staging"
     if staging.exists():
@@ -205,4 +285,10 @@ def build_docx_outbox(workspace: Any, run_id: str) -> dict[str, Any] | None:
         "run_id": run_id,
     }
     write_json(ws.paperpal_outbox / f"{docx.name}.provenance.json", prov)
+    # anchor the render in the append-only workspace ledger (N-B2): reuse and
+    # closure revalidation can then distinguish a real render from a swapped
+    # file with a hand-updated sidecar
+    ws.event(run_id, "paperpal_docx_rendered", node_id="P31",
+             payload={"name": docx.name, "docx_sha256": prov["docx"]["sha256"],
+                      "source_sha256": prov["source"]["sha256"]})
     return prov

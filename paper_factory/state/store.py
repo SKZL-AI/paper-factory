@@ -184,6 +184,17 @@ class Workspace:
                 (run_id, node_id, utcnow(), kind, json.dumps(payload) if payload is not None else None),
             )
 
+    def events_of_kind(self, kind: str) -> list[dict[str, Any]]:
+        """All ledger events of a kind, oldest first (append-only anchor for
+        artifact bindings, e.g. paperpal_docx_rendered)."""
+        import json
+
+        with self.connect() as c:
+            rows = c.execute(
+                "SELECT * FROM events WHERE kind=? ORDER BY ts", (kind,)).fetchall()
+        return [dict(r, payload=json.loads(r["payload"]) if r["payload"] else None)
+                for r in rows]
+
     def latest_run_id(self) -> str | None:
         with self.connect() as c:
             row = c.execute("SELECT run_id FROM runs ORDER BY created_at DESC LIMIT 1").fetchone()

@@ -6431,3 +6431,528 @@ def test_p31_cdp_extended_length_frame():
         assert r["v"] == "x" * 500
     finally:
         mod._ws_connect = old
+
+
+# ---------------------------------------------------------------------------
+# POST-PILOT-01 RELEASE AUDIT: exact-artifact binding for P31 (word_auto)
+# ---------------------------------------------------------------------------
+# Finding: the real pilot-3 inbox evidence binds to staged DOCX a155… (18:30),
+# but the renderer later produced a different staged DOCX (8774…, style-ref v3)
+# and P31/U9 still reported PASS. External Paperpal evidence must bind to the
+# CURRENT staged DOCX — "content was identical" is not evidence.
+
+def _word_auto_ctx(tmp_path, monkeypatch, broken=False, docx_bytes=b"docx-v1"):
+    import hashlib
+
+    import paper_factory.paperpal.docx_outbox as dx
+    ctx = _ctx(tmp_path)
+    ctx.config.paperpal.mode = "word_auto"
+    _write_manuscript(ctx, {})
+    # real source + versioned DOCX + its provenance sidecar, mirroring what
+    # build_docx_outbox writes in production (U9/U16 revalidate against these)
+    draft = tmp_path / "draft"
+    draft.mkdir(parents=True, exist_ok=True)
+    src = draft / "paper.md"
+    src.write_text("# paper draft\n", encoding="utf-8")
+    src_sha = hashlib.sha256(src.read_bytes()).hexdigest()
+    outbox = ctx.workspace.paperpal_outbox
+    outbox.mkdir(parents=True, exist_ok=True)
+    docx = outbox / "paper-X.docx"
+    docx.write_bytes(docx_bytes)
+    real_sha = hashlib.sha256(docx_bytes).hexdigest()
+    (outbox / "paper-X.docx.provenance.json").write_text(json.dumps({
+        "source": {"path": str(src), "sha256": src_sha, "kind": "markdown"},
+        "docx": {"path": str(docx), "name": docx.name, "sha256": real_sha,
+                 "bytes": len(docx_bytes)}}), encoding="utf-8")
+    if broken:
+        def _boom(ws, run_id):
+            raise RuntimeError("renderer exploded")
+        monkeypatch.setattr(dx, "build_docx_outbox", _boom)
+    else:
+        monkeypatch.setattr(dx, "build_docx_outbox", lambda ws, run_id: {
+            "source": {"sha256": src_sha},
+            "docx": {"name": "paper-X.docx", "sha256": real_sha}})
+    return ctx, real_sha
+
+
+def _external_inbox(ctx, staged_sha=None):
+    inbox = ctx.workspace.paperpal_inbox
+    inbox.mkdir(parents=True, exist_ok=True)
+    (inbox / "paperpal_report.json").write_text(
+        json.dumps({"checks": {"grammar": "ok"}}), encoding="utf-8")
+    prov = {"source": "paperpal"}
+    if staged_sha is not None:
+        prov["docx_sha256_staged"] = staged_sha
+    (inbox / "paperpal_report.json.provenance.json").write_text(
+        json.dumps(prov), encoding="utf-8")
+
+
+def test_p31_stale_docx_binding_is_not_pass(tmp_path, monkeypatch):
+    ctx, real_sha = _word_auto_ctx(tmp_path, monkeypatch)
+    _external_inbox(ctx, staged_sha="sha-old")
+    outcome = run_paperpal(ctx)
+    state = json.loads((ctx.workspace.reports_dir / "paperpal_state.json").read_text())
+    assert state["artifact_binding"] == "stale"
+    assert outcome.verdict == Verdict.HUMAN_REQUIRED, outcome.detail
+    _, states = _closure_states(ctx)
+    assert states["U9"] == "HUMAN_REQUIRED", states
+    assert states["U16"] == "HUMAN_REQUIRED", states
+
+
+def test_p31_exact_docx_binding_passes(tmp_path, monkeypatch):
+    ctx, real_sha = _word_auto_ctx(tmp_path, monkeypatch)
+    _external_inbox(ctx, staged_sha=real_sha)
+    outcome = run_paperpal(ctx)
+    state = json.loads((ctx.workspace.reports_dir / "paperpal_state.json").read_text())
+    assert state["artifact_binding"] == "exact"
+    assert outcome.verdict == Verdict.PASS, outcome.detail
+    _, states = _closure_states(ctx)
+    assert states["U9"] == "PASS", states
+
+
+def test_p31_broken_renderer_cannot_ride_old_evidence(tmp_path, monkeypatch):
+    # reviewer B R3-F5 closed: renderer failure + old inbox evidence must not PASS
+    ctx, _ = _word_auto_ctx(tmp_path, monkeypatch, broken=True)
+    _external_inbox(ctx, staged_sha="sha-old")
+    outcome = run_paperpal(ctx)
+    state = json.loads((ctx.workspace.reports_dir / "paperpal_state.json").read_text())
+    assert "docx_outbox_error" in state
+    assert state["artifact_binding"] == "unverifiable"
+    assert outcome.verdict == Verdict.HUMAN_REQUIRED, outcome.detail
+
+
+def test_p31_unbound_external_evidence_is_not_pass(tmp_path, monkeypatch):
+    # header-declared text (no sidecar sha binding) in word_auto mode: cannot
+    # verify the artifact chain -> fail closed
+    ctx, real_sha = _word_auto_ctx(tmp_path, monkeypatch)
+    _external_inbox(ctx, staged_sha=None)
+    outcome = run_paperpal(ctx)
+    state = json.loads((ctx.workspace.reports_dir / "paperpal_state.json").read_text())
+    assert state["artifact_binding"] == "unbound"
+    assert outcome.verdict == Verdict.HUMAN_REQUIRED, outcome.detail
+
+
+def test_p31_binding_sha_comparison_is_case_tolerant(tmp_path, monkeypatch):
+    ctx, real_sha = _word_auto_ctx(tmp_path, monkeypatch)
+    _external_inbox(ctx, staged_sha="  " + real_sha.upper() + "\n")
+    outcome = run_paperpal(ctx)
+    assert outcome.verdict == Verdict.PASS, outcome.detail
+
+
+def test_p31_mixed_exact_and_stale_items_are_visible(tmp_path, monkeypatch):
+    # reviewer B4: an exact+stale mix aggregates to exact (consistent with
+    # evidence_class any-match) but the per-item binding stays auditable
+    ctx, real_sha = _word_auto_ctx(tmp_path, monkeypatch)
+    _external_inbox(ctx, staged_sha=real_sha)
+    inbox = ctx.workspace.paperpal_inbox
+    (inbox / "older_report.json").write_text(json.dumps({"checks": {}}),
+                                             encoding="utf-8")
+    (inbox / "older_report.json.provenance.json").write_text(json.dumps(
+        {"source": "paperpal", "docx_sha256_staged": "sha-older"}),
+        encoding="utf-8")
+    outcome = run_paperpal(ctx)
+    state = json.loads((ctx.workspace.reports_dir / "paperpal_state.json").read_text())
+    assert outcome.verdict == Verdict.PASS
+    assert state["artifact_binding"] == "exact"
+    assert state["artifact_binding_items"] == {
+        "paperpal_report.json": "exact", "older_report.json": "stale"}
+
+
+def test_u9_u16_revalidate_the_chain_on_disk(tmp_path, monkeypatch):
+    # reviewer B1 (CRITICAL): a state file claiming binding=exact must not
+    # survive the staged DOCX changing afterwards (out-of-band edit, stale
+    # state from a skipped P31, hand-written state)
+    ctx, real_sha = _word_auto_ctx(tmp_path, monkeypatch)
+    _external_inbox(ctx, staged_sha=real_sha)
+    outcome = run_paperpal(ctx)
+    assert outcome.verdict == Verdict.PASS
+    _, states = _closure_states(ctx)
+    assert states["U9"] == "PASS"
+    # out-of-band: the staged DOCX changes AFTER the paperpal run
+    docx = ctx.workspace.paperpal_outbox / "paper-X.docx"
+    docx.write_bytes(b"docx-v2-tampered")
+    _, states = _closure_states(ctx)
+    assert states["U9"] == "HUMAN_REQUIRED", states
+    assert states["U16"] == "HUMAN_REQUIRED", states
+
+
+def test_u9_rejects_state_whose_staged_docx_disappeared(tmp_path, monkeypatch):
+    ctx, real_sha = _word_auto_ctx(tmp_path, monkeypatch)
+    _external_inbox(ctx, staged_sha=real_sha)
+    assert run_paperpal(ctx).verdict == Verdict.PASS
+    docx = ctx.workspace.paperpal_outbox / "paper-X.docx"
+    parked = docx.with_name(docx.name + ".v1.gone")
+    docx.rename(parked)  # archive, never delete
+    _, states = _closure_states(ctx)
+    assert states["U9"] == "HUMAN_REQUIRED", states
+
+
+# ---------------------------------------------------------------------------
+# POST-PILOT-01 RELEASE AUDIT: durable-decision false-close hardening
+# ---------------------------------------------------------------------------
+# Findings whose identity is ONLY claim_refs could collide under the old
+# dedupe_key schema; a durable AUTHOR_DECISION for one would silently close a
+# DIFFERENT issue. Weak identities now include the normalized statement hash,
+# and legacy decisions rebind only when unambiguous.
+
+def _mk_weak_finding(statement, kind="unsupported_claim", claim_refs=("C1",),
+                     finding_id="PX-F01"):
+    from paper_factory.reviews.framework import Finding
+    from paper_factory.core.results import Severity
+    return Finding(finding_id=finding_id, reviewer="test", severity=Severity.MAJOR,
+                   category="methods", statement=statement, kind=kind,
+                   claim_refs=list(claim_refs),
+                   details={"draft": "draft/paper.md"},
+                   affected_section="results")
+
+
+def _legacy_key_json(f):
+    import json as _j
+    from paper_factory.reviews.framework import legacy_dedupe_key
+    return _j.dumps(legacy_dedupe_key(f), default=str, sort_keys=True)
+
+
+def test_decision_claim_only_collision_no_false_close(tmp_path):
+    """A and B share claim_refs but are DIFFERENT issues (weak identity):
+    a decision for A must not close B."""
+    from paper_factory.reviews.decisions import record_decision
+    from paper_factory.reviews.framework import ReviewReport, load_reviews, save_review
+    from paper_factory.core.results import Disposition
+    reviews = tmp_path / "reviews"
+    fa = _mk_weak_finding("claim C1 lacks any T0/T1 evidence", finding_id="A")
+    fb = _mk_weak_finding("claim C1 overstates the effect size", finding_id="B")
+    save_review(reviews, ReviewReport(review_id="P23-methods", reviewer="m",
+                                      findings=[fa, fb]))
+    record_decision(reviews, fa, disposition=Disposition.AUTHOR_DECISION,
+                    reason="sealed evidence exists", decided_by="author")
+    out, _ = load_reviews(reviews)
+    by_id = {f.finding_id: f for r in out for f in r.findings}
+    assert by_id["A"].disposition == Disposition.AUTHOR_DECISION
+    assert by_id["B"].disposition is None  # NOT false-closed
+
+
+def test_decision_rebinds_stably_across_rerun(tmp_path):
+    """Identical weak-identity finding regenerated with a new id rebinds to
+    the same decision."""
+    from paper_factory.reviews.decisions import record_decision
+    from paper_factory.reviews.framework import ReviewReport, load_reviews, save_review
+    from paper_factory.core.results import Disposition
+    reviews = tmp_path / "reviews"
+    f1 = _mk_weak_finding("claim C1 lacks any T0/T1 evidence", finding_id="run1-F01")
+    save_review(reviews, ReviewReport(review_id="P23-methods", reviewer="m",
+                                      findings=[f1]))
+    record_decision(reviews, f1, disposition=Disposition.AUTHOR_DECISION,
+                    reason="ok", decided_by="author")
+    f2 = _mk_weak_finding("claim C1 lacks any T0/T1 evidence", finding_id="run2-F99")
+    save_review(reviews, ReviewReport(review_id="P23-methods", reviewer="m",
+                                      findings=[f2]))
+    out, _ = load_reviews(reviews)
+    assert out[0].findings[0].disposition == Disposition.AUTHOR_DECISION
+
+
+def test_decision_identity_survives_nonsemantic_statement_change(tmp_path):
+    """Whitespace/case drift in the statement must not change identity."""
+    from paper_factory.reviews.decisions import record_decision
+    from paper_factory.reviews.framework import ReviewReport, load_reviews, save_review
+    from paper_factory.core.results import Disposition
+    reviews = tmp_path / "reviews"
+    f1 = _mk_weak_finding("claim C1 lacks any T0/T1 evidence")
+    save_review(reviews, ReviewReport(review_id="P23-methods", reviewer="m",
+                                      findings=[f1]))
+    record_decision(reviews, f1, disposition=Disposition.AUTHOR_DECISION,
+                    reason="ok", decided_by="author")
+    f2 = _mk_weak_finding("  Claim   C1 LACKS any T0/T1   evidence\n", finding_id="F2")
+    save_review(reviews, ReviewReport(review_id="P23-methods", reviewer="m",
+                                      findings=[f2]))
+    out, _ = load_reviews(reviews)
+    assert out[0].findings[0].disposition == Disposition.AUTHOR_DECISION
+
+
+def test_ambiguous_legacy_decision_key_never_applies(tmp_path):
+    """A pre-hardening decision whose legacy key now matches TWO distinct
+    findings is surfaced as DECISION_KEY_AMBIGUOUS and applied to NEITHER."""
+    import json as _j
+    from paper_factory.reviews.framework import ReviewReport, load_reviews, save_review
+    reviews = tmp_path / "reviews"
+    fa = _mk_weak_finding("claim C1 lacks any T0/T1 evidence", finding_id="A")
+    fb = _mk_weak_finding("claim C1 overstates the effect size", finding_id="B")
+    save_review(reviews, ReviewReport(review_id="P23-methods", reviewer="m",
+                                      findings=[fa, fb]))
+    legacy_line = _j.dumps({
+        "at": "2026-10-01T00:00:00Z", "dedupe_key": _legacy_key_json(fa),
+        "disposition": "AUTHOR_DECISION", "reason": "old decision",
+        "decided_by": "author"}) + "\n"
+    (reviews / "decisions.jsonl").write_text(legacy_line, encoding="utf-8")
+    out, invalid = load_reviews(reviews)
+    assert any("DECISION_KEY_AMBIGUOUS" in i["kind"] for i in invalid)
+    for r in out:
+        for f in r.findings:
+            assert f.disposition is None  # fail-closed: no inheritance
+
+
+def test_unambiguous_legacy_decision_rebinds_and_migrates(tmp_path):
+    """A legacy key matching exactly ONE current issue is applied and the
+    migration is persisted append-only (future runs bind the new key)."""
+    import json as _j
+    from paper_factory.reviews.framework import ReviewReport, load_reviews, save_review
+    from paper_factory.core.results import Disposition
+    reviews = tmp_path / "reviews"
+    fa = _mk_weak_finding("claim C1 lacks any T0/T1 evidence", finding_id="A")
+    save_review(reviews, ReviewReport(review_id="P23-methods", reviewer="m",
+                                      findings=[fa]))
+    (reviews / "decisions.jsonl").write_text(_j.dumps({
+        "at": "2026-10-01T00:00:00Z", "dedupe_key": _legacy_key_json(fa),
+        "disposition": "AUTHOR_DECISION", "reason": "sealed", "decided_by": "author",
+        "evidence": {"sha256": "abc"},
+        "statement_head": fa.statement[:120]}) + "\n", encoding="utf-8")
+    out, invalid = load_reviews(reviews)
+    assert not [i for i in invalid if "AMBIGUOUS" in i["kind"]]
+    assert out[0].findings[0].disposition == Disposition.AUTHOR_DECISION
+    lines = [_j.loads(ln) for ln in
+             (reviews / "decisions.jsonl").read_text().splitlines() if ln.strip()]
+    assert len(lines) == 2  # original + migration receipt, nothing rewritten
+    assert lines[1].get("migrated_from_legacy_key") == lines[0]["dedupe_key"]
+    # second load binds the new key directly (no double migration)
+    out2, _ = load_reviews(reviews)
+    assert out2[0].findings[0].disposition == Disposition.AUTHOR_DECISION
+    lines2 = (reviews / "decisions.jsonl").read_text().splitlines()
+    assert len(lines2) == 2
+
+
+# --- reviewer A R4 (release audit): C-1 / M-1 / M-2 -------------------------
+
+def _new_key_json(f):
+    import json as _j
+    from paper_factory.reviews.framework import dedupe_key
+    return _j.dumps(dedupe_key(f), default=str, sort_keys=True)
+
+
+def test_migration_receipt_never_shadows_a_newer_human_decision(tmp_path):
+    """C-1 (CRITICAL): legacy RESOLVED migrates → receipt appended; a human
+    then re-opens with DEFERRED under the new key. The receipt must NOT
+    shadow the human decision on later runs, and no further receipts may
+    accumulate."""
+    import json as _j
+    from paper_factory.reviews.framework import ReviewReport, load_reviews, save_review
+    from paper_factory.core.results import Disposition
+    reviews = tmp_path / "reviews"
+    fa = _mk_weak_finding("claim C1 lacks any T0/T1 evidence", finding_id="A")
+    save_review(reviews, ReviewReport(review_id="P23-methods", reviewer="m",
+                                      findings=[fa]))
+    (reviews / "decisions.jsonl").write_text(_j.dumps({
+        "at": "2026-10-01T00:00:00Z", "dedupe_key": _legacy_key_json(fa),
+        "disposition": "AUTHOR_DECISION", "reason": "sealed", "decided_by": "author",
+        "statement_head": fa.statement[:120]}) + "\n", encoding="utf-8")
+    out, _ = load_reviews(reviews)  # run 1: migrates
+    assert out[0].findings[0].disposition == Disposition.AUTHOR_DECISION
+    assert len((reviews / "decisions.jsonl").read_text().splitlines()) == 2
+    # run 2: the human re-opens the issue under the CURRENT schema
+    with (reviews / "decisions.jsonl").open("a", encoding="utf-8") as fh:
+        fh.write(_j.dumps({
+            "at": "2026-10-02T00:00:00Z", "dedupe_key": _new_key_json(fa),
+            "disposition": "DEFERRED", "reason": "needs new experiment",
+            "decided_by": "author"}) + "\n")
+    out, _ = load_reviews(reviews)
+    assert out[0].findings[0].disposition == Disposition.DEFERRED
+    n_lines = len((reviews / "decisions.jsonl").read_text().splitlines())
+    assert n_lines == 3  # no receipt growth (M-2)
+    # run 3+: the human decision stays on top — permanently
+    out, _ = load_reviews(reviews)
+    assert out[0].findings[0].disposition == Disposition.DEFERRED
+    assert len((reviews / "decisions.jsonl").read_text().splitlines()) == 3
+
+
+def test_legacy_migration_requires_statement_head_match(tmp_path):
+    """M-1 (MAJOR): a legacy key matching exactly one current finding must
+    still verify the ORIGINAL issue via statement_head — otherwise a fixed
+    issue's decision could be inherited by a NEW issue on the same claim."""
+    import json as _j
+    from paper_factory.reviews.framework import ReviewReport, load_reviews, save_review
+    reviews = tmp_path / "reviews"
+    fa = _mk_weak_finding("claim C1 misreads the ablation table", finding_id="A")
+    save_review(reviews, ReviewReport(review_id="P23-methods", reviewer="m",
+                                      findings=[fa]))
+    (reviews / "decisions.jsonl").write_text(_j.dumps({
+        "at": "2026-10-01T00:00:00Z", "dedupe_key": _legacy_key_json(fa),
+        "disposition": "AUTHOR_DECISION", "reason": "old", "decided_by": "author",
+        "statement_head": "claim C1 lacks any T0/T1 evidence"}) + "\n",
+        encoding="utf-8")  # decided on a DIFFERENT issue, same legacy key
+    out, invalid = load_reviews(reviews)
+    assert out[0].findings[0].disposition is None
+    assert any("DECISION_KEY_AMBIGUOUS" in i["kind"] for i in invalid)
+    # and nothing was migrated
+    assert len((reviews / "decisions.jsonl").read_text().splitlines()) == 1
+
+
+def test_legacy_entry_without_statement_head_is_unverifiable(tmp_path):
+    """M-1 fail-closed: a legacy decision that carries no statement_head at
+    all cannot prove it belongs to the candidate — never auto-migrate."""
+    import json as _j
+    from paper_factory.reviews.framework import ReviewReport, load_reviews, save_review
+    reviews = tmp_path / "reviews"
+    fa = _mk_weak_finding("claim C1 lacks any T0/T1 evidence", finding_id="A")
+    save_review(reviews, ReviewReport(review_id="P23-methods", reviewer="m",
+                                      findings=[fa]))
+    (reviews / "decisions.jsonl").write_text(_j.dumps({
+        "at": "2026-09-30T00:00:00Z", "dedupe_key": _legacy_key_json(fa),
+        "disposition": "AUTHOR_DECISION", "reason": "old", "decided_by": "author"})
+        + "\n", encoding="utf-8")
+    out, invalid = load_reviews(reviews)
+    assert out[0].findings[0].disposition is None
+    assert any("DECISION_KEY_AMBIGUOUS" in i["kind"] for i in invalid)
+
+
+# --- reviewer B R5 (release audit): R-B2 / R-B3 / R-B4 ----------------------
+
+def test_u9_rejects_newer_outbox_render_superseding_bound_docx(tmp_path, monkeypatch):
+    """R-B2a: P31 PASS, then a NEWER paper-*.docx appears out-of-band — the
+    bound evidence is stale even though the named DOCX itself is unchanged."""
+    ctx, real_sha = _word_auto_ctx(tmp_path, monkeypatch)
+    _external_inbox(ctx, staged_sha=real_sha)
+    assert run_paperpal(ctx).verdict == Verdict.PASS
+    _, states = _closure_states(ctx)
+    assert states["U9"] == "PASS"
+    # a later render lands in the outbox (name carries the timestamp)
+    (ctx.workspace.paperpal_outbox / "paper-20261003T000000000000Z.docx").write_bytes(b"v2")
+    _, states = _closure_states(ctx)
+    assert states["U9"] == "HUMAN_REQUIRED", states
+
+
+def test_u9_rejects_source_drift_after_paperpal_run(tmp_path, monkeypatch):
+    """R-B2b: the manuscript source changes after the Paperpal run — the
+    check was performed on a derived artifact that no longer corresponds."""
+    ctx, real_sha = _word_auto_ctx(tmp_path, monkeypatch)
+    _external_inbox(ctx, staged_sha=real_sha)
+    assert run_paperpal(ctx).verdict == Verdict.PASS
+    _, states = _closure_states(ctx)
+    assert states["U9"] == "PASS"
+    (tmp_path / "draft" / "paper.md").write_text("# CHANGED draft\n",
+                                                 encoding="utf-8")
+    _, states = _closure_states(ctx)
+    assert states["U9"] == "HUMAN_REQUIRED", states
+
+
+def test_u9_rejects_docx_path_escape(tmp_path, monkeypatch):
+    """R-B3: a hand-written state must not make closure hash files outside
+    the outbox perimeter."""
+    ctx, real_sha = _word_auto_ctx(tmp_path, monkeypatch)
+    _external_inbox(ctx, staged_sha=real_sha)
+    assert run_paperpal(ctx).verdict == Verdict.PASS
+    state_p = ctx.workspace.reports_dir / "paperpal_state.json"
+    data = json.loads(state_p.read_text())
+    data["docx_outbox"] = "../../etc-passwd-disguised.docx"
+    state_p.write_text(json.dumps(data), encoding="utf-8")
+    _, states = _closure_states(ctx)
+    assert states["U9"] == "HUMAN_REQUIRED", states
+
+
+def test_u9_rejects_partial_docx_binding(tmp_path, monkeypatch):
+    """R-B4: a state claiming exact binding without a revalidatable DOCX
+    identity (sha but no name) must not PASS."""
+    ctx, real_sha = _word_auto_ctx(tmp_path, monkeypatch)
+    _external_inbox(ctx, staged_sha=real_sha)
+    assert run_paperpal(ctx).verdict == Verdict.PASS
+    state_p = ctx.workspace.reports_dir / "paperpal_state.json"
+    data = json.loads(state_p.read_text())
+    del data["docx_outbox"]  # keep sha + binding=exact, drop the name
+    state_p.write_text(json.dumps(data), encoding="utf-8")
+    _, states = _closure_states(ctx)
+    assert states["U9"] == "HUMAN_REQUIRED", states
+
+
+def test_legacy_migration_truncated_statement_head_is_unverifiable(tmp_path):
+    """A R4 T-1: two issues share the first 120 statement chars and diverge
+    after; a legacy entry carrying only the truncated head must NOT migrate."""
+    import json as _j
+    from paper_factory.reviews.framework import ReviewReport, load_reviews, save_review
+    reviews = tmp_path / "reviews"
+    prefix = "claim C1 number binding failed for metric " + "x" * 90 + " :: "
+    fa = _mk_weak_finding(prefix + "issue A: value outside CI", finding_id="A")
+    save_review(reviews, ReviewReport(review_id="P23-methods", reviewer="m",
+                                      findings=[fa]))
+    assert len(fa.statement) > 120  # the stored head IS truncated
+    (reviews / "decisions.jsonl").write_text(_j.dumps({
+        "at": "2026-10-01T00:00:00Z", "dedupe_key": _legacy_key_json(fa),
+        "disposition": "AUTHOR_DECISION", "reason": "old", "decided_by": "author",
+        "statement_head": fa.statement[:120]}) + "\n", encoding="utf-8")
+    out, invalid = load_reviews(reviews)
+    assert out[0].findings[0].disposition is None
+    assert any("DECISION_KEY_AMBIGUOUS" in i["kind"] for i in invalid)
+
+
+def test_legacy_migration_with_full_statement_hash_binds(tmp_path):
+    """T-1 counterpart: a legacy entry carrying the full statement_hash
+    binds exactly the original issue, even beyond 120 chars."""
+    import json as _j
+    from paper_factory.reviews.framework import ReviewReport, load_reviews, save_review
+    from paper_factory.reviews.framework import _stmt_hash
+    from paper_factory.core.results import Disposition
+    reviews = tmp_path / "reviews"
+    prefix = "claim C1 number binding failed for metric " + "x" * 90 + " :: "
+    fa = _mk_weak_finding(prefix + "issue A: value outside CI", finding_id="A")
+    save_review(reviews, ReviewReport(review_id="P23-methods", reviewer="m",
+                                      findings=[fa]))
+    (reviews / "decisions.jsonl").write_text(_j.dumps({
+        "at": "2026-10-01T00:00:00Z", "dedupe_key": _legacy_key_json(fa),
+        "disposition": "AUTHOR_DECISION", "reason": "sealed", "decided_by": "author",
+        "statement_head": fa.statement[:120],
+        "statement_hash": _stmt_hash(fa.statement)}) + "\n", encoding="utf-8")
+    out, invalid = load_reviews(reviews)
+    assert out[0].findings[0].disposition == Disposition.AUTHOR_DECISION
+    assert not [i for i in invalid if "AMBIGUOUS" in i["kind"]]
+
+
+def test_p31_word_auto_converges_after_delivery(tmp_path, monkeypatch):
+    """R3-B1 (CRITICAL, functional): unconditional re-rendering made the
+    binding unachievable (each run produced a NEW versioned DOCX, instantly
+    staling the evidence an operator had just delivered). With an unchanged
+    source the newest DOCX must be REUSED, so: run 1 = HUMAN_REQUIRED,
+    operator delivers, run 2 = PASS, and no second render happened."""
+    import hashlib
+
+    import paper_factory.paperpal.docx_outbox as dx
+    ctx = _ctx(tmp_path)
+    ctx.config.paperpal.mode = "word_auto"
+    _write_manuscript(ctx, {})
+    draft = tmp_path / "draft"
+    draft.mkdir(parents=True, exist_ok=True)
+    (draft / "paper.md").write_text("# draft v1\n", encoding="utf-8")
+    builds: list[str] = []
+
+    def fake_build(ws, run_id):
+        n = len(builds)
+        name = f"paper-20261002T{n:012d}Z.docx"
+        docx = ws.paperpal_outbox / name
+        ws.paperpal_outbox.mkdir(parents=True, exist_ok=True)
+        docx.write_bytes(f"docx-bytes-{n}".encode())
+        sha = hashlib.sha256(docx.read_bytes()).hexdigest()
+        ssha = hashlib.sha256((draft / "paper.md").read_bytes()).hexdigest()
+        (ws.paperpal_outbox / f"{name}.provenance.json").write_text(json.dumps({
+            "source": {"path": str(draft / "paper.md"), "sha256": ssha,
+                       "kind": "markdown"},
+            "docx": {"path": str(docx), "name": name, "sha256": sha,
+                     "bytes": docx.stat().st_size}}), encoding="utf-8")
+        builds.append(name)
+        ws.event(run_id, "paperpal_docx_rendered", node_id="P31",
+                 payload={"name": name, "docx_sha256": sha,
+                          "source_sha256": ssha})
+        return {"source": {"sha256": ssha},
+                "docx": {"name": name, "sha256": sha}}
+
+    monkeypatch.setattr(dx, "build_docx_outbox", fake_build)
+    # run 1: fresh render, no evidence yet
+    o1 = run_paperpal(ctx)
+    assert o1.verdict == Verdict.HUMAN_REQUIRED
+    st1 = json.loads((ctx.workspace.reports_dir / "paperpal_state.json").read_text())
+    assert st1["artifact_binding"] == "unbound" or st1["artifact_binding"] is None
+    # operator runs Paperpal on exactly that DOCX and delivers
+    _external_inbox(ctx, staged_sha=st1["docx_outbox_sha256"])
+    # run 2: source unchanged -> REUSE, no new render, binding exact -> PASS
+    o2 = run_paperpal(ctx)
+    st2 = json.loads((ctx.workspace.reports_dir / "paperpal_state.json").read_text())
+    assert o2.verdict == Verdict.PASS, o2.detail
+    assert st2["artifact_binding"] == "exact"
+    assert st2["docx_reused"] is True
+    assert len(builds) == 1, builds  # the livelock is broken
+    _, states = _closure_states(ctx)
+    assert states["U9"] == "PASS", states

@@ -49,18 +49,48 @@ P30 outbox/main.tex
 (4) Speichern als NEUE Datei paperpal/inbox/paper-paperpal.docx
     (Outbox wird nie überschrieben; Word wird sauber geschlossen)
       ▼
-(5) inbox docx → pandoc → Text; SHA-256 beider Artefakte;
-    Sidecar <name>.provenance.json:
-      {"source": "paperpal", "method": "word-addin-computer-use",
-       "captured_at": ..., "screenshots": [...], "sha256": ...}
+(5) Inbox-Auslieferung NUR über den Production-Writer
+    (`run_paperpal_word.py deliver <report> <staged.docx>` →
+    `WordPaperpalAdapter.deliver`): der Sidecar `<name>.provenance.json`
+    wird dabei mit `docx_sha256_staged` = SHA-256 des EXAKT gestageden
+    DOCX geschrieben — der Wert wird aus dem Artefakt gerechnet, nie
+    handgesetzt:
+      {"source": "paperpal", "docx_sha256_staged": ..., "staged_docx": ...,
+       "delivered_at": ..., "delivered_by": "WordPaperpalAdapter/v1"}
       ▼
-P31 PASS (echte externe Prüfung) → P32 Semantic Diff → P33+ entblockt
+P31 PASS (echte externe Prüfung, exact-artifact-gebunden) → P32 Semantic
+Diff → P33+ entblockt
 ```
 
 Der bestehende Semantik-Vertrag bleibt unangetastet: nur ein Artefakt mit
 `"source": "paperpal"`-Provenienz zählt als Paperpal-Ergebnis; ein interner
 Operator-Check bleibt DEGRADED. Die Semantic-Diff-Prüfung (P32/U16) arbeitet
 auf demselben Inbox-Pfad wie bei der manuellen Bridge.
+
+### Exact-Artifact-Bindung (Release-Audit 2026-10-02)
+
+Im `word_auto`-Modus muss die Inbox-Evidenz per `docx_sha256_staged` an das
+AKTUELL gestagede DOCX gebunden sein (`artifact_binding: exact`), sonst
+P31/U9/U16 = HUMAN_REQUIRED (stale | unbound | unverifiable). U9/U16
+revalidieren die Kette on disk neu (DOCX-Hash + Sidecar-Bindung), statt dem
+State-File zu trauen.
+
+**Threat-Model-Ehrlichkeit (Reviewer B B2):** die Bindung ist ein
+Konsistenz-Nachweis, kein Authentizitätsbeweis — Inbox und Sidecar liegen im
+selben beschreibbaren Trust-Domain. Wer bewusst fälschen will, kann den Hash
+aus `paperpal_state.json` kopieren. Die Bindung schützt gegen *veraltete*
+Evidenz (der reale Pilot-3-Fall), nicht gegen *fabrizierte*. Zwei Anker
+erhöhen den Aufwand: (1) der Production-Writer `deliver()` rechnet
+`docx_sha256_staged` aus dem Artefakt; (2) jeder echte Render schreibt ein
+append-only Event `paperpal_docx_rendered` in den Workspace-Ledger
+(`runs.sqlite`), und der Reuse-Pfad verlangt das exakte Tripel
+(name, docx_sha256, source_sha256) daraus — ein getauschtes DOCX mit
+handaktualisiertem Sidecar (Reviewer B R4 N-B2) wird nicht als Render
+anerkannt. Der Ledger liegt in derselben Trust-Domain; er macht Tausch
+tamper-evident, nicht unmöglich. Die Deliver-Receipts
+(`transitions.jsonl`, Screenshots) sind beratend und werden von P31/U9/U16
+**nicht maschinell geprüft**. Ein kryptographisch externer Anker ist bewusst
+v1.1+.
 
 ## Ehrlichkeits- und Fehlerregeln
 

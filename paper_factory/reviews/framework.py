@@ -90,29 +90,56 @@ def _canon(v: Any) -> Any:
     return v
 
 
-def dedupe_key(f: Finding) -> tuple:
-    """Canonical identity of the UNDERLYING ISSUE (GAP-010): finding type +
-    claim/evidence identity + scientific surface — never the prose string.
-    The same integrity finding folded into P23/P24/P25 shares one key;
-    reviewer roles/provenance are preserved on the Finding objects. Fully
-    unbound findings fall back to a statement hash so distinct issues never
-    collapse (reviewer A D4)."""
+def _stmt_hash(statement: str) -> str:
+    import hashlib
+
+    norm = " ".join(statement.lower().split())
+    return "stmt:" + hashlib.sha256(norm.encode()).hexdigest()[:16]
+
+
+def _identity_parts(f: Finding) -> tuple:
     d = f.details or {}
     span = d.get("span")
-    identity = (
+    return (
         _canon(d.get("value")) if d.get("value") is not None else None,
         d.get("doi") or d.get("key"),
         tuple(sorted(f.claim_refs)),
         tuple(span) if isinstance(span, list) else None,
         tuple(sorted(str(b) for b in (d.get("bound_metrics") or []))),
     )
-    if not any(identity):
-        import hashlib
 
-        norm = " ".join(f.statement.lower().split())
-        identity = ("stmt:" + hashlib.sha256(norm.encode()).hexdigest()[:16],)
+
+def dedupe_key(f: Finding) -> tuple:
+    """Canonical identity of the UNDERLYING ISSUE (GAP-010): finding type +
+    claim/evidence identity + scientific surface — never the raw prose string.
+    The same integrity finding folded into P23/P24/P25 shares one key;
+    reviewer roles/provenance are preserved on the Finding objects.
+
+    Weak-identity hardening (post-pilot-01 release audit, DEFERRED A R3-2):
+    claim_refs alone do NOT identify an issue — two different findings about
+    the same claim (e.g. an unsupported-claim flag and a number-mismatch flag
+    with no value binding) would collide, and a durable AUTHOR_DECISION for
+    one would silently close the other (false-close). When no strong binding
+    (value / doi|key / span / bound_metrics) exists, the normalized statement
+    hash discriminates. Statements of audit-generated findings are
+    deterministic, so re-runs rebind stably."""
+    identity = _identity_parts(f)
+    strong = identity[0] is not None or identity[1] or identity[3] or identity[4]
+    if not strong:
+        identity = identity + (_stmt_hash(f.statement),)
     return (f.kind or f.category,
-            f.affected_section or d.get("draft"),
+            f.affected_section or (f.details or {}).get("draft"),
+            identity)
+
+
+def legacy_dedupe_key(f: Finding) -> tuple:
+    """Pre-hardening identity schema — ONLY for migrating decisions recorded
+    before the weak-identity fix. Never use for new decisions."""
+    identity = _identity_parts(f)
+    if not any(identity):
+        identity = (_stmt_hash(f.statement),)
+    return (f.kind or f.category,
+            f.affected_section or (f.details or {}).get("draft"),
             identity)
 
 

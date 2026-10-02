@@ -39,6 +39,61 @@ Paper Factory has no usable Paperpal API integration on this machine.
 _SOURCE_HEADER = re.compile(r"(?im)^\s*source\s*:\s*([a-z0-9_-]+)\s*$")
 
 
+def _norm_sha(v: Any) -> str | None:
+    """Normalize a sha256 for comparison (case/whitespace-tolerant; reviewer
+    B5). Non-strings are coerced; a missing value stays None."""
+    if v is None:
+        return None
+    return str(v).strip().lower()
+
+
+def _bound_staged_sha(item: Path) -> str | None:
+    """The staged-DOCX sha256 an inbox item is bound to (provenance sidecar),
+    or None when the item carries no exact-artifact binding."""
+    sidecar = item.with_name(item.name + ".provenance.json")
+    if not sidecar.exists():
+        return None
+    try:
+        v = json.loads(sidecar.read_text(encoding="utf-8")).get("docx_sha256_staged")
+    except (json.JSONDecodeError, OSError):
+        return None
+    return _norm_sha(v)
+
+
+def _check_artifact_binding(inbox_items: list[Path], item_classes: dict[str, str],
+                            current_docx_sha: str | None
+                            ) -> tuple[str | None, dict[str, str]]:
+    """Exact-artifact binding (post-pilot-01 audit): external Paperpal evidence
+    must bind to the CURRENT staged DOCX. `content was identical` is not
+    evidence — only the hash chain manuscript→docx→staged→inbox counts.
+
+    Returns (aggregate, per_item): aggregate is None when there is nothing to
+    bind (no external evidence), else exact | stale | unbound | unverifiable;
+    per_item keeps each external item's binding visible (reviewer B4: an
+    exact+stale mix must not hide the stale item)."""
+    external = [p for p in inbox_items
+                if item_classes.get(p.name) == "external_paperpal_declared"]
+    if not external:
+        return None, {}
+    current = _norm_sha(current_docx_sha)
+    if not current:
+        # renderer failed: the current artifact does not exist, so NO inbox
+        # evidence can be verified against it (reviewer B R3-F5)
+        return "unverifiable", {p.name: "unverifiable" for p in external}
+    per_item: dict[str, str] = {}
+    for p in external:
+        sha = _bound_staged_sha(p)
+        per_item[p.name] = ("exact" if sha == current
+                            else ("stale" if sha else "unbound"))
+    if any(v == "exact" for v in per_item.values()):
+        aggregate = "exact"
+    elif any(v == "stale" for v in per_item.values()):
+        aggregate = "stale"  # bound to an older render
+    else:
+        aggregate = "unbound"  # e.g. header-declared text without a sidecar sha
+    return aggregate, per_item
+
+
 def _classify_inbox_item(path: Path) -> str:
     """Fail-closed provenance: undeclared items are operator checks, never
     external Paperpal evidence. An external claim must be explicit."""
@@ -86,7 +141,8 @@ def run_paperpal(ctx: NodeContext) -> NodeOutcome:
     evidence_class = ("external_paperpal_declared"
                       if any(c == "external_paperpal_declared" for c in item_classes.values())
                       else ("operator_check" if item_classes else "none"))
-    state: dict[str, Any] = {"checked_at": utcnow(), "outbox": out_candidate.name,
+    state: dict[str, Any] = {"checked_at": utcnow(), "run_id": ctx.run_id,
+                             "outbox": out_candidate.name,
                              "inbox_items": [p.name for p in inbox_items],
                              "item_classes": item_classes,
                              "item_sha256": {p.name: sha256_file(p) for p in inbox_items},
@@ -95,22 +151,37 @@ def run_paperpal(ctx: NodeContext) -> NodeOutcome:
         # versioned DOCX outbox (figures/tables/arxiv-style) + adapter
         # receipts; the Word session itself is driven by the orchestrating
         # agent through scripts/run_paperpal_word.py — P31 PASSes only when
-        # real Paperpal-declared inbox evidence exists (bridge unchanged).
-        # NOTE (reviewer B R3-F5): with a broken renderer the state records
-        # docx_outbox_error and NO docx_outbox — a PASS then still requires
-        # external inbox evidence (which is bound to ITS staged DOCX via
-        # sidecar sha256); a fresh build failure never fabricates evidence.
-        from .docx_outbox import build_docx_outbox
+        # real Paperpal-declared inbox evidence exists AND that evidence binds
+        # to the CURRENT staged DOCX (exact-artifact binding, post-pilot-01
+        # audit): evidence produced against an older render is stale, never
+        # PASS. The render is SKIPPED when the newest versioned DOCX still
+        # binds the unchanged source (reviewer B R3-B1: unconditional
+        # re-rendering made convergence impossible).
+        from .docx_outbox import reuse_or_build_docx_outbox
         try:
-            prov = build_docx_outbox(ctx.workspace, ctx.run_id)
+            prov = reuse_or_build_docx_outbox(ctx.workspace, ctx.run_id)
             if prov:
                 state["docx_outbox"] = prov["docx"]["name"]
                 state["docx_outbox_sha256"] = prov["docx"]["sha256"]
                 state["docx_outbox_source_sha256"] = prov["source"]["sha256"]
+                state["docx_reused"] = bool(prov.get("reused"))
         except Exception as e:  # a broken renderer must degrade, not crash P31
             state["docx_outbox_error"] = str(e)
+        binding, per_item = _check_artifact_binding(
+            inbox_items, item_classes, state.get("docx_outbox_sha256"))
+        state["artifact_binding"] = binding
+        state["artifact_binding_items"] = per_item
     write_json(ctx.workspace.reports_dir / "paperpal_state.json", state)
     if evidence_class == "external_paperpal_declared":
+        binding = state.get("artifact_binding")
+        if mode == "word_auto" and binding != "exact":
+            return NodeOutcome(Verdict.HUMAN_REQUIRED,
+                               {"bridge": "word_auto",
+                                "evidence_class": evidence_class,
+                                "artifact_binding": binding,
+                                "reason": ("inbox Paperpal evidence is not bound to the "
+                                           "current staged DOCX (binding=%s) — re-run "
+                                           "Paperpal on the current outbox DOCX" % binding)})
         return NodeOutcome(Verdict.PASS, {"bridge": "manual",
                                           "evidence_class": evidence_class,
                                           "inbox_items": len(inbox_items),
