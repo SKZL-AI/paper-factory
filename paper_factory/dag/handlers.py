@@ -107,8 +107,7 @@ _BASE_HANDLERS: dict[str, Handler] = {
     "P33": _lazy("paper_factory.release.export", "run_clean_export"),
     "P34": _lazy("paper_factory.release.export", "run_clean_rebuild"),
     "P35": _lazy("paper_factory.release.closure", "run_global_closure"),
-    "P36": lambda ctx, node: NodeOutcome(Verdict.HUMAN_REQUIRED,
-                                         {"reason": "final sign-off is a human decision"}),
+    "P36": _lazy("paper_factory.release.signoff", "run_human_signoff"),
     "P37": lambda ctx, node: NodeOutcome(Verdict.NOT_RUN,
                                          {"reason": "no external submission is ever automatic"}),
 }

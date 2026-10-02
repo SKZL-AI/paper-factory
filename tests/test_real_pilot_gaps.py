@@ -7602,3 +7602,51 @@ def test_caption_label_dedup(tmp_path):
     assert "\\caption{Operational event model}" in out
     assert "Figure 1: Figure 1" not in out
     assert "\\textbf{Figure 1.}" in out  # draft's own caption stays
+
+
+# --- P36 sign-off handler ---------------------------------------------------
+
+def test_p36_without_receipt_stays_human_required(tmp_path):
+    from paper_factory.release.signoff import run_human_signoff
+    ctx = _ctx(tmp_path)
+    out = run_human_signoff(ctx)
+    assert out.verdict == Verdict.HUMAN_REQUIRED
+
+
+def test_p36_receipt_invalid_conditions_rejected(tmp_path):
+    import json as _j
+    from paper_factory.release.signoff import run_human_signoff
+    ctx = _ctx(tmp_path)
+    ctx.workspace.reports_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.reports_dir / "p36_signoff.json").write_text(_j.dumps({
+        "kind": "P36_HUMAN_FINAL_SIGNOFF",
+        "signoff_source": "explicit_user_authorization",
+        "p35_state": "PASS",
+        "u_states": {"U1": "PASS", "U2": "FAIL"},   # one U failed
+        "p37_authorization": "NICHT autorisiert",
+    }), encoding="utf-8")
+    out = run_human_signoff(ctx)
+    assert out.verdict == Verdict.HUMAN_REQUIRED
+    assert "not all U1" in out.detail["problems"][0]
+
+
+def test_p36_valid_receipt_passes(tmp_path):
+    import json as _j
+    import subprocess
+
+    from paper_factory.release.signoff import run_human_signoff
+    ctx = _ctx(tmp_path)
+    head = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True,
+                          text=True).stdout.strip()
+    ctx.workspace.reports_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.workspace.reports_dir / "p36_signoff.json").write_text(_j.dumps({
+        "kind": "P36_HUMAN_FINAL_SIGNOFF",
+        "signoff_source": "explicit_user_authorization",
+        "p35_state": "PASS",
+        "u_states": {f"U{i}": "PASS" for i in range(1, 17)},
+        "final_head": head,
+        "p37_authorization": "NICHT autorisiert",
+        "timestamp": "t",
+    }), encoding="utf-8")
+    out = run_human_signoff(ctx)
+    assert out.verdict == Verdict.PASS

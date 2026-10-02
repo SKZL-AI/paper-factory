@@ -1,0 +1,53 @@
+{
+ "kind": "P36_HUMAN_FINAL_SIGNOFF",
+ "signoff_source": "explicit_user_authorization",
+ "authorization_text": "User-Auftrag 2026-10-02: P36 darf automatisch PASS werden, wenn alle technischen Bedingungen erfüllt sind (dispositionierte Paperpal-Vorschläge, Schutzgates, keine offenen CRITICAL/MAJOR, P21–P35 sauber, U1–U16 16/16, exakte Hash-Bindung, Reviewer A/B JA).",
+ "timestamp": "2026-10-02T14:33:02.536071+00:00",
+ "final_head": "c178c896f598fd126771f2c3a5bd0c5ec7e436b1",
+ "canonical_manuscript": {
+  "path": "draft/paper1_v1_3_1.md",
+  "sha256": "6e814c820ba72146e0726cc530a3290d5ea3244e57d6c746933979bc4fb35e14",
+  "version": "v1.3.1"
+ },
+ "final_docx": {
+  "name": "paper-20261002T134629750744Z.docx",
+  "sha256": "cb379485c4180cfa1e6b76dae894c9d0f7dc9cd41409f3cbd97da157a1109675"
+ },
+ "final_pdf": {
+  "path": "release/massinv_paper1/build_arxiv/main.pdf",
+  "sha256": "f6f376b8a652166a80af49a97ff3384ba1503b1b118e3e10eb8bd5e6f0f8c958"
+ },
+ "arxiv_package": {
+  "name": "arxiv-massinv_paper1.tar.gz",
+  "sha256": "cb604b7a339ea4214fbb0fcd609b16b6c5f86b908da3b1c22a7da494c76cb1f1"
+ },
+ "p35_state": "PASS",
+ "u_states": {
+  "U1": "PASS",
+  "U2": "PASS",
+  "U3": "PASS",
+  "U4": "PASS",
+  "U5": "PASS",
+  "U6": "PASS",
+  "U7": "PASS",
+  "U8": "PASS",
+  "U9": "PASS",
+  "U10": "PASS",
+  "U11": "PASS",
+  "U12": "PASS",
+  "U13": "PASS",
+  "U14": "PASS",
+  "U15": "PASS",
+  "U16": "PASS"
+ },
+ "reviewer_A": "JA",
+ "reviewer_B": "JA",
+ "paperpal_resolution": {
+  "REJECTED_SCIENTIFIC_RISK": 38,
+  "REJECTED_STYLE_ONLY": 86,
+  "APPLIED_SEMANTICALLY_VERIFIED": 69,
+  "NOT_APPLICABLE": 46,
+  "APPLIED_SAFE": 6
+ },
+ "p37_authorization": "NICHT autorisiert — externe Submission bleibt manuell"
+}
