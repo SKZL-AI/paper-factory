@@ -1,9 +1,9 @@
 {
  "kind": "P36_HUMAN_FINAL_SIGNOFF",
  "signoff_source": "explicit_user_authorization",
- "authorization_text": "User-Auftrag 2026-10-02: P36 darf automatisch PASS werden, wenn alle technischen Bedingungen erfüllt sind (dispositionierte Paperpal-Vorschläge, Schutzgates, keine offenen CRITICAL/MAJOR, P21–P35 sauber, U1–U16 16/16, exakte Hash-Bindung, Reviewer A/B JA).",
- "timestamp": "2026-10-02T14:33:02.536071+00:00",
- "final_head": "c178c896f598fd126771f2c3a5bd0c5ec7e436b1",
+ "authorization_text": "User-Auftrag 2026-10-02: P36 darf automatisch PASS werden, wenn alle technischen Bedingungen erfuellt sind.",
+ "timestamp": "2026-10-02T14:39:31.840592+00:00",
+ "final_head": "ec6967645de0a11636945f4505ffda2742b09bef",
  "canonical_manuscript": {
   "path": "draft/paper1_v1_3_1.md",
   "sha256": "6e814c820ba72146e0726cc530a3290d5ea3244e57d6c746933979bc4fb35e14",

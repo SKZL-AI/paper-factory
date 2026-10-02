@@ -1,0 +1,57 @@
+{
+ "frozen_at": "2026-10-02T14:40:37.272413+00:00",
+ "paper_factory_head": "ec6967645de0a11636945f4505ffda2742b09bef",
+ "run_id": "complete-20261002T143931.928898Z",
+ "canonical_manuscript": {
+  "path": "draft/paper1_v1_3_1.md",
+  "sha256": "6e814c820ba72146e0726cc530a3290d5ea3244e57d6c746933979bc4fb35e14",
+  "version": "v1.3.1"
+ },
+ "paperpal_docx": {
+  "path": "paper-20261002T134629750744Z.docx",
+  "sha256": "cb379485c4180cfa1e6b76dae894c9d0f7dc9cd41409f3cbd97da157a1109675"
+ },
+ "paperpal_binding": "exact",
+ "final_pdf": {
+  "path": "release/massinv_paper1/build_arxiv/main.pdf",
+  "sha256": "e1431bf09fdef9d1fe5f0eebe599bc4830672d4b1cef49a26f16c2afa22ab80a"
+ },
+ "arxiv_tarball": {
+  "path": "arxiv-massinv_paper1.tar.gz",
+  "sha256": "ab1225c75155a6200dd9661d67e6266ec99f5f6fdcc9bbbd530e262b98f44c5a"
+ },
+ "closure": {
+  "U1": "PASS",
+  "U2": "PASS",
+  "U3": "PASS",
+  "U4": "PASS",
+  "U5": "PASS",
+  "U6": "PASS",
+  "U7": "PASS",
+  "U8": "PASS",
+  "U9": "PASS",
+  "U10": "PASS",
+  "U11": "PASS",
+  "U12": "PASS",
+  "U13": "PASS",
+  "U14": "PASS",
+  "U15": "PASS",
+  "U16": "PASS"
+ },
+ "pipeline_summary": {
+  "pass": 33,
+  "degraded": 4,
+  "fail": 0,
+  "human_required": 0,
+  "not_run": 1,
+  "skipped": 0
+ },
+ "paperpal_dispositions": {
+  "REJECTED_SCIENTIFIC_RISK": 38,
+  "REJECTED_STYLE_ONLY": 86,
+  "APPLIED_SEMANTICALLY_VERIFIED": 69,
+  "NOT_APPLICABLE": 46,
+  "APPLIED_SAFE": 6
+ },
+ "p37": "NOT EXECUTED — never automatic"
+}
