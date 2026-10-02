@@ -56,7 +56,10 @@ def _word_report_content_valid(item: Path) -> bool:
         return True  # not a word-session report shape — provenance decides
     if not checks:
         return False
-    return any(isinstance(c, dict) and "error" not in c for c in checks.values())
+    ok = [c for c in checks.values()
+          if (isinstance(c, dict) and "error" not in c)
+          or (isinstance(c, str) and c.strip())]
+    return bool(ok)
 
 
 def _norm_sha(v: Any) -> str | None:
@@ -92,7 +95,11 @@ def _check_artifact_binding(inbox_items: list[Path], item_classes: dict[str, str
     per_item keeps each external item's binding visible (reviewer B4: an
     exact+stale mix must not hide the stale item)."""
     external = [p for p in inbox_items
-                if item_classes.get(p.name) == "external_paperpal_declared"]
+                if item_classes.get(p.name) in ("external_paperpal_declared",
+                                                # hollow reports keep their
+                                                # binding visible (they claim
+                                                # paperpal provenance)
+                                                "invalid_hollow_report")]
     if not external:
         return None, {}
     current = _norm_sha(current_docx_sha)
