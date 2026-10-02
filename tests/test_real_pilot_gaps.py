@@ -7531,3 +7531,74 @@ def test_p31_valid_word_report_passes_content_gate(tmp_path, monkeypatch):
     state = json.loads((ctx.workspace.reports_dir / "paperpal_state.json").read_text())
     assert state["evidence_class"] == "external_paperpal_declared"
     assert outcome.verdict == Verdict.PASS, outcome.detail
+
+
+# --- Paperpal suggestion disposition machinery (Phase 1, 2026-10-02) --------
+
+def test_suggestion_id_stable_and_distinct(tmp_path):
+    from paper_factory.paperpal.suggestions import suggestion_id
+    a = suggestion_id("Grammar", "A parameter may be stored.", "execute", "be executed")
+    b = suggestion_id("Grammar", "A parameter may be stored.", "execute", "be executed")
+    c = suggestion_id("Grammar", "Other sentence.", "execute", "be executed")
+    assert a == b and a != c
+
+
+def test_invariance_gate_blocks_numbers_and_citations(tmp_path):
+    from paper_factory.paperpal.suggestions import auto_safe_ok
+    ok, rep = auto_safe_ok("75.17% of coordinates", "75.18% of coordinates")
+    assert not ok and rep["numbers_changed"]
+    ok, rep = auto_safe_ok("as shown before [4,5].", "as shown earlier [4,5].")
+    assert ok
+    ok, rep = auto_safe_ok("see [4,5] for detail.", "see [4,6] for detail.")
+    assert not ok and rep["citations_changed"]
+
+
+def test_apply_to_markdown_exact_and_failclosed(tmp_path):
+    import pytest
+
+    from paper_factory.paperpal.suggestions import apply_to_markdown
+    text = "First sentence. A parameter may be stored yet never execute. Last."
+    new, rec = apply_to_markdown(
+        text, "A parameter may be stored yet never execute.",
+        "never execute", "never be executed")
+    assert "never be executed" in new
+    assert text[rec["span"][0]:rec["span"][1]] == "never execute"
+    # ambiguity refuses
+    with pytest.raises(ValueError):
+        apply_to_markdown("dup dup", "dup", "dup", "x")
+    with pytest.raises(ValueError):
+        apply_to_markdown(text, "not present context", "never execute", "x")
+
+
+def test_disposition_log_append_only_and_validated(tmp_path):
+    import pytest
+
+    from paper_factory.paperpal.suggestions import (append_disposition,
+                                                    load_dispositions)
+    p = tmp_path / "suggestions.jsonl"
+    with pytest.raises(ValueError):
+        append_disposition(p, {"suggestion_id": "ps-1", "disposition": "MAYBE",
+                               "rationale": "x"})
+    append_disposition(p, {"suggestion_id": "ps-1",
+                           "disposition": "REJECTED_STYLE_ONLY",
+                           "rationale": "style only"})
+    append_disposition(p, {"suggestion_id": "ps-1",
+                           "disposition": "APPLIED_SAFE",
+                           "rationale": "mechanical, gates passed"})
+    latest = load_dispositions(p)
+    assert latest["ps-1"]["disposition"] == "APPLIED_SAFE"
+    assert len(p.read_text().splitlines()) == 2  # history preserved
+
+
+def test_caption_label_dedup(tmp_path):
+    """Phase 8 QA: no 'Figure 1: Figure 1:' — the alt-derived caption loses
+    its embedded label, the draft's extended caption paragraph survives."""
+    import re as _re
+    tex = ("\\begin{figure}\n\\centering\n\\includegraphics{x.pdf}\n"
+           "\\caption{Figure 1: Operational event model}\n\\end{figure}\n\n"
+           "\\textbf{Figure 1.} Operational participation events …\n")
+    out = _re.sub(r"\\caption\{(?:Figure|Fig\.?|Table)\s*\d+\s*[:.]\s*",
+                  r"\\caption{", tex)
+    assert "\\caption{Operational event model}" in out
+    assert "Figure 1: Figure 1" not in out
+    assert "\\textbf{Figure 1.}" in out  # draft's own caption stays

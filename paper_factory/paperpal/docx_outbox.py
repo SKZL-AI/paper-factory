@@ -146,11 +146,17 @@ def ensure_reference_docx(cache_dir: Path) -> Path:
 
 def _find_source(ws: Any) -> tuple[Path, str] | None:
     """The manuscript source the DOCX renders from (draft markdown preferred,
-    else the composed LaTeX)."""
+    else the composed LaTeX). Multiple versioned drafts: the HIGHEST version
+    wins (paper1_v1_3_1.md over paper1_v1_3_0.md) — never the stale one."""
     root = ws.target_root
     drafts = sorted(root.glob("draft/*.md"))
+
+    def _ver(p: Path) -> tuple:
+        m = re.findall(r"_v(\d+)_(\d+)(?:_(\d+))?", p.name)
+        return tuple(int(x or 0) for x in m[-1]) if m else (0, 0, 0)
+
     if drafts:
-        return drafts[0], "markdown"
+        return max(drafts, key=_ver), "markdown"
     if (ws.paper_dir / "main.tex").exists():
         return ws.paper_dir / "main.tex", "latex"
     return None

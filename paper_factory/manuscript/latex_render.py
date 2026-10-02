@@ -342,6 +342,12 @@ def render_full_manuscript(workspace: Any, out_dir: Path, run_id: str) -> dict[s
     if proc.returncode != 0:
         raise RuntimeError(f"pandoc failed: {proc.stderr[:500]}")
     body_tex = _map_unicode(proc.stdout)
+    # QA (Phase 8): pandoc turns the img alt text into \caption{} — the alt
+    # text carries its own "Figure N:" label, which LaTeX then prefixes again
+    # ("Figure 1: Figure 1: …"). Strip the label inside the caption; the
+    # draft's own extended caption paragraph stays untouched.
+    body_tex = re.sub(r"\\caption\{(?:Figure|Fig\.?|Table)\s*\d+\s*[:.]\s*",
+                      r"\\caption{", body_tex)
     # images are referenced by basename after _rewrite_image_paths; make the
     # LaTeX graphicspath point at figures/ BEFORE the TikZ upgrade rewrite
     body_tex = re.sub(r"(\\includegraphics(?:\[[^]]*\])?\{)([^}/]+)(\})",
