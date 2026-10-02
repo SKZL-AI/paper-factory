@@ -41,8 +41,10 @@ def main() -> int:
             docx = sorted(outbox.glob("paper-*.docx"),
                           key=lambda p: p.stat().st_mtime)[-1]
             win = stage_docx(docx)
-            ad.record("DOCX_READY", True, f"{docx.name} staged -> {win}")
-            print(ad.open_word(win))
+            from paper_factory.core.util import sha256_file, utcnow
+            ownership = ad.open_word_owned(win, sha256_file(docx),
+                                           run_id=f"manual-{utcnow()}")
+            print(f"opened owned pid={ownership['word_pid']} doc={docx.name}")
         elif cmd == "shot":
             print(ad.screenshot(rest[1]))
         elif cmd == "wshot":

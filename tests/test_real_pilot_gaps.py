@@ -7350,7 +7350,7 @@ def test_p21_audits_before_building_references(tmp_path):
 
 def _ownership(**kw):
     base = {"word_pid": 4242, "hwnd": "1234",
-            "docx_fullname_win": "C:\\ex\\paper-X.docx",
+            "docx_fullname_win": "C:\\Users\\SAI\\paperfactory-p31\\paper-X.docx",
             "docx_sha256": "abc", "run_id": "r1",
             "word_running_before": False, "started_by_pf": True,
             "foreign_docs_at_open": []}
@@ -7462,3 +7462,39 @@ def test_close_detects_foreign_doc_loss(tmp_path):
         _ownership(foreign_docs_at_open=["C:\\user\\thesis.docx"]))
     assert out.startswith("FAILED")
     assert "foreign" in out
+
+
+def test_close_rejects_record_outside_staging_perimeter(tmp_path):
+    """B MINOR-2: a record pointing outside WIN_EXCHANGE is an incident —
+    nothing is touched."""
+    ad, calls = _adapter_with_ps(tmp_path, lambda *a: (_ for _ in ()).throw(
+        AssertionError("ps must not be called")))
+    out = ad.close_word_robust(_ownership(docx_fullname_win="C:\\Users\\SAI\\thesis.docx"))
+    assert out.startswith("FAILED")
+    assert calls == []
+
+
+def test_close_malformed_record_fails_closed(tmp_path):
+    ad, calls = _adapter_with_ps(tmp_path, lambda *a: (_ for _ in ()).throw(
+        AssertionError("ps must not be called")))
+    (tmp_path / "receipts").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "receipts" / "word_ownership.json").write_text("{not json")
+    assert ad.close_word_robust(None).startswith("FAILED")
+    assert calls == []
+
+
+def test_close_pid_mismatch_never_retries(tmp_path):
+    """B MAJOR-1: pid-mismatch (live doc owned by another process) → fail
+    closed, no UIA dismissal, no retry."""
+    from paper_factory.paperpal.word.driver import StepFailed
+
+    def script(*args):
+        if args[0] == "close-owned":
+            raise StepFailed("close-owned", "pid-mismatch:recorded=4242 live=9999")
+        raise AssertionError(f"unexpected call: {args}")
+
+    ad, calls = _adapter_with_ps(tmp_path, script)
+    ad.receipts_dir.mkdir(parents=True, exist_ok=True)
+    out = ad.close_word_robust(_ownership())
+    assert out.startswith("FAILED")
+    assert [c[0] for c in calls] == ["close-owned"]  # exactly one attempt

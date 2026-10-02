@@ -165,9 +165,17 @@ def main() -> int:
             time.sleep(2)
     if port is None:
         # pane not open yet: click the Paperpal ribbon via UIA — scoped to
-        # OUR Word pid, never another Word window the operator may have open
+        # OUR Word pid, never another Word window the operator may have open.
+        # UIA Invoke needs the window restored (minimized windows swallow
+        # clicks) — restore via the recorded hwnd, re-minimize after.
         print("[2b] no CDP port — opening Paperpal pane via pid-owned UIA")
         pid = str(ownership["word_pid"])
+        _ps("Add-Type -MemberDefinition '[System.Runtime.InteropServices.DllImport("
+            "\"user32.dll\")] public static extern bool ShowWindow(System.IntPtr h, int c);'"
+            f" -Name Rst -Namespace PFRst; $p = Get-Process -Id {pid};"
+            " [PFRst.Rst]::ShowWindow($p.MainWindowHandle, 9) | Out-Null",
+            timeout=30)
+        time.sleep(2)
         for name in ("Paperpal", "Open Paperpal"):
             subprocess.run([sys.executable,
                             str(Path(__file__).with_name("run_paperpal_word.py")),

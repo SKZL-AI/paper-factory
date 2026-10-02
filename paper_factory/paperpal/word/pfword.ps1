@@ -5,7 +5,8 @@
 param(
     [Parameter(Mandatory=$true)][string]$Verb,
     [string]$Arg1 = "",
-    [string]$Arg2 = ""
+    [string]$Arg2 = "",
+    [string]$Arg3 = ""
 )
 # pane text carries umlauts/em-dashes — emit UTF-8, not the legacy codepage
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
@@ -38,14 +39,24 @@ public static class RotEnum {
     while (e.Next(1, mon, IntPtr.Zero) == 0) {
       string name = null;
       try { mon[0].GetDisplayName(ctx, null, out name); } catch { }
-      if (name != null && (name.EndsWith(".docx") || name.EndsWith(".doc"))) res.Add(name);
+      if (name != null) {
+        var low = name.ToLowerInvariant();
+        if (low.EndsWith(".docx") || low.EndsWith(".doc") || low.EndsWith(".docm") || low.EndsWith(".rtf")) res.Add(name);
+      }
     }
     return res;
   }
 }
 '@
-    try { Add-Type -TypeDefinition $src -ErrorAction Stop } catch {}
-    try { return [RotEnum]::DocPaths() } catch { return @() }
+    try { Add-Type -TypeDefinition $src -ErrorAction Stop }
+    catch {
+        if ($_.Exception.Message -notmatch 'already exists') {
+            # a broken ROT enumerator must never masquerade as "no foreign
+            # documents" (reviewer A MINOR-2)
+            throw "ROT enumerator failed to compile: $($_.Exception.Message)"
+        }
+    }
+    return [RotEnum]::DocPaths()
 }
 
 switch ($Verb) {
@@ -139,20 +150,20 @@ switch ($Verb) {
             # other PIDs — ownership is per-PID + per-document)
             $startedByPF = ($prePids -notcontains $procId)
             $w.ActiveWindow.WindowState = 2   # minimize: the operator's session is not disturbed
+            $foreignJson = ConvertTo-Json -Compress -InputObject @($foreignBefore)
             Out-Status $true ("pid=$procId hwnd=$hwnd doc=" + $doc.FullName +
                               " runningBefore=" + ($prePids.Count -gt 0) +
-                              " startedByPF=$startedByPF foreign=" + ($foreignBefore -join ';'))
+                              " startedByPF=$startedByPF foreign=" + $foreignJson)
         } catch { Out-Status $false $_.Exception.Message }
     }
     'doc-open' {
-        # Arg1 = docx FullName. Precise per-path probe: the ROT registers open
-        # documents by path — BindToMoniker succeeds IFF that exact document
-        # is open in ANY Word process.
-        try {
-            $doc = [Runtime.InteropServices.Marshal]::BindToMoniker($Arg1)
-            if ($null -eq $doc) { Out-Status $true 'open=false' }
-            else { Out-Status $true ('open=true saved=' + $doc.Saved) }
-        } catch { Out-Status $true 'open=false' }
+        # Arg1 = docx FullName. READ-ONLY probe via the ROT list — NEVER
+        # BindToMoniker: a file moniker LOADS the document when it is not
+        # running (reviewer A MAJOR-1: opening a closed file as a side effect
+        # of a probe is a contract violation)
+        $docs = @(Get-RotDocPaths)
+        $hit = $docs -contains $Arg1
+        Out-Status $true ('open=' + $hit.ToString().ToLower())
     }
     'word-docs' {
         # List all open documents across ALL Word processes (ROT) — per-process
@@ -162,13 +173,17 @@ switch ($Verb) {
     }
     'close-owned' {
         # Arg1 = docx FullName (Windows), Arg2 = '1' only when PF started the
-        # Word process itself. Closes ONLY that document, never saving
-        # (SaveChanges=0). Multi-process Word: GetActiveObject binds an
-        # arbitrary instance — the open DOCUMENT is instead resolved through
-        # the Running Object Table by its path (BindToMoniker), so we always
-        # act on the process that actually owns our file (field-test finding:
-        # foreign instance answered first → our-doc-not-open).
+        # Word process itself, Arg3 = recorded owner PID (live revalidated).
+        # Closes ONLY that document, never saving (SaveChanges=0).
+        # Guards (dual review 2026-10-02):
+        #  - bind only when the path is ROT-listed: a file moniker would LOAD
+        #    a closed document (reviewer A MAJOR-1) — never open to close
+        #  - after binding, the owning process PID must equal the recorded
+        #    one (reviewer B MAJOR-1: PID reuse must not launder a foreign
+        #    instance)
         try {
+            $rot = @(Get-RotDocPaths)
+            if ($rot -notcontains $Arg1) { Out-Status $false "our-doc-not-open:$Arg1"; break }
             $doc = $null
             $w = Get-WordApp
             if ($null -ne $w) {
@@ -181,6 +196,15 @@ switch ($Verb) {
             }
             if ($null -eq $doc) { Out-Status $false "our-doc-not-open:$Arg1"; break }
             $app = $doc.Application
+            # live PID of the process OWNING the document, via its window
+            $hwnd = $app.ActiveWindow.Hwnd
+            Add-Type -MemberDefinition '[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(System.IntPtr h, out uint pid);' -Name PfPid3 -Namespace PFOwn3 -ErrorAction SilentlyContinue
+            $livePid = 0
+            [void][PFOwn3.PfPid3]::GetWindowThreadProcessId([IntPtr]$hwnd, [ref]$livePid)
+            if ($Arg3 -ne '' -and [int]$Arg3 -ne 0 -and $livePid -ne [int]$Arg3) {
+                Out-Status $false "pid-mismatch:recorded=$Arg3 live=$livePid"
+                break
+            }
             $remaining = @()
             foreach ($d in @($app.Documents)) {
                 if ($d.FullName -ne $Arg1) { $remaining += $d.FullName }

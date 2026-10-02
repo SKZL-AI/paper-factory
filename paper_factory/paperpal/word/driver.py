@@ -133,9 +133,13 @@ class WordPaperpalAdapter:
         touches a Word instance or document it cannot prove ownership of."""
         detail = self._ps("open-owned", "-Arg1", win_docx)
         m = re.match(r"pid=(\d+) hwnd=(\S+) doc=(.*?) runningBefore=(\S+) "
-                     r"startedByPF=(\S+) foreign=(.*)$", detail)
+                     r"startedByPF=(\S+) foreign=(\[.*\])\s*$", detail)
         if not m:
             raise StepFailed("WORD_OPEN", f"unparseable open-owned: {detail[:200]}")
+        try:
+            foreign = json.loads(m.group(6))
+        except json.JSONDecodeError:
+            raise StepFailed("WORD_OPEN", f"foreign list not JSON: {detail[:200]}")
         ownership = {
             "word_pid": int(m.group(1)),
             "hwnd": m.group(2),
@@ -146,7 +150,7 @@ class WordPaperpalAdapter:
             # safe even when other WINWORD processes host foreign documents
             "word_running_before": m.group(4) == "True",
             "started_by_pf": m.group(5) == "True",
-            "foreign_docs_at_open": [x for x in m.group(6).split(";") if x],
+            "foreign_docs_at_open": [str(x) for x in foreign],
             "opened_at": utcnow(),
         }
         path = self.receipts_dir / "word_ownership.json"
@@ -242,19 +246,33 @@ class WordPaperpalAdapter:
         """
         if ownership is None:
             o_path = self.receipts_dir / "word_ownership.json"
-            ownership = json.loads(o_path.read_text(encoding="utf-8")) \
-                if o_path.exists() else None
-        if not ownership or not ownership.get("docx_fullname_win"):
+            try:
+                ownership = json.loads(o_path.read_text(encoding="utf-8")) \
+                    if o_path.exists() else None
+            except (json.JSONDecodeError, OSError):
+                ownership = None
+        try:
+            fullname = str(ownership.get("docx_fullname_win") or "") if ownership else ""
+            pid = int(ownership.get("word_pid") or 0) if ownership else 0
+        except (TypeError, ValueError):
+            fullname, pid = "", 0
+        if not ownership or not fullname:
             self.record("WORD_CLOSED", False, "no ownership record — nothing touched")
             return "FAILED: no ownership record — refusing to touch Word"
-        fullname = ownership["docx_fullname_win"]
-        pid = int(ownership.get("word_pid") or 0)
+        # path-scope guard (reviewer B MINOR-2): PF only ever stages into
+        # WIN_EXCHANGE — a record pointing anywhere else is an incident
+        if not fullname.startswith(WIN_EXCHANGE + "\\"):
+            self.record("WORD_CLOSED", False,
+                        f"record path outside WIN_EXCHANGE: {fullname}")
+            return "FAILED: ownership record outside the staging perimeter"
+
         # quit only a process PF itself started; an adopted/foreign instance
         # (or an ambiguous record) is never quit
         may_quit = "1" if ownership.get("started_by_pf") else "0"
 
         def _close_once() -> str:
-            return self._ps("close-owned", "-Arg1", fullname, "-Arg2", may_quit)
+            return self._ps("close-owned", "-Arg1", fullname, "-Arg2", may_quit,
+                            "-Arg3", str(pid))
 
         for attempt in range(3):
             try:
@@ -265,6 +283,12 @@ class WordPaperpalAdapter:
                 if "our-doc-not-open" in str(e.detail):
                     self.record("WORD_CLOSED", False,
                                 f"owned document not open: {e.detail}")
+                    return f"FAILED: {e.detail}"
+                if "pid-mismatch" in str(e.detail):
+                    # the document now lives in a DIFFERENT process than the
+                    # record claims — possible PID reuse; touch nothing
+                    self.record("WORD_CLOSED", False,
+                                f"live pid mismatch: {e.detail}")
                     return f"FAILED: {e.detail}"
                 dismissed = False
                 for label in ("Nicht speichern", "Don't Save", "Don't save"):
