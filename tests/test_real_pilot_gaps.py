@@ -7320,3 +7320,27 @@ def test_compile_tex_real_bibtex_cycle(tmp_path):
     text = subprocess.run(["pdftotext", rep["pdf_path"], "-"],
                           capture_output=True, text=True).stdout
     assert "Knuth" in text and "1984" in text
+
+
+def test_p21_audits_before_building_references(tmp_path):
+    """Release-audit ordering: build_references must run AFTER the citation
+    audit in the same run, or the verified-metadata upgrade reads a stale
+    audit (pilot 3: upgraded=0)."""
+    from paper_factory.dag.handlers import HANDLERS
+    calls: list[str] = []
+
+    import paper_factory.literature.verify as lv
+    orig_a, orig_b = lv.run_citation_audit, lv.build_references
+    lv.run_citation_audit = lambda ctx: (calls.append("audit"),
+                                         orig_a(ctx))[1]
+    lv.build_references = lambda ctx: (calls.append("build"),
+                                       orig_b(ctx))[1]
+    try:
+        ctx = _ctx(tmp_path)
+        (tmp_path / "draft").mkdir()
+        (tmp_path / "draft" / "paper.md").write_text("# x\n", encoding="utf-8")
+        from paper_factory.dag.nodes import NODE_MAP
+        HANDLERS["P21"](ctx, NODE_MAP["P21"])
+    finally:
+        lv.run_citation_audit, lv.build_references = orig_a, orig_b
+    assert calls == ["audit", "build"], calls

@@ -528,12 +528,10 @@ def build_references(ctx: NodeContext) -> NodeOutcome:
                 verified[r.get("key")] = r
 
     def _esc(s: str) -> str:
-        return str(s).replace("{", "").replace("}", "")
-
-    def _strip_internal_note(raw: str) -> str:
-        # the parser provenance note is pipeline-internal; shipped it would
-        # PRINT in the rendered bibliography (unsrtnat prints note)
-        return re.sub(r"\n\s*note\s*=\s*\{[^{}]*\},?", "", raw)
+        import unicodedata
+        # registry metadata carries combining marks (e.g. 'Gaë\u0308l');
+        # pdflatex/T1 cannot typeset combining sequences — NFC-compose them
+        return unicodedata.normalize("NFC", str(s)).replace("{", "").replace("}", "")
 
     def _rebuild_entry(key: str, rec: dict, body: str) -> str:
         fields = [f"  title = {{{_esc(rec['title'])}}}",

@@ -319,6 +319,10 @@ def render_full_manuscript(workspace: Any, out_dir: Path, run_id: str) -> dict[s
         raise ValueError(f"full-manuscript render expects markdown, got {kind}")
 
     text = source.read_text(encoding="utf-8", errors="replace")
+    # combining-mark normalization: pdflatex/T1 cannot typeset U+0301-style
+    # sequences (registry metadata, chat exports) — NFC-compose once, early
+    import unicodedata
+    text = unicodedata.normalize("NFC", text)
     text, image_map = _rewrite_image_paths(text, source.parent)
     # citation bound check against the shipped bibliography (A MIN-8)
     bib = ws.paper_dir / "references.bib"
@@ -391,7 +395,8 @@ def render_full_manuscript(workspace: Any, out_dir: Path, run_id: str) -> dict[s
         # bibliography (the pipeline bib keeps them for T4 span binding)
         bib_text = _strip_note_fields(bib.read_text(encoding="utf-8",
                                                     errors="replace"))
-        (out_dir / "references.bib").write_text(bib_text, encoding="utf-8")
+        (out_dir / "references.bib").write_text(
+            unicodedata.normalize("NFC", bib_text), encoding="utf-8")
 
     title = meta.get("title") or "Paper Factory manuscript"
     author = meta.get("author", "")

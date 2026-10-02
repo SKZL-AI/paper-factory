@@ -76,7 +76,6 @@ _BASE_HANDLERS: dict[str, Handler] = {
     "P14": _lazy("paper_factory.tables.build", "run_table_generation"),
     "P15": lambda ctx, node: _chain(ctx, [
         _lazy("paper_factory.manuscript.scaffold", "run_manuscript_architecture"),
-        _lazy("paper_factory.literature.verify", "build_references"),
     ]),
     "P16": lambda ctx, node: _compose(ctx, "methods"),
     "P17": lambda ctx, node: _compose(ctx, "results"),
@@ -87,7 +86,13 @@ _BASE_HANDLERS: dict[str, Handler] = {
         _lazy("paper_factory.manuscript.compose", "run_finalize_main"),
         _lazy("paper_factory.manuscript.scaffold", "run_manuscript_structure_check"),
     ]),
-    "P21": _lazy("paper_factory.literature.verify", "run_citation_audit"),
+    # audit BEFORE build (release audit 2026-10-02): the verified registry
+    # metadata (authors/year) must land in the same run's references.bib —
+    # building in P15 read the PREVIOUS run's audit (upgraded: 0)
+    "P21": lambda ctx, node: _chain(ctx, [
+        _lazy("paper_factory.literature.verify", "run_citation_audit"),
+        _lazy("paper_factory.literature.verify", "build_references"),
+    ]),
     "P22": _lazy("paper_factory.statistics.numbers_audit", "run_numbers_units_audit"),
     "P23": _lazy("paper_factory.reviews.runners", "run_methods_review"),
     "P24": _lazy("paper_factory.reviews.runners", "run_statistics_review"),
