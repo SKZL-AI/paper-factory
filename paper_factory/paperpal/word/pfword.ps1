@@ -211,11 +211,16 @@ switch ($Verb) {
             }
             $doc.Close(0)   # wdDoNotSaveChanges
             Start-Sleep -Seconds 1
-            if ($remaining.Count -eq 0 -and $Arg2 -eq '1') {
+            # Protected View documents live outside $app.Documents — quitting
+            # with one open would close foreign content (reviewer B R2-3)
+            $pvCount = 0
+            try { $pvCount = $app.ProtectedViewWindows.Count } catch {}
+            if ($remaining.Count -eq 0 -and $pvCount -eq 0 -and $Arg2 -eq '1') {
                 $app.Quit()
                 Out-Status $true 'closed-doc+quit-owned-instance'
             } else {
-                Out-Status $true ('closed-doc-only remaining=' + $remaining.Count)
+                Out-Status $true ('closed-doc-only remaining=' + $remaining.Count +
+                                  ' protectedView=' + $pvCount)
             }
         } catch { Out-Status $false $_.Exception.Message }
     }

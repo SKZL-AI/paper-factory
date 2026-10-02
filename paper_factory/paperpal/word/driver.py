@@ -236,8 +236,10 @@ class WordPaperpalAdapter:
         pre-existed with foreign documents. Cleanup rules:
           - close ONLY the document whose FullName matches the record
             (SaveChanges=0 — capture-only is never negotiable)
-          - Quit the Word instance ONLY when Paper Factory opened Word itself
-            (not word_running_before) AND no foreign documents remain
+          - Quit the Word instance ONLY when Paper Factory started the process
+            (started_by_pf) AND no other document (incl. Protected View)
+            remains; the ps1 revalidates the LIVE pid of the document-owning
+            process against the record (Arg3) before closing
           - the modal-save-dialog fallback (UIA, cursor-free) is scoped to
             windows OWNED by the recorded PID — a global 'Nicht speichern'
             search could dismiss somebody else's dialog
@@ -252,13 +254,19 @@ class WordPaperpalAdapter:
             except (json.JSONDecodeError, OSError):
                 ownership = None
         try:
-            fullname = str(ownership.get("docx_fullname_win") or "") if ownership else ""
-            pid = int(ownership.get("word_pid") or 0) if ownership else 0
+            fullname = str(ownership.get("docx_fullname_win") or "") \
+                if isinstance(ownership, dict) else ""
+            pid = int(ownership.get("word_pid") or 0) if isinstance(ownership, dict) else 0
         except (TypeError, ValueError):
             fullname, pid = "", 0
-        if not ownership or not fullname:
+        if not ownership or not fullname or not isinstance(ownership, dict):
             self.record("WORD_CLOSED", False, "no ownership record — nothing touched")
             return "FAILED: no ownership record — refusing to touch Word"
+        if pid <= 0:
+            # a record without a live pid is malformed — the pid revalidation
+            # in close-owned would silently skip (reviewer A R2-M3 / B R2-2)
+            self.record("WORD_CLOSED", False, f"degenerate record pid={pid}")
+            return "FAILED: degenerate ownership record (no pid)"
         # path-scope guard (reviewer B MINOR-2): PF only ever stages into
         # WIN_EXCHANGE — a record pointing anywhere else is an incident
         if not fullname.startswith(WIN_EXCHANGE + "\\"):
@@ -314,7 +322,11 @@ class WordPaperpalAdapter:
             return "FAILED: close attempts exhausted"
 
         # verify: our document must be gone; foreign documents must be intact
-        state = self.word_docs()
+        try:
+            state = self.word_docs()
+        except StepFailed as e:
+            self.record("WORD_CLOSED", False, f"post-verification failed: {e.detail}")
+            return f"FAILED: post-close verification error: {e.detail}"
         if fullname in state["docs"]:
             self.record("WORD_CLOSED", False, "owned document still open")
             return "FAILED: owned document still open"
