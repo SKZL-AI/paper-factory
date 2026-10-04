@@ -46,7 +46,8 @@ def test_doctor_runs_without_error(cls, monkeypatch):
 @pytest.mark.parametrize("cls", sorted(INSTALLED, key=lambda c: c.kind), ids=lambda c: c.kind)
 def test_installed_harnesses_are_present(cls):
     diag = cls(config=ProviderEntry(adapter=cls.kind)).doctor()
-    assert diag["present"] is True, f"{cls.kind} should be installed on this machine"
+    if not diag["present"]:
+        pytest.skip(f"{cls.kind} not installed on this machine (e.g. CI)")
     assert diag["version"], f"{cls.kind} version probe returned nothing"
 
 
@@ -100,9 +101,13 @@ def test_rules_only_use_known_capability_strings():
 
 
 def test_real_capabilities_match_probe():
-    caps = ClaudeAdapter(config=ProviderEntry(adapter="claude")).capabilities()
+    claude = ClaudeAdapter(config=ProviderEntry(adapter="claude"))
+    codex = CodexAdapter(config=ProviderEntry(adapter="codex"))
+    if not claude.doctor()["present"] or not codex.doctor()["present"]:
+        pytest.skip("claude/codex not installed on this machine (e.g. CI)")
+    caps = claude.capabilities()
     assert {"non_interactive", "json_events", "schema_constrained_output"} <= caps
-    caps = CodexAdapter(config=ProviderEntry(adapter="codex")).capabilities()
+    caps = codex.capabilities()
     assert {"non_interactive", "json_events", "sandbox", "read_only_mode"} <= caps
 
 

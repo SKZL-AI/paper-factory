@@ -19,6 +19,10 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
+      - name: Install system toolchain (P00 core/optional tools)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq pandoc texlive-latex-extra graphviz qpdf poppler-utils
       - name: Install
         run: pip install -e ".[dev]"
       - name: Test
