@@ -1,8 +1,8 @@
 # Pilot Differential — real-pilot-01-rerun (v1.2 WP7, Phase 12)
 
-- Workspace: `/home/sai/paper-factory/pilots/real-pilot-01-rerun/project/.paper-factory` (read-only, sqlite mode=ro)
+- Workspace: `pilots/real-pilot-01-rerun/project/.paper-factory` (read-only, sqlite mode=ro)
 - Run: `complete-20260925T162928Z` of 1 recorded run(s), created 2026-09-25T16:29:28Z
-- Generated: 2026-10-04T18:12:47.199722+00:00
+- Generated: 2026-10-04T18:38:47.248367+00:00
 
 ## Method & Limitation
 

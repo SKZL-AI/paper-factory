@@ -949,3 +949,52 @@ def test_r5_u8_build_outputs_must_be_pinned(tmp_path):
     (build / "main.pdf").write_bytes(b"%PDF-1.4 tampered\n")
     state, note = closure_mod._u8(ctx)
     assert state == "FAIL" and "mutated" in note
+
+
+# ---------------------------------------------------------------------------
+# U7 — the HoH receipt gate counts only kind="hoh" receipts; shadow receipts
+# (kind="shadow") are differential observations and must never false-close it.
+# ---------------------------------------------------------------------------
+
+
+def _u7_evidence_workspace(ctx: NodeContext) -> None:
+    ws = ctx.workspace
+    results = ws.target_root / "results"
+    results.mkdir(parents=True, exist_ok=True)
+    artifact = results / "summary.csv"
+    artifact.write_text("x\n", encoding="utf-8")
+    ws.evidence_dir.mkdir(parents=True, exist_ok=True)
+    (ws.evidence_dir / "evidence_ledger.jsonl").write_text(
+        json.dumps({"path": "results/summary.csv", "sha256": sha256_file(artifact)}) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _record_kind(ctx: NodeContext, kind: str) -> None:
+    ws = ctx.workspace
+    receipt = ws.receipts_dir / kind / f"P05-{ctx.run_id}.json"
+    receipt.parent.mkdir(parents=True, exist_ok=True)
+    receipt.write_text("{}", encoding="utf-8")
+    ws.record_receipt(f"{kind}-{receipt.name}", ctx.run_id, "P05", kind, receipt,
+                      sha256_file(receipt))
+
+
+def test_u7_shadow_receipt_alone_does_not_satisfy_hoh_gate(tmp_path):
+    ctx = _ctx(tmp_path)
+    _u7_evidence_workspace(ctx)
+    _record_kind(ctx, "shadow")  # only a shadow/differential receipt on record
+    state, note = closure_mod._u7(ctx)
+    assert state == "FAIL", f"shadow receipt must not false-close U7: {state}: {note}"
+    assert "without receipts" in note
+
+
+def test_u7_hoh_receipt_satisfies_gate_and_legacy_path_unchanged(tmp_path):
+    ctx = _ctx(tmp_path)
+    _u7_evidence_workspace(ctx)
+    _record_kind(ctx, "hoh")
+    _record_kind(ctx, "shadow")  # extra shadow row must not break the gate
+    state, note = closure_mod._u7(ctx)
+    assert state == "PASS", note
+    # kind=None keeps the historic kind-agnostic read (both rows visible)
+    kinds = {r["kind"] for r in ctx.workspace.receipts_for(ctx.run_id, "P05")}
+    assert kinds == {"hoh", "shadow"}

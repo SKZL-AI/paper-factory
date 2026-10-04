@@ -134,6 +134,13 @@ class VeriharnessAdapter:
         HoH specifics (run_id, blocked_kind, stage/condition/rc summary) stay
         out of the core contract fields — they live in BackendIdentity.detail
         and failure_reason, never as new contract fields.
+
+        Binding honesty: ``artifact_sha256`` is the CALLER-declared package
+        artifact hash — it binds the verdict to the work package, NOT to the
+        exact clone state HoH ran against. The clone identity (content-based
+        source fingerprint, see _source_fingerprint) is reported separately
+        in ``backend.detail["clone_fingerprint"]`` so both bindings are
+        visible and neither masquerades as the other.
         """
         import uuid
 
@@ -150,6 +157,19 @@ class VeriharnessAdapter:
         ) -> VerificationResult:
             detail = dict(backend.detail)
             detail["run_id"] = run_id
+            marker = self.runs_root / "clone-manifest.json"
+            if marker.exists():
+                try:
+                    fingerprint = json.loads(marker.read_text(encoding="utf-8")).get(
+                        "source_fingerprint"
+                    )
+                except (OSError, json.JSONDecodeError):
+                    fingerprint = None
+                if fingerprint:
+                    detail["clone_fingerprint"] = fingerprint
+                    detail["clone_fingerprint_source"] = (
+                        "hoh-repo/clone-manifest.json (ensure_clone)"
+                    )
             if hoh is not None:
                 detail["blocked_kind"] = hoh.blocked_kind
                 detail["hoh_detail"] = hoh.detail
@@ -193,9 +213,12 @@ class VeriharnessAdapter:
         - the clone must be a REAL directory under the workspace root
           (symlinks are rejected — a symlinked clone would silently run HoH
           against the original, violating the O177 policy);
-        - the clone is refreshed when the source changed since the snapshot
-          (a stale clone would verify stale code while producing
-          valid-looking receipts).
+        - the clone is refreshed when the source identity changed since the
+          snapshot (a stale clone would verify stale code while producing
+          valid-looking receipts). The identity is git content-based where
+          available (HEAD + `git status --porcelain` digest); without git it
+          degrades to a documented path/size/mtime proxy (see
+          _source_fingerprint).
         """
         if self.clone_dir.is_symlink():
             raise PolicyViolation(f"hoh-repo clone must not be a symlink: {self.clone_dir}")
@@ -271,11 +294,48 @@ class VeriharnessAdapter:
 
     @staticmethod
     def _source_fingerprint(src: Path) -> str:
-        """Content fingerprint of the target's tracked-relevant files (cheap:
-        path + size + mtime). Detects 'source changed since snapshot'."""
+        """Content identity of the target source, used to detect 'source
+        changed since the snapshot' for the O177 clone.
+
+        With git available this is `git rev-parse HEAD` plus a digest of
+        `git status --porcelain` (so committed AND uncommitted changes both
+        invalidate the snapshot — mtime/size would miss in-place edits).
+        git calls have a 20s timeout; any git error falls back to the
+        documented weak proxy below.
+        """
         import hashlib
 
+        def _git(*args: str) -> str | None:
+            try:
+                proc = subprocess.run(
+                    ["git", "-C", str(src), *args],
+                    capture_output=True,
+                    text=True,
+                    timeout=20,
+                    check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                return None
+            if proc.returncode != 0:
+                return None
+            return proc.stdout
+
+        if (src / ".git").exists():
+            head = _git("rev-parse", "HEAD")
+            if head:
+                status = _git("status", "--porcelain") or ""
+                h = hashlib.sha256()
+                h.update(b"git|")
+                h.update(head.strip().encode())
+                h.update(b"|")
+                h.update(status.encode())
+                return h.hexdigest()
+        # Fallback (no git repo / git unusable): path + size + mtime over
+        # files. This is a CHANGE PROXY, not content identity — a same-size
+        # in-place edit without mtime change would be missed. Documented
+        # limitation; git sources always take the content path above.
         h = hashlib.sha256()
+        h.update(b"fs|")
         exclude = {".paper-factory", ".git", "node_modules", "__pycache__", ".venv"}
         for p in sorted(src.rglob("*")):
             if not p.is_file() or any(part in exclude for part in p.parts):
@@ -404,6 +464,32 @@ class VeriharnessAdapter:
                     qa,
                     timeout=7200,
                 )
+            except Exception as exc:
+                # Orphan hardening (review B-1): a failure between `start` and
+                # a finished `run` (e.g. TimeoutExpired) must not leave this
+                # run's panes/tabs behind. Best-effort cleanup under the SAME
+                # provenance guard (_cleanup_panes closes only tabs whose id
+                # contains this run_id), plus a failure receipt in the run's
+                # receipts tree — then the exception propagates: the caller
+                # sees the node FAIL, nothing is swallowed. (HoH has no
+                # documented `abort` command; cleanup via herdr tab close is
+                # the only supported teardown.)
+                state = self._read_state(run_id)
+                failure_receipt = self.runs_root / run_id / "receipts" / "pf_run_failure.json"
+                failure_receipt.parent.mkdir(parents=True, exist_ok=True)
+                write_json(
+                    failure_receipt,
+                    {
+                        "run_id": run_id,
+                        "at": utcnow(),
+                        "error": f"{type(exc).__name__}: {exc}",
+                        "note": "run phase failed between hoh start and hoh run completion; "
+                        "best-effort pane cleanup executed, exception propagated",
+                    },
+                )
+                self._collect_receipts(run_id)
+                self._cleanup_panes(run_id, state)
+                raise
             finally:
                 fcntl.flock(lock_fh.fileno(), fcntl.LOCK_UN)
 

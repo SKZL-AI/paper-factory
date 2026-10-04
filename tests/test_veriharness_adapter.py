@@ -13,6 +13,7 @@ from __future__ import annotations
 import fcntl
 import json
 import re
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -394,3 +395,121 @@ def test_second_verify_waits_on_held_lock(env, stub_clone):
         t.join(timeout=10)
     assert not t.is_alive()
     assert done == [Verdict.PASS]  # second run proceeds normally after the wait
+
+
+# --------------------------------------------------------------------------- #
+# F3 (review B-1): an exception between `hoh start` and a finished `hoh run`
+# must not leave orphans — best-effort cleanup (own panes only, provenance
+# guard), a failure receipt, then the exception propagates (FAIL, no swallow).
+# --------------------------------------------------------------------------- #
+
+
+def test_run_phase_timeout_cleans_up_records_failure_and_propagates(
+    env, stub_clone, tmp_path, monkeypatch
+):
+    import subprocess as sp
+
+    adapter = env.adapter
+    cleaned: list[str] = []
+    monkeypatch.setattr(adapter, "_cleanup_panes", lambda run_id, state: cleaned.append(run_id))
+    real_call = adapter._call
+
+    def failing_call(*args, **kw):
+        if "run" in args:
+            raise sp.TimeoutExpired(cmd="hoh run", timeout=kw.get("timeout", 7200))
+        return real_call(*args, **kw)
+
+    monkeypatch.setattr(adapter, "_call", failing_call)
+    with pytest.raises(sp.TimeoutExpired):
+        adapter.verify(make_package())
+    assert len(cleaned) == 1, "own panes must be cleaned even on run-phase failure"
+    run_id = cleaned[0]
+    assert run_id.startswith("PF-")
+    # failure receipt persisted (in the run tree AND collected into the ws receipts)
+    assert (adapter.runs_root / run_id / "receipts" / "pf_run_failure.json").exists()
+    copied = env.ws.receipts_dir / "hoh" / run_id / "pf_run_failure.json"
+    assert copied.exists()
+    assert "TimeoutExpired" in copied.read_text(encoding="utf-8")
+    # flock released: a fresh non-blocking exclusive lock must succeed
+    import fcntl
+
+    with open(adapter._serial_lock_path, "a+") as fh:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+
+
+# --------------------------------------------------------------------------- #
+# F4 (review B-3): clone fingerprint must be content-based (git HEAD +
+# status digest), not mtime/size — and verify() must expose the clone
+# identity separately from the caller-declared artifact_sha256.
+# --------------------------------------------------------------------------- #
+
+
+def _git_repo(path: Path) -> Path:
+    """Fresh local git repo with one committed file (no network)."""
+    path.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=path, check=True)
+    path.joinpath("code.py").write_text("print(1)\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=path, check=True)
+    subprocess.run(
+        ["git", "-c", "user.name=pf-test", "-c", "user.email=pf@test", "commit", "-q", "-m", "one"],
+        cwd=path, check=True,
+    )
+    return path
+
+
+def test_source_fingerprint_changes_on_new_commit(tmp_path):
+    src = _git_repo(tmp_path / "repo")
+    fp_before = VeriharnessAdapter._source_fingerprint(src)
+    src.joinpath("code.py").write_text("print(2)\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=src, check=True)
+    subprocess.run(
+        ["git", "-c", "user.name=pf-test", "-c", "user.email=pf@test", "commit", "-q", "-m", "two"],
+        cwd=src, check=True,
+    )
+    fp_after = VeriharnessAdapter._source_fingerprint(src)
+    assert fp_before != fp_after, "a new commit must change the clone fingerprint"
+
+
+def test_source_fingerprint_changes_on_uncommitted_change(tmp_path):
+    src = _git_repo(tmp_path / "repo")
+    fp_before = VeriharnessAdapter._source_fingerprint(src)
+    src.joinpath("code.py").write_text("print(2)\n", encoding="utf-8")  # dirty, same size? no — same length
+    fp_after = VeriharnessAdapter._source_fingerprint(src)
+    assert fp_before != fp_after, (
+        "uncommitted working-tree changes must change the fingerprint "
+        "(mtime/size alone is forgeable)"
+    )
+    # same-size in-place edit is caught via `git status --porcelain`, not size
+    src.joinpath("code.py").write_text("print(9)\n", encoding="utf-8")
+    assert VeriharnessAdapter._source_fingerprint(src) == fp_after  # still dirty, same status
+    subprocess.run(["git", "checkout", "-q", "--", "code.py"], cwd=src, check=True)
+    assert VeriharnessAdapter._source_fingerprint(src) == fp_before  # clean tree again
+
+
+def test_source_fingerprint_fallback_without_git(tmp_path):
+    src = tmp_path / "plain"
+    src.mkdir()
+    src.joinpath("data.csv").write_text("x\n", encoding="utf-8")
+    fp1 = VeriharnessAdapter._source_fingerprint(src)
+    assert len(fp1) == 64
+    # fallback is the documented weak proxy: a new file changes it
+    src.joinpath("more.csv").write_text("y\n", encoding="utf-8")
+    assert VeriharnessAdapter._source_fingerprint(src) != fp1
+
+
+def test_verify_result_reports_clone_fingerprint_separately(env, stub_clone, tmp_path, monkeypatch):
+    # manifest as ensure_clone would write it (stubbed clone, real marker)
+    import json as _json
+
+    env.adapter.runs_root.mkdir(parents=True, exist_ok=True)
+    (env.adapter.runs_root / "clone-manifest.json").write_text(
+        _json.dumps({"source_fingerprint": "f" * 64, "source": str(env.target)}),
+        encoding="utf-8",
+    )
+    res = env.adapter.verify(make_package())
+    assert res.backend.detail["clone_fingerprint"] == "f" * 64
+    assert "clone-manifest" in res.backend.detail["clone_fingerprint_source"]
+    # artifact_sha256 stays the caller-declared package binding, not the clone
+    assert res.artifact_sha256 == SHA
+    assert res.artifact_sha256 != res.backend.detail["clone_fingerprint"]

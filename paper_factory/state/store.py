@@ -165,14 +165,22 @@ class Workspace:
                 (receipt_id, run_id, node_id, kind, str(path), sha256, utcnow()),
             )
 
-    def receipts_for(self, run_id: str, node_id: str | None = None) -> list[dict[str, Any]]:
+    def receipts_for(
+        self, run_id: str, node_id: str | None = None, kind: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Receipts for a run/node. ``kind=None`` keeps the historic
+        kind-agnostic behavior; pass e.g. kind="hoh" to count only receipts
+        of one kind (shadow receipts must never satisfy the HoH gate)."""
+        sql = "SELECT * FROM receipts WHERE run_id=?"
+        params: list[Any] = [run_id]
+        if node_id:
+            sql += " AND node_id=?"
+            params.append(node_id)
+        if kind:
+            sql += " AND kind=?"
+            params.append(kind)
         with self.connect() as c:
-            if node_id:
-                rows = c.execute(
-                    "SELECT * FROM receipts WHERE run_id=? AND node_id=?", (run_id, node_id)
-                ).fetchall()
-            else:
-                rows = c.execute("SELECT * FROM receipts WHERE run_id=?", (run_id,)).fetchall()
+            rows = c.execute(sql, params).fetchall()
         return [dict(r) for r in rows]
 
     def event(self, run_id: str, kind: str, node_id: str | None = None, payload: Any = None) -> None:

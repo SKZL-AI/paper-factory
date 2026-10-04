@@ -1,6 +1,6 @@
 {
   "pilot": "real-pilot-01-rerun",
-  "workspace": "/home/sai/paper-factory/pilots/real-pilot-01-rerun/project/.paper-factory",
+  "workspace": "pilots/real-pilot-01-rerun/project/.paper-factory",
   "run_id": "complete-20260925T162928Z",
   "run_count": 1,
   "run_created_at": "2026-09-25T16:29:28Z",

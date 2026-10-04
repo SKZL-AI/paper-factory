@@ -1,8 +1,8 @@
 # Pilot Differential — pilot-03-massinv-paper1 (v1.2 WP7, Phase 12)
 
-- Workspace: `/home/sai/paper-factory/pilots/pilot-03-massinv-paper1/project/.paper-factory` (read-only, sqlite mode=ro)
+- Workspace: `pilots/pilot-03-massinv-paper1/project/.paper-factory` (read-only, sqlite mode=ro)
 - Run: `complete-20261002T143931.928898Z` of 16 recorded run(s), created 2026-10-02T14:39:31.934745Z
-- Generated: 2026-10-04T18:12:47.199207+00:00
+- Generated: 2026-10-04T18:38:47.247764+00:00
 
 ## Method & Limitation
 

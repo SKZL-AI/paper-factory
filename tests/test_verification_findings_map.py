@@ -185,3 +185,14 @@ def test_empty_input():
 def test_kind_preserved_regardless_of_category_mapping(kind):
     out = map_external_findings([vfinding(kind=kind)], BACKEND)
     assert out[0].kind == kind
+
+
+def test_finding_id_uses_full_statement_hash():
+    """F10 (review A-4): the durable identity is the FULL SHA-256 statement
+    hash — a 16-hex prefix is only a 64-bit identifier with collision risk."""
+    vf = vfinding()
+    full_hash = vf.statement_hash
+    assert len(full_hash) == 64
+    (out,) = map_external_findings([vf], BACKEND)
+    assert out.finding_id == f"VF-hoh-{full_hash}"
+    assert out.details["external"]["statement_hash"] == full_hash

@@ -1,6 +1,6 @@
 # Pilot Differential — Summary (v1.2 WP7, Phase 12)
 
-Generated: 2026-10-04T18:12:47.200026+00:00
+Generated: 2026-10-04T18:38:47.248724+00:00
 
 Offline differential over stored pilot state only — no live HoH replays, no network, no LLM calls (plan §5 Abweichung 2, quota discipline). Per-pilot details: `V1_2_PILOT_DIFFERENTIAL_<pilot>.md`.
 

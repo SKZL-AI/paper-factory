@@ -173,3 +173,33 @@ B: Failure/Release/Provenance) → WP9 Doku + Abschlussbericht.
 Acceptance Gate = die 21 Punkte des Berater-Auftrags, mit den §5-Abweichungen
 (dokumentiert statt still abgewichen). Open CRITICAL/MAJOR = 0, A/B = JA/JA,
 kein Push, kein Release, P37 NOT EXECUTED.
+
+## 5a. Runde-1-Review-Nachträge (2026-10-04, append — Originaltext oben unverändert)
+
+Der Dual-Review (WP8) kam zu NEIN (4 MAJOR + MINOR/NIT). Die MAJOR-Fixes
+F1–F4 und die billigen Fixes F5–F10 sind im Code gelandet (je mit
+Regressionstest); die reine Dokumentationspunkte werden hier ehrlich
+nachgetragen, ohne den Originaltext umzuschreiben:
+
+- **Detail-Escape-Hatch (A-2/A-5):** `BackendIdentity.detail` ist bewusst
+  untypisiertes Freifeld für Provider-Interna (run_id, blocked_kind,
+  hoh_detail, clone_fingerprint) — reine Evidenz, kein maschineller Rückpfad
+  in Verdicts.
+- **findings_map/registry (A-6):** aktuell Bibliothek ohne
+  Produktions-Verdrahtung; Verdrahtung frühestens v1.3. Disposition bleibt
+  PF-owned (None), kein falscher Grün-Pfad.
+- **MATCH im DAG-Pfad (A-7):** aktuell unerreichbar — PF-native bindet im
+  Shadow-Pfad bewusst kein Artifact, daher höchstens SEMANTIC_MATCH oder
+  INCOMPARABLE. Dokumentierte Lücke, kein PASS.
+- **Shadow-/HoH-Nebenpfad-Crash (B-7):** Node FAIL (fail-visible, gewollt).
+- **ensure_clone außerhalb flock (B-8):** Sequential-Design-Annahme
+  (Analogon A-R3-TOCTOU; PF serialisiert eigene Runs pro Workspace).
+- **Pane-Guard lange node_id (B-8-Anm.):** eigene Pane, die der Guard nicht
+  eindeutig zuordnet, wird als `skipped_foreign` protokolliert, nie still
+  geschlossen.
+- **U7-Gate (A-1/F1):** nur `kind="hoh"`-Receipts schließen das HoH-Gate;
+  Shadow-Receipts (`kind="shadow"`) sind Differential-Beobachtungen und
+  sättigen es nie (False-Close behoben).
+- **HoH ∩ Shadow (F7, Captain-Entscheidung):** ein `adapter.verify()`-Aufruf
+  pro Node speist beide Ebenen; Receipts bleiben getrennt als
+  `kind="hoh"` + `kind="shadow"` recorded.

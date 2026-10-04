@@ -855,8 +855,11 @@ def _u7(ctx: NodeContext) -> tuple[str, str]:
     if mismatches:
         return "FAIL", f"evidence drifted: {mismatches[:5]}"
     hoh_enabled = [n for n in ctx.config.verification.hoh_nodes]
+    # Only kind="hoh" receipts satisfy the gate: shadow receipts (kind="shadow")
+    # record a differential observation, not an HoH verification — counting
+    # them would false-close U7 without any HoH evidence.
     receipts_missing = [n for n in hoh_enabled
-                        if not ws.receipts_for(ctx.run_id, n)]
+                        if not ws.receipts_for(ctx.run_id, n, kind="hoh")]
     if hoh_enabled and receipts_missing:
         return "FAIL", f"verification nodes without receipts: {receipts_missing}"
     return "PASS", f"{checked} artifacts hash-identical to intake; receipts on record"

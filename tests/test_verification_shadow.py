@@ -311,3 +311,149 @@ def test_handlers_shadow_provider_exception_is_contained(tmp_path, monkeypatch):
     assert outcome.detail["shadow_outcome"] == DifferentialOutcome.PROVIDER_UNAVAILABLE.value
     receipt = json.loads(Path(outcome.detail["shadow_receipt"]).read_text(encoding="utf-8"))
     assert "boom" in receipt["provider_status"]
+
+
+# --------------------------------------------------------------------------- #
+# CLI wiring: shadow_nodes from the config must reach build_handlers (F2) —
+# before the fix both CLI call-sites dropped it, making shadow config a
+# silent no-op outside of direct build_handlers() callers.
+# --------------------------------------------------------------------------- #
+
+
+def test_cli_wires_shadow_nodes_config_into_handlers(tmp_path, monkeypatch):
+    import argparse
+
+    from paper_factory.cli import main as cli_main
+
+    config_dir = tmp_path / "cfg"
+    config_dir.mkdir()
+    (config_dir / "paper-factory.yaml").write_text(
+        'version: 1\nverification:\n  hoh_nodes: []\n  shadow_nodes: ["P05"]\n',
+        encoding="utf-8",
+    )
+    captured: dict[str, list] = {}
+    real_build = cli_main.build_handlers
+
+    def spy(hoh_nodes, cfg_shadow_nodes=None):
+        captured["hoh"] = list(hoh_nodes or [])
+        captured["shadow"] = list(cfg_shadow_nodes or [])
+        return real_build(hoh_nodes, cfg_shadow_nodes)
+
+    monkeypatch.setattr(cli_main, "build_handlers", spy)
+    args = argparse.Namespace(root=str(tmp_path / "proj"), config_dir=str(config_dir),
+                              run_id=None, offline=False, strict=False, target=None)
+    assert cli_main.cmd_plan(args) == 0
+    assert captured["shadow"] == ["P05"], "CLI dropped verification.shadow_nodes"
+
+    # the handler built through the CLI path must actually record a shadow receipt
+    monkeypatch.setattr(
+        VeriharnessAdapter, "verify", lambda self, package: make_result(Verdict.PASS)
+    )
+    ws = Workspace(tmp_path / "proj2")
+    outcome = spy(captured["hoh"], captured["shadow"])["P05"](_ctx(ws), NODE)
+    assert outcome.detail["shadow_outcome"] == DifferentialOutcome.SEMANTIC_MATCH.value
+    assert any(r["kind"] == "shadow" for r in ws.receipts_for("shadow-test", "P05"))
+
+
+# --------------------------------------------------------------------------- #
+# F7: a node listed in BOTH hoh_nodes and shadow_nodes must cost exactly ONE
+# adapter.verify() run — the shared result feeds the shadow differential and
+# the HoH gate (previously: two independent full HoH runs per node).
+# --------------------------------------------------------------------------- #
+
+
+def _build_dual_handler(monkeypatch, base_verdict=Verdict.PASS):
+    def fake_base(ctx: NodeContext, node) -> NodeOutcome:
+        return NodeOutcome(base_verdict, {"base": "stub"})
+
+    monkeypatch.setattr(handlers_mod, "_BASE_HANDLERS", {"P05": fake_base})
+    return build_handlers(["P05"], ["P05"])["P05"]
+
+
+def _fake_verify_with_receipt(self: VeriharnessAdapter, package: WorkPackage, verdict=Verdict.PASS):
+    run_id = "PF-deadbeef-P05"
+    rdir = self.ws.receipts_dir / "hoh" / run_id
+    rdir.mkdir(parents=True, exist_ok=True)
+    receipt = rdir / "receipt1.json"
+    receipt.write_text('{"ok": true}\n', encoding="utf-8")
+    result = make_result(verdict)
+    return result.model_copy(update={
+        "backend": result.backend.model_copy(update={"detail": {"run_id": run_id}}),
+        "raw_receipt_refs": [str(receipt)],
+    })
+
+
+def test_dual_node_calls_verify_exactly_once_and_records_both_kinds(tmp_path, monkeypatch):
+    calls: list[WorkPackage] = []
+
+    def counting_verify(self, package):
+        calls.append(package)
+        return _fake_verify_with_receipt(self, package)
+
+    monkeypatch.setattr(VeriharnessAdapter, "verify", counting_verify)
+    monkeypatch.setattr(VeriharnessAdapter, "doctor",
+                        lambda self: {"present": True, "herdr": True, "bwrap": True})
+    handler = _build_dual_handler(monkeypatch, base_verdict=Verdict.PASS)
+    ws = Workspace(tmp_path)
+    outcome = handler(_ctx(ws), NODE)
+    assert len(calls) == 1, f"hoh∩shadow must be ONE verify() run, got {len(calls)}"
+    assert outcome.verdict == Verdict.PASS
+    # both planes recorded, receipts kind-separated
+    assert outcome.detail["shadow_outcome"] == DifferentialOutcome.SEMANTIC_MATCH.value
+    assert outcome.detail["hoh_verdict"] == "PASS"
+    assert outcome.detail["hoh_receipts"] == 1
+    kinds = {r["kind"] for r in ws.receipts_for("shadow-test", "P05")}
+    assert kinds == {"shadow", "hoh"}
+
+
+def test_dual_node_verdict_downgrade_unchanged(tmp_path, monkeypatch):
+    monkeypatch.setattr(VeriharnessAdapter, "verify",
+                        lambda self, package: _fake_verify_with_receipt(self, package, Verdict.FAIL))
+    monkeypatch.setattr(VeriharnessAdapter, "doctor",
+                        lambda self: {"present": True, "herdr": True, "bwrap": True})
+    handler = _build_dual_handler(monkeypatch, base_verdict=Verdict.PASS)
+    ws = Workspace(tmp_path)
+    outcome = handler(_ctx(ws), NODE)
+    assert outcome.verdict == Verdict.FAIL  # HoH gate downgrade still applies
+    assert outcome.detail["note"] == "HoH verification failed"
+    assert outcome.detail["shadow_outcome"] == DifferentialOutcome.MISMATCH.value
+
+
+# --------------------------------------------------------------------------- #
+# F5/F6: the shadow receipt write is atomic (tmp + os.replace, no .tmp
+# leftovers) and the receipt path sanitizes run_id/node_id (a "../evil"
+# run_id must stay inside receipts/shadow/).
+# --------------------------------------------------------------------------- #
+
+
+def test_shadow_receipt_write_is_atomic_without_tmp_leftovers(tmp_path, monkeypatch):
+    handler = _build_shadow_handler(monkeypatch, base_verdict=Verdict.PASS)
+    monkeypatch.setattr(
+        VeriharnessAdapter, "verify", lambda self, package: make_result(Verdict.PASS)
+    )
+    ws = Workspace(tmp_path)
+    outcome = handler(_ctx(ws), NODE)
+    receipt_path = Path(outcome.detail["shadow_receipt"])
+    assert receipt_path.exists()
+    json.loads(receipt_path.read_text(encoding="utf-8"))  # complete, parseable JSON
+    shadow_dir = ws.receipts_dir / "shadow"
+    assert not list(shadow_dir.glob("*.tmp")), "no .tmp residue after the atomic replace"
+
+
+def test_shadow_receipt_path_sanitizes_run_id_traversal(tmp_path, monkeypatch):
+    handler = _build_shadow_handler(monkeypatch, base_verdict=Verdict.PASS)
+    monkeypatch.setattr(
+        VeriharnessAdapter, "verify", lambda self, package: make_result(Verdict.PASS)
+    )
+    ws = Workspace(tmp_path)
+    ctx = _ctx(ws)
+    ctx.run_id = "../evil"  # traversal attempt — must be neutralized
+    outcome = handler(ctx, NODE)
+    receipt_path = Path(outcome.detail["shadow_receipt"]).resolve()
+    shadow_dir = (ws.receipts_dir / "shadow").resolve()
+    assert receipt_path.is_relative_to(shadow_dir), f"receipt escaped shadow dir: {receipt_path}"
+    assert ".." not in receipt_path.parts  # flat filename, no traversal component
+    # the recorded receipt row points at the same sanitized in-tree path
+    rows = ws.receipts_for("../evil", "P05", kind="shadow")
+    assert len(rows) == 1
+    assert Path(rows[0]["path"]).resolve().is_relative_to(shadow_dir)

@@ -1,6 +1,6 @@
 {
   "pilot": "pilot-03-massinv-paper1",
-  "workspace": "/home/sai/paper-factory/pilots/pilot-03-massinv-paper1/project/.paper-factory",
+  "workspace": "pilots/pilot-03-massinv-paper1/project/.paper-factory",
   "run_id": "complete-20261002T143931.928898Z",
   "run_count": 16,
   "run_created_at": "2026-10-02T14:39:31.934745Z",
@@ -1002,7 +1002,7 @@
       },
       "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
       "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
-      "detail_excerpt": "{\"at\": \"2026-10-02T14:39:31.840592+00:00\", \"receipt\": \"/home/sai/paper-factory/pilots/pilot-03-massinv-paper1/project/.paper-factory/reports/p36_signoff.json\",…"
+      "detail_excerpt": "{\"at\": \"2026-10-02T14:39:31.840592+00:00\", \"receipt\": \"~/paper-factory/pilots/pilot-03-massinv-paper1/project/.paper-factory/reports/p36_signoff.json\",…"
     },
     {
       "pilot": "pilot-03-massinv-paper1",

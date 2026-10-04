@@ -117,7 +117,10 @@ def _to_finding(
     if conflict:
         details["conflict"] = True
     return Finding(
-        finding_id=f"VF-{_safe_id_part(backend_name)}-{statement_hash[:16]}{suffix}",
+        # Full statement_hash (SHA-256, 64 hex): the durable identity of an
+        # external finding. A 16-hex prefix would be a 64-bit identifier with
+        # real collision risk once many external findings accumulate.
+        finding_id=f"VF-{_safe_id_part(backend_name)}-{statement_hash}{suffix}",
         reviewer=f"verification:{_safe_id_part(backend_name)}",
         severity=vf.severity,
         category=category,

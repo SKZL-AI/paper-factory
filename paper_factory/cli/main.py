@@ -58,7 +58,8 @@ def cmd_plan(args) -> int:
     ws = Workspace(Path(args.root))
     run_id = args.run_id or ws.latest_run_id() or "PLAN"
     ctx = _ctx(args, run_id)
-    ex = Executor(ctx, build_handlers(ctx.config.verification.hoh_nodes))
+    ex = Executor(ctx, build_handlers(ctx.config.verification.hoh_nodes,
+                                      cfg_shadow_nodes=ctx.config.verification.shadow_nodes))
     _print_json({"run_id": run_id, "plan": ex.plan()})
     return 0
 
@@ -66,7 +67,8 @@ def cmd_plan(args) -> int:
 def _execute(args, run_id: str, resume: bool) -> int:
     ctx = _ctx(args, run_id)
     ctx.workspace.create_run(run_id)
-    ex = Executor(ctx, build_handlers(ctx.config.verification.hoh_nodes))
+    ex = Executor(ctx, build_handlers(ctx.config.verification.hoh_nodes,
+                                      cfg_shadow_nodes=ctx.config.verification.shadow_nodes))
     if getattr(args, "dry_run", False):
         _print_json({"dry_run": True, "run_id": run_id, "plan": ex.plan()})
         return 0

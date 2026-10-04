@@ -163,3 +163,74 @@ def test_unknown_run_id_raises(pilot_ws: Path):
     state = pd.extract_pilot(pilot_ws, "synthetic")
     with pytest.raises(KeyError):
         pd.run_differential(state, run_id="nope")
+
+
+# --------------------------------------------------------------------------- #
+# Review fixes F8/F9 (2026-10-04, Runde 1): SEMANTIC_MATCH must be labeled
+# "yes (unbound)" (agreement not artifact-provable), and committed reports
+# must not contain absolute home paths.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def pilot_ws_semantic(tmp_path: Path, pilot_ws: Path) -> Path:
+    """Add a node whose stored hoh_verdict equals the native verdict with no
+    artifact binding on either side -> SEMANTIC_MATCH."""
+    conn = sqlite3.connect(pilot_ws / ".paper-factory" / "runs.sqlite")
+    conn.execute(
+        "INSERT INTO nodes(run_id, node_id, status, started_at, finished_at, detail, attempts)"
+        " VALUES (?,?,?,?,?,?,1)",
+        ("run-2", "P09", "PASS", "2026-10-02T10:03:00Z", "2026-10-02T10:03:02Z",
+         json.dumps({"hoh_verdict": "PASS"})),
+    )
+    conn.commit()
+    conn.close()
+    return pilot_ws
+
+
+def test_semantic_match_labeled_unbound(pilot_ws_semantic):
+    state = pd.extract_pilot(pilot_ws_semantic, "synthetic")
+    result = pd.run_differential(state)
+    row = next(r for r in result["rows"] if r["node_id"] == "P09")
+    assert row["outcome"] == DifferentialOutcome.SEMANTIC_MATCH.value
+    assert row["semantic_equivalence"] == "yes (unbound)"
+    md = pd.render_markdown(result)
+    assert "yes (unbound)" in md
+    # real MATCH stays plain "yes"
+    row_p05 = next(r for r in result["rows"] if r["node_id"] == "P05")
+    assert row_p05["semantic_equivalence"] == "no"
+
+
+def test_report_contains_no_absolute_home_paths(pilot_ws, tmp_path, monkeypatch):
+    home = str(Path.home())
+    conn = sqlite3.connect(pilot_ws / ".paper-factory" / "runs.sqlite")
+    conn.execute(
+        "UPDATE nodes SET detail=? WHERE run_id='run-2' AND node_id='P32'",
+        (json.dumps({"receipt": f"{home}/paper-factory/pilots/x/receipt.json"}),),
+    )
+    conn.commit()
+    conn.close()
+    # place the pilot inside a fake repo so the workspace path is relativized
+    repo = tmp_path / "repo"
+    pilots_home = repo / "pilots"
+    pilots_home.mkdir(parents=True)
+    import shutil
+
+    shutil.move(str(pilot_ws), pilots_home / "synthetic")
+    monkeypatch.setattr(pd, "REPO", repo)
+    state = pd.extract_pilot(pilots_home / "synthetic", "synthetic")
+    result = pd.run_differential(state)
+    # workspace: repo-relative, never absolute
+    assert not Path(result["workspace"]).is_absolute()
+    assert result["workspace"] == "pilots/synthetic/.paper-factory"
+    # planted home path in a detail excerpt: scrubbed
+    row = next(r for r in result["rows"] if r["node_id"] == "P32")
+    assert home not in row["detail_excerpt"]
+    assert "~/paper-factory/pilots/x/receipt.json" in row["detail_excerpt"]
+    # the rendered/written reports carry no absolute home path at all
+    md = pd.render_markdown(result)
+    assert home not in md
+    out = tmp_path / "out"
+    pd.write_reports([result], out)
+    for p in out.glob("V1_2_PILOT_DIFFERENTIAL_synthetic.*"):
+        assert home not in p.read_text(encoding="utf-8")

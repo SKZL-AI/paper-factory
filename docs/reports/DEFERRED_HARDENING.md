@@ -231,3 +231,42 @@ Normalisierung exakt mit dem zitierten Titel kollidiert):
   `tests/test_verification_adversarial.py::test_stale_execution_receipt_loads_without_any_freshness_check`
   dokumentiert den Ist-Zustand — ein künftiger Frische-Check hat damit einen
   roten Test, den er grün macht. (WP6-Befund B2, 2026-10-04.)
+
+## v1.2 Verification Plane — Review-Runde-1-Nachträge (2026-10-04, Dual-Review NEIN)
+
+Ergänzend zu den Code-Fixes (F1–F10) — dokumentierte Ist-Zustände und
+bewusste Design-Entscheidungen, nicht stille Annahmen:
+
+- **BackendIdentity.detail als dokumentierter Escape-Hatch (A-2/A-5).**
+  `detail` ist ein bewusst untypisiertes Freifeld für Provider-Interna
+  (run_id, blocked_kind, hoh_detail, clone_fingerprint). Es gibt keinen
+  maschinellen Rückpfad aus `detail` in Verdicts — Verdict-Logik liest nur
+  typisierte Contract-Felder; `detail` ist reine Evidenz für Menschen/Reports.
+- **findings_map/registry aktuell Bibliothek ohne Produktions-Verdrahtung
+  (A-6).** `map_external_findings()` hat noch keinen Aufrufer im Pipeline-Pfad;
+  die Verdrahtung ist für v1.3 oder späteren Bedarf vorgesehen. Disposition
+  gemappeter Findings bleibt `None` (PF owned) — es gibt keinen falschen
+  Grün-Pfad über externe Findings.
+- **MATCH im DAG-Pfad aktuell unerreichbar (A-7).** Die PF-native Seite bindet
+  im Shadow-Pfad bewusst kein Artifact (honest `None`, keine fabrizierte
+  Hash-Bindung); die HoH-Seite kann nur dann binden, wenn das WorkPackage
+  Artefakte trägt. Bei gleichem Verdict und beidseitigem `None` ist das
+  Ergebnis daher immer SEMANTIC_MATCH, bei einseitiger Bindung INCOMPARABLE —
+  MATCH (starke, artifact-provable Übereinstimmung) ist in der aktuellen
+  Verdrahtung konstruktiv nicht erreichbar. Dokumentierte Lücke, kein PASS.
+- **Shadow-Nebenpfad-Crash → Node FAIL (B-7).** Ein Exception-Escape aus dem
+  Shadow-/HoH-Pfad (z. B. Timeout zwischen `hoh start` und `hoh run` nach dem
+  Best-Effort-Cleanup) bricht den Node hart (fail-visible, gewollt). Der
+  Executor sieht kein stilles Weiterlaufen ohne Verification-Evidenz.
+- **ensure_clone außerhalb flock (B-8).** Das Clone-Refresh läuft bewusst
+  VOR der seriellen Run-Phase (außerhalb des fcntl-Locks) — Analogon zur
+  dokumentierten A-R3-TOCTOU-Annahme: PF führt pro Workspace sequential
+  aus (1 Job/GPU-Hausregel), daher kann kein zweiter PF-Prozess zwischen
+  Fingerprint-Prüfung und Clone-Nutzung einschneiden. Parallele Fremd-Prozesse
+  auf demselben Workspace werden nicht unterstützt.
+- **Pane-Guard-Randfall lange node_id (B-8-Anm.).** Bei node_id > ~20 Zeichen
+  würde Herdr die Agentennamen truncaten; ein Tab, dessen ID die run_id dann
+  nicht mehr enthielte, wird vom Provenance-Guard als `skipped_foreign`
+  protokolliert und NIEMALS geschlossen — sichtbar im pane_cleanup.json,
+  nie still verworfen. PF-Run-IDs setzen den Zufallsteil deshalb vor den
+  Truncation-Punkt (AGENTS.md).

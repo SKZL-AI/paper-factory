@@ -59,6 +59,22 @@ HISTORICAL_RESOLUTION = (
 )
 
 
+def _scrub_home(text: str) -> str:
+    """Committed reports must not carry absolute home paths: shorten the
+    home prefix to '~' (still unambiguous for a human reader)."""
+    home = str(Path.home())
+    return text.replace(home, "~") if home not in ("", "/") else text
+
+
+def _display_path(p: Path) -> str:
+    """Repo-relative when inside the repo, home-scrubbed otherwise — never an
+    absolute /home/... path in a committed report."""
+    try:
+        return str(p.resolve().relative_to(REPO))
+    except ValueError:
+        return _scrub_home(str(p))
+
+
 # --------------------------------------------------------------------------- #
 # Extraction (read-only)
 # --------------------------------------------------------------------------- #
@@ -243,7 +259,10 @@ def differential_for_node(
 
     hoh_detail = (node.get("detail") or {})
     outcome = receipt.outcome
-    if outcome in (DifferentialOutcome.MATCH, DifferentialOutcome.SEMANTIC_MATCH):
+    if outcome is DifferentialOutcome.SEMANTIC_MATCH:
+        # honest label: verdicts agree but the agreement is NOT artifact-provable
+        equivalence = "yes (unbound)"
+    elif outcome is DifferentialOutcome.MATCH:
         equivalence = "yes"
     elif outcome is DifferentialOutcome.MISMATCH:
         equivalence = "no"
@@ -284,7 +303,7 @@ def differential_for_node(
         },
         "cost": COST_NOTE,
         "rationale": receipt.rationale,
-        "detail_excerpt": _detail_excerpt(node.get("detail")),
+        "detail_excerpt": _scrub_home(_detail_excerpt(node.get("detail"))),
     }
 
 
@@ -300,7 +319,7 @@ def run_differential(state: PilotState, run_id: str | None = None) -> dict[str, 
     if not state.runs:
         return {
             "pilot": state.pilot,
-            "workspace": str(state.workspace),
+            "workspace": _display_path(state.workspace),
             "run_id": None,
             "rows": [],
             "warnings": state.warnings + ["no runs recorded in runs.sqlite"],
@@ -314,7 +333,7 @@ def run_differential(state: PilotState, run_id: str | None = None) -> dict[str, 
     rows = [differential_for_node(state.pilot, chosen, n, run_receipts) for n in nodes]
     return {
         "pilot": state.pilot,
-        "workspace": str(state.workspace),
+        "workspace": _display_path(state.workspace),
         "run_id": chosen,
         "run_count": len(state.runs),
         "run_created_at": next((r["created_at"] for r in state.runs if r["run_id"] == chosen), None),
