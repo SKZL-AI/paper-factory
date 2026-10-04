@@ -2,7 +2,7 @@
 
 Datum: 2026-09-22 · PF-HEAD beim Pilot: `5f7dc75` (+2 Gap-Fixes, siehe unten) ·
 Pilot-Workspace: `pilots/real-pilot-01/project/.paper-factory/` ·
-Quelle (read-only, unangetastet): `/home/sai/sai/wt-massinv/paper_arxiv/ARXIV_SUBMISSION_PAPER_A_v1.2.5/`
+Quelle (read-only, unangetastet): `~/wt-massinv/paper_arxiv/ARXIV_SUBMISSION_PAPER_A_v1.2.5/`
 + Overlay `r_analysis_013/`
 
 ## PROJECT

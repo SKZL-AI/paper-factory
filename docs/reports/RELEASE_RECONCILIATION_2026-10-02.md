@@ -60,7 +60,7 @@ draft/paper1_v1_3_0.md        60960422…  (manuscript, T4-Quelle, unverändert)
 
 - Anschau-PDF: `pilots/pilot-03-massinv-paper1/project/.paper-factory/release/massinv_paper1/build_arxiv/main.pdf` (16 S., arXiv-Look: Times, natbib num, TikZ-Vektorfiguren fig1/fig2)
 - arXiv-Upload: `…/release/massinv_paper1/arxiv-massinv_paper1.tar.gz`
-- Mirror: `/mnt/c/SAI_AI_MAIN_LAB/PROJEKTE/Paper_factory/RESULTS_2026-10-02/`
+- Mirror: `<MIRROR_ROOT>/PROJEKTE/Paper_factory/RESULTS_2026-10-02/`
 
 ## Offen (HUMAN_REQUIRED, projektspezifisch — keine Core-Fehler)
 

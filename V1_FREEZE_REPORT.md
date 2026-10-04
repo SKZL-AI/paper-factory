@@ -43,7 +43,7 @@ Freeze-Commit.
 | NOT_APPLICABLE | 46 |
 | **ohne Disposition** | **0** |
 
-## Deferred MINOR/NIT (kein Blocker, getrackt in DEFERRED_HARDENING.md)
+## Deferred MINOR/NIT (kein Blocker, getrackt in docs/reports/DEFERRED_HARDENING.md)
 
 - Paperpal-Pane analysiert progressiv (Satz-Count wächst) — Capture braucht
   Stabilisierungs-Warte (im Session-Skript eingebaut)

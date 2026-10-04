@@ -13,3 +13,4 @@ paper/build/
 examples/demo_project/.paper-factory/
 pilots/
 scratch/
+*:Zone.Identifier

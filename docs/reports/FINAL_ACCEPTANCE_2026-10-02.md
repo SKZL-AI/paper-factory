@@ -49,7 +49,7 @@ grün geredet.
 - Anschau-PDF: `…/release/massinv_paper1/build_arxiv/main.pdf` (16 S.,
   arXiv-Look, TikZ-Vektorfiguren)
 - arXiv-Upload: `…/release/massinv_paper1/arxiv-massinv_paper1.tar.gz`
-- Mirror: `/mnt/c/SAI_AI_MAIN_LAB/PROJEKTE/Paper_factory/RESULTS_2026-10-02/`
+- Mirror: `<MIRROR_ROOT>/PROJEKTE/Paper_factory/RESULTS_2026-10-02/`
   (Hinweis: das Mirror-Refresh hat die frühere gleichnamige PDF/tar.gz aus
   demselben Tages-Lauf überschrieben statt versioniert — Alt-Versionen sind
   im Repo-Release-Verzeichnis erhalten; künftig versionierte Mirror-Namen)

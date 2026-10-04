@@ -20,6 +20,7 @@ proposals; SCIENTIFIC_OR_AMBIGUOUS items are surfaced to U16/P36.
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 from dataclasses import dataclass, field
@@ -32,8 +33,13 @@ PS1 = Path(__file__).with_name("pfword.ps1")
 
 # Windows-side exchange directory (Word needs a local/UNC path it trusts;
 # the WSL home is reachable but UNC-fragile — the hop through %USERPROFILE%
-# is the robust lane). Only PF-owned files live there.
-WIN_EXCHANGE = r"C:\Users\SAI\paperfactory-p31"
+# is the robust lane). Only PF-owned files live there. Override via
+# PF_WIN_EXCHANGE_DIR; the default derives from the Windows user name.
+WIN_EXCHANGE = os.environ.get(
+    "PF_WIN_EXCHANGE_DIR",
+    "C:\\Users\\" + os.environ.get("PF_WIN_USER", os.environ.get("USER", "user"))
+    + "\\paperfactory-p31",
+)
 
 STATES = ["DOCX_READY", "WORD_OPEN", "PAPERPAL_VISIBLE", "CHECK_CONFIGURED",
           "CHECK_RUNNING", "CHECK_COMPLETE", "RESULT_CAPTURED",
@@ -269,7 +275,7 @@ class WordPaperpalAdapter:
             return "FAILED: degenerate ownership record (no pid)"
         # path-scope guard (reviewer B MINOR-2): PF only ever stages into
         # WIN_EXCHANGE — a record pointing anywhere else is an incident
-        if not fullname.startswith(WIN_EXCHANGE + "\\"):
+        if not fullname.lower().startswith((WIN_EXCHANGE + "\\").lower()):
             self.record("WORD_CLOSED", False,
                         f"record path outside WIN_EXCHANGE: {fullname}")
             return "FAILED: ownership record outside the staging perimeter"

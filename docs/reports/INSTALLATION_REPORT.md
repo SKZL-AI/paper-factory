@@ -1,6 +1,6 @@
 # INSTALLATION REPORT — PAPER FACTORY
 
-Datum: 2026-09-21/22 · Maschine: WSL2 (SAI-01) · Autor: Kimi (Captain-Session)
+Datum: 2026-09-21/22 · Maschine: WSL2 (<host>) · Autor: Kimi (Captain-Session)
 
 ## SYSTEM STATUS
 
@@ -23,7 +23,7 @@ GLOBAL CLOSURE         PASS          (U1–U16 am Referenzlauf, siehe Dashboard)
 
 ## IMPLEMENTED
 
-- Separates Projekt `/home/sai/paper-factory` (git, venv, 10 CLI-Kommandos).
+- Separates Projekt `~/paper-factory` (git, venv, 10 CLI-Kommandos).
 - DAG P00–P37 mit ehrlichen Zuständen; Audit→Review→Remediation→Closure-Semantik.
 - 6 Harness-Adapter + Provider-Router (Harness≠Backend, Receipts, DEGRADED_INDEPENDENCE).
 - VeriHarness-Adapter mit O177-Klon-Politik (eigener Klon, eigener runs-Root,
@@ -64,7 +64,7 @@ paper-factory resume              # nach Human-Deliveries
 
 ## GIT STATE
 
-- repo: /home/sai/paper-factory · branch: main
+- repo: ~/paper-factory · branch: main
 - commits: siehe `git log` (Scaffold → A3 → C+D → E+F → G)
 - dirty files: nur `.archiv/` (bewusst ungetrackt, geparkte Alt-Zustände)
 - kein Push, kein Publish, keine externe Submission.

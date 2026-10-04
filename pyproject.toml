@@ -3,6 +3,7 @@ name = "paper-factory"
 version = "1.0.0"
 description = "Harness-neutral, evidence-first, agentic research-paper production system. Deterministic orchestration core; VeriHarness/HoH as verification kernel; Herdr as runtime."
 requires-python = ">=3.11"
+readme = "README.md"
 license = "MIT"
 authors = [{ name = "Furkan Sakızlı" }]
 dependencies = [
@@ -27,6 +28,14 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["paper_factory*"]
+
+[project.urls]
+Repository = "https://github.com/SKZL-AI/paper-factory"
+Issues = "https://github.com/SKZL-AI/paper-factory/issues"
+Documentation = "https://github.com/SKZL-AI/paper-factory/tree/main/docs"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100

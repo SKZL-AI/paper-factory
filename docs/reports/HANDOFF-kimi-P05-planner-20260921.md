@@ -5,8 +5,8 @@ From: Claude Code planner session (planner-b1), 2026-09-21
 ## What happened
 
 1. The planner role ran on the live HoH run `PF-P05-20260921T202553Z` (arena
-   `/tmp/pytest-of-sai/pytest-189/e2e-full0/proj/.paper-factory/hoh-runs/_arenas/.../planner/2b473d33e635`).
-2. **While it was running, the entire `/tmp/pytest-of-sai/pytest-189/` tree
+   `/tmp/pytest-of-<user>/pytest-189/e2e-full0/proj/.paper-factory/hoh-runs/_arenas/.../planner/2b473d33e635`).
+2. **While it was running, the entire `/tmp/pytest-of-<user>/pytest-189/` tree
    disappeared**: arena, `answers/`, `state.json`, reports. So the first attempt
    to write `answers/i1-a0-planner.json` failed with `FileNotFoundError`.
    - Likely cause (not proven): later pytest runs (pytest-202…205 exist now)
@@ -16,9 +16,9 @@ From: Claude Code planner session (planner-b1), 2026-09-21
    - Recommendation: run live HoH runs with a `--basetemp` outside the pytest
      rotation, or don't run pytest in parallel while a live run is going.
 3. At the user's request, the plan was written again afterwards:
-   - `/tmp/pytest-of-sai/pytest-189/e2e-full0/proj/.paper-factory/hoh-runs/PF-P05-20260921T202553Z/answers/i1-a0-planner.json`
+   - `/tmp/pytest-of-<user>/pytest-189/e2e-full0/proj/.paper-factory/hoh-runs/PF-P05-20260921T202553Z/answers/i1-a0-planner.json`
      (the directory was recreated with `mkdir -p`; the rest of the run tree is **gone**)
-   - Copy: `/tmp/claude-1000/-tmp-pytest-of-sai-pytest-189-e2e-full0-proj--paper-factory-hoh-runs--arenas-PF-P05-20260921T202553Z-planner/79ef8b01-c22e-40e7-9a81-eb53ea76896b/scratchpad/i1-a0-planner.json`
+   - Copy: `/tmp/claude-1000/-tmp-pytest-of-<user>-pytest-189-e2e-full0-proj--paper-factory-hoh-runs--arenas-PF-P05-20260921T202553Z-planner/79ef8b01-c22e-40e7-9a81-eb53ea76896b/scratchpad/i1-a0-planner.json`
    - sha256 of both: `32acf9084f67076094fa23633021f513cd2ada2e553721128a96458be5ffcc4f`
    - **Warning:** the run state no longer exists. The runner can't simply pick
      the answer up. The run needs to be restarted (and can reuse the plan).

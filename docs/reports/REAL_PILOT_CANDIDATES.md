@@ -7,8 +7,8 @@ Qualitätsrangliste.
 
 ## Kandidat 1: MassInv Paper A (arXiv-Submission-Bundle) — GEWÄHLT
 
-- Root: `/home/sai/sai/wt-massinv/paper_arxiv/ARXIV_SUBMISSION_PAPER_A_v1.2.5/` (~1,3 MB)
-  + Evidenz-Overlay `/home/sai/sai/wt-massinv/r_analysis_013/` (~26 MB)
+- Root: `~/wt-massinv/paper_arxiv/ARXIV_SUBMISSION_PAPER_A_v1.2.5/` (~1,3 MB)
+  + Evidenz-Overlay `~/wt-massinv/r_analysis_013/` (~26 MB)
 - Inventar (verifiziert): komplette LaTeX-Quelle (`main.tex`, sections),
   `references.bib`, Figuren (PDF+PNG) **mit Generierungs-Code**, kompiliertes PDF,
   `AI_USE_DISCLOSURE.md`; daneben im Worktree: `CLAIM_INVENTORY_v1.csv`
@@ -27,7 +27,7 @@ Qualitätsrangliste.
 
 ## Kandidat 2: VeriHarness/HoH Positionspapier
 
-- Root: `/home/sai/hoh/paper/POSITION_PAPER.md` (+ CLAIMS.json, runs/-Receipts 8,7 GB)
+- Root: `~/hoh/paper/POSITION_PAPER.md` (+ CLAIMS.json, runs/-Receipts 8,7 GB)
 - Stärken: CLAIMS.json + eigener Checker, sehr hohe Evidence completeness
 - Schwächen als Pilot 1: **Befangenheit** (VeriHarness ist PF-Laufzeit-Infra,
   Gap-Report existiert schon), kein LaTeX/.bib (Paper-Teilpfade ungetestet),
@@ -36,7 +36,7 @@ Qualitätsrangliste.
 
 ## Kandidat 3: MassInv-Reopening GK-Programm (SOURCE_PACKAGES)
 
-- Root: `/home/sai/sai/wt-massinv/massinv_reopening/`
+- Root: `~/wt-massinv/massinv_reopening/`
 - Stärken: Preregs, Gate-Artefakte mit Selftests/Pins, Ledger mit Errata
 - Schwächen: **kein Paper-Draft, keine .bib** — Produkt sind Gate-Verdikte,
   kein Manuskript; testet nicht das volle PF-Profil

@@ -183,3 +183,16 @@ Normalisierung exakt mit dem zitierten Titel kollidiert):
 - **A NIT:** citations_remapped zählt inkl. gestrippter Referenzlisten-Marker
   (unmapped separat ausgewiesen).
 - **B NIT:** `paper.id="a."` akzeptiert (Linux-legal; Windows-irrelevant hier).
+
+## 2026-10-04 — Repo-Professionalisierung (Review-Runden 1–3)
+
+- E2E-Fixture `test_e2e_synthetic.py` läuft citation verification mit Live-Netz
+  (OpenAlex/Crossref/doi.org) — auf GitHub-Actions bewusst akzeptiert (Egress
+  offen, ehrliche Verifikation statt Hermetik). Falls Flakiness: VCR/Mock oder
+  PF_LIVE_NET-Gate auf Fixture-Ebene nachrüsten.
+- `paper-factory doctor` schreibt State ins Installationsverzeichnis
+  (paper_factory/state/) — bei nicht-editabler Installation problematisch.
+  Fix: XDG-State-Home. (v1.1)
+- Ruff: 217 Style-Findings (11 auto-fixable) — Hygiene-Block v1.1.
+- Social Preview (1280×640) liegt als docs/assets/banner.png — Upload nur via
+  GitHub UI möglich (Settings → General), kein API-Endpoint.

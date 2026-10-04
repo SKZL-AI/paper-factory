@@ -5,7 +5,7 @@
       "doctor": {
         "harness": "claude",
         "kind": "claude",
-        "executable": "/home/sai/.local/bin/claude",
+        "executable": "~/.local/bin/claude",
         "present": true,
         "version": "2.1.278",
         "capabilities": [
@@ -46,7 +46,7 @@
       "doctor": {
         "harness": "codex",
         "kind": "codex",
-        "executable": "/home/sai/.npm-global/bin/codex",
+        "executable": "~/.npm-global/bin/codex",
         "present": true,
         "version": "0.153.4",
         "capabilities": [
@@ -91,7 +91,7 @@
       "doctor": {
         "harness": "kimi",
         "kind": "kimi",
-        "executable": "/home/sai/.kimi-code/bin/kimi",
+        "executable": "~/.kimi-code/bin/kimi",
         "present": true,
         "version": "2.0.2",
         "capabilities": [
@@ -126,7 +126,7 @@
       "doctor": {
         "harness": "pi",
         "kind": "pi",
-        "executable": "/home/sai/.npm-global/bin/pi",
+        "executable": "~/.npm-global/bin/pi",
         "present": true,
         "version": "0.85.1",
         "capabilities": [

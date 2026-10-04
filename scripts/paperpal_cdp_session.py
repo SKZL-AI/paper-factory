@@ -76,7 +76,9 @@ def _find_cdp_port(not_before: float = 0.0) -> int:
     (a) answer /json AND (b) whose port file is fresh (>= our Word start)."""
     import urllib.request
 
-    base = (r"C:\Users\SAI\AppData\Local\Microsoft\Office\16.0\Wef")
+    import os
+    _win_user = os.environ.get("PF_WIN_USER", os.environ.get("USER", "user"))
+    base = (rf"C:\Users\{_win_user}\AppData\Local\Microsoft\Office\16.0\Wef")
     out = _ps(f'Get-ChildItem -Recurse -Filter DevToolsActivePort "{base}" '
               '| Select-Object -ExpandProperty FullName')
     candidates: list[tuple[float, int]] = []

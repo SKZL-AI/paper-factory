@@ -8,7 +8,7 @@ import sys
 import traceback
 from pathlib import Path
 
-REPO = Path("/home/sai/paper-factory")
+REPO = Path(__file__).resolve().parents[1]
 TARGET = Path("/tmp/pf-hoh-live")
 SPEC = REPO / "paper_factory/state/hoh_live_spec.md"
 

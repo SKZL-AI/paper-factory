@@ -27,7 +27,7 @@
       "finding": "O177 GEMESSEN: Zwei HoH-Läufe auf Worktrees DESSelben Repos gehen beide BLOCKED, sobald im Hauptbaum committet wird — der Capability-Witness kann nicht unterscheiden, ob der geschützte Baum durch den Agenten oder durch Fremde geändert wurde. Parallelbetrieb zweier Sessions auf EINEM Repository bricht sich gegenseitig die Läufe, erst nach 2-6 bezahlten Dispatches. Weitere Kollisionspunkte (ungetestet, benannt): runs/ (gleiche run_id kollidiert), ein Staging-Checkout, EXPORT_SYNC_STATE.json, readiness --write / check_claims render schreiben dieselben Dateien, Herdr-Worktree-Branchnamen.",
       "safe_setup_laut_quelle": "Jede Session: eigener Klon, eigener runs/-Baum, eigener Staging-Checkout; nur eine Session pusht.",
       "consequence_for_paper_factory": [
-        "PF führt HoH NIEMALS gegen ein Repo aus, in dem eine andere Session arbeitet (insb. nicht gegen /home/sai/veriharness).",
+        "PF führt HoH NIEMALS gegen ein Repo aus, in dem eine andere Session arbeitet (insb. nicht gegen ~/veriharness).",
         "PF klont das Ziel-Repo nach <target>/.paper-factory/hoh-repo/ und fährt alle HoH-Runs dort (eigener .git, fremde Commits am Original unsichtbar).",
         "HOH_RUNS=<target>/.paper-factory/hoh-runs (eigener runs/-Baum), run_id-Prefix 'PF-' → Branches 'hoh-PF-…' kollisionsfrei.",
         "PF serialisiert eigene HoH-Runs pro Repo (Executor-Mutex), nie zwei HoH-Runs gleichzeitig über einem Klon.",

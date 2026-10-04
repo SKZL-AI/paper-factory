@@ -5,10 +5,10 @@ Subagenten). Konflikte löst die globale Regel zuerst, dann diese Datei.
 
 ## Projekt-Scope
 
-- Schreiben nur unter `/home/sai/paper-factory/` (Repo) sowie in Ziel-Projekt-Workspaces
-  `<target>/.paper-factory/`. Alles andere (insb. `/home/sai/veriharness`, die Fixture-Quellen,
+- Schreiben nur unter `~/paper-factory/` (Repo) sowie in Ziel-Projekt-Workspaces
+  `<target>/.paper-factory/`. Alles andere (insb. `~/veriharness`, die Fixture-Quellen,
   fremde Herdr-Workspaces) ist read-only, außer es wird explizit anders angewiesen.
-- `/mnt/c/SAI_AI_MAIN_LAB/...` ist Report-Ziel, nie Arbeitsort (nur neue Dateien, nichts
+- `<MIRROR_ROOT>/...` ist Report-Ziel, nie Arbeitsort (nur neue Dateien, nichts
   überschreiben/löschen).
 
 ## Archiv statt Löschen (verschärft, User-Anweisung 2026-09-21)
@@ -50,10 +50,10 @@ Subagenten). Konflikte löst die globale Regel zuerst, dann diese Datei.
 
 Die Ubuntu-Systemplatte (`/`) darf nicht wieder volllaufen. Trennung:
 
-- **Ubuntu (`/home/sai/paper-factory`):** Repo, Reports, Dashboards, State-JSONs,
+- **Ubuntu (`~/paper-factory`):** Repo, Reports, Dashboards, State-JSONs,
   Pilot-Workspaces (`.paper-factory/`), kleine Fixtures — alles, was das eigentliche
   Ergebnis ist.
-- **Extern (`/mnt/e/paper-factory-archive/`):** alles Sperrige/Redundante, das
+- **Extern (`<EXT_ARCHIVE>/`):** alles Sperrige/Redundante, das
   VeriHarness/HoH und die Archiv-statt-Löschen-Regel sonst auf `/` aufblähen:
   - `pilot-sources/` — große Source-Snapshots für Piloten (>50 MB Rohdaten)
   - `hoh-runs/` — PF-eigene HoH-Run-Bäume, Arenas, Receipt-Massen

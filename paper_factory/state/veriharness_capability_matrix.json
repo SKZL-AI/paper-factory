@@ -4,7 +4,7 @@
     "name": "VeriHarness / hoh",
     "version": "0.1.0",
     "git": "https://github.com/SKZL-AI/veriharness @ 5d576bd (v0.1.0+18 on main)",
-    "installed": "editable from /home/sai/veriharness into paper-factory .venv"
+    "installed": "editable from ~/veriharness into paper-factory .venv"
   },
   "method": "Explore-Subagent las alle Docs + src/hoh vollständig; Schlüsselbehauptungen vom Captain stichprobenartig am Code gegengeprüft (launcher.py:46-48, stages.py:210-216, cli.py:1280-1290, policy/ vorhanden, bwrap vorhanden).",
   "legend": ["SUPPORTED", "SUPPORTED_WITH_ADAPTER", "PARTIAL", "NOT_REQUIRED", "GAP"],

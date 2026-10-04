@@ -1038,6 +1038,7 @@ def test_rb_o2_tables_tex_without_manifest_pin_fails(tmp_path):
 
 import json as _json
 import subprocess as _sp
+import sys as _sys
 
 import pytest as _pytest
 
@@ -1154,7 +1155,7 @@ def test_gap_exit_cli_closed_real_subprocess(tmp_path):
     for nid in NODE_MAP:
         ws.set_node_status(rid, nid, "PASS", {})
     proc = _sp.run(
-        [str(_EXIT_REPO / ".venv/bin/paper-factory"),
+        [_sys.executable, "-m", "paper_factory.cli.main",
          "--root", str(tmp_path), "--config-dir", str(_EXIT_CONFIG),
          "complete", "--resume", "--offline", "--run-id", rid],
         capture_output=True, text=True, timeout=120)
@@ -1175,7 +1176,7 @@ def test_gap_exit_cli_degraded_real_subprocess(tmp_path):
         if nid != "P35":
             ws.set_node_status(rid, nid, "PASS", {})
     proc = _sp.run(
-        [str(_EXIT_REPO / ".venv/bin/paper-factory"),
+        [_sys.executable, "-m", "paper_factory.cli.main",
          "--root", str(tmp_path), "--config-dir", str(_EXIT_CONFIG),
          "complete", "--resume", "--offline", "--run-id", rid],
         capture_output=True, text=True, timeout=120)
@@ -1201,7 +1202,7 @@ def test_gap_exit_cli_failed_real_subprocess(tmp_path):
         findings=[Finding(finding_id="ZZ-1", reviewer="test", severity="MAJOR",
                           category="methods", statement="planted undisposed major")]))
     proc = _sp.run(
-        [str(_EXIT_REPO / ".venv/bin/paper-factory"),
+        [_sys.executable, "-m", "paper_factory.cli.main",
          "--root", str(tmp_path), "--config-dir", str(_EXIT_CONFIG),
          "complete", "--resume", "--offline", "--run-id", rid],
         capture_output=True, text=True, timeout=120)
@@ -1215,7 +1216,7 @@ def test_gap_exit_release_stub_fails_closed(tmp_path):
     """Reviewer B (post-pilot audit): the release stub must not exit 0 while
     reporting NOT_RUN — exit 0 is reserved for real success."""
     proc = _sp.run(
-        [str(_EXIT_REPO / ".venv/bin/paper-factory"),
+        [_sys.executable, "-m", "paper_factory.cli.main",
          "--root", str(tmp_path), "--config-dir", str(_EXIT_CONFIG), "release"],
         capture_output=True, text=True, timeout=60)
     out = _json.loads(proc.stdout)
@@ -7349,8 +7350,12 @@ def test_p21_audits_before_building_references(tmp_path):
 # --- Word-Ownership (release audit 2026-10-02): scoped close, never global ---
 
 def _ownership(**kw):
+    # derive from the driver's configured exchange dir: the perimeter check is
+    # against WIN_EXCHANGE, which is env-dependent — hardcoding a user name
+    # here would make the tests machine-specific (CI: USER=runner)
+    from paper_factory.paperpal.word.driver import WIN_EXCHANGE
     base = {"word_pid": 4242, "hwnd": "1234",
-            "docx_fullname_win": "C:\\Users\\SAI\\paperfactory-p31\\paper-X.docx",
+            "docx_fullname_win": WIN_EXCHANGE + "\\paper-X.docx",
             "docx_sha256": "abc", "run_id": "r1",
             "word_running_before": False, "started_by_pf": True,
             "foreign_docs_at_open": []}

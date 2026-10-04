@@ -1,6 +1,6 @@
 # REAL PILOT 02 REPORT — TSCG-2.0 (CODE+DATA, draftlos)
 
-Projekt: TSCG-2.0 Arbeits-Repo (Paper 3 / AOC), Quelle `/home/sai/TSCG Ubuntu/work/tscg-2.0`
+Projekt: TSCG-2.0 Arbeits-Repo (Paper 3 / AOC), Quelle `~/TSCG Ubuntu/work/tscg-2.0`
 (read-only, `node_modules` ausgeschlossen, Secrets-Pre-Check sauber).
 Workspace: `pilots/pilot-02-tscg/project/` (248 Dateien, Source-Inventory mit SHA-256).
 Config: `pilots/pilot-02-tscg/config` · PF-HEAD `1ba47a7` · Lauf: `complete-20260925T163702Z`

@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "Paper Factory: Evidence-First Agentic Research-Paper Production"
+authors:
+  - family-names: "Sakızlı"
+    given-names: "Furkan"
+version: 1.0.0
+date-released: "2026-10-02"
+license: MIT
+url: "https://github.com/SKZL-AI/paper-factory"
+repository-code: "https://github.com/SKZL-AI/paper-factory"
+abstract: >-
+  Paper Factory is a deterministic, harness-neutral orchestration system for
+  evidence-first, agentic research-paper production. A research DAG (P00-P37)
+  with global closure invariants (U1-U16) binds every claim to concrete
+  evidence artifacts; LLM harnesses act as replaceable workers; VeriHarness/HoH
+  serves as the verification kernel; irreversible release steps remain under
+  human authority.

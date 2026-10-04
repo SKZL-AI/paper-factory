@@ -3,18 +3,22 @@ only — never deletes, never overwrites existing files there).
 """
 from __future__ import annotations
 
+import os
 import shutil
 import sys
 from pathlib import Path
 
-REPO = Path("/home/sai/paper-factory")
-TARGET_BASE = Path("/mnt/c/SAI_AI_MAIN_LAB/PROJEKTE/Paper_factory")
+REPO = Path(__file__).resolve().parents[1]
+TARGET_BASE_RAW = os.environ.get("PF_MIRROR_TARGET")
+if not TARGET_BASE_RAW:
+    raise SystemExit("set PF_MIRROR_TARGET (Windows mirror root) — no default")
+TARGET_BASE = Path(TARGET_BASE_RAW)
 STAMP = "RESULTS_2026-09-22"
 
 ITEMS = [
     "README.md",
-    "INSTALLATION_REPORT.md",
-    "VERIHARNESS_GAP_REPORT.md",
+    "docs/reports/INSTALLATION_REPORT.md",
+    "docs/reports/VERIHARNESS_GAP_REPORT.md",
     "AGENTS.md",
     "pyproject.toml",
     "docs",

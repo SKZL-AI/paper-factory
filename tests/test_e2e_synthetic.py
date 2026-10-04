@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -22,7 +23,9 @@ REPO = Path(__file__).resolve().parents[1]
 FIXTURE = REPO / "fixtures" / "synthetic_project"
 # E2E runs must never spend quota: this config disables HoH (hoh_nodes: []).
 CONFIG = Path(__file__).resolve().parent / "e2e-config"
-CLI = [str(REPO / ".venv/bin/paper-factory")]
+# Resolve the CLI through the running interpreter: works for editable installs,
+# plain checkouts on CI, and any venv layout (no hardcoded .venv path).
+CLI = [sys.executable, "-m", "paper_factory.cli.main"]
 
 # process-boundary contract: named run-state codes + 2 (usage error)
 _VALID_RC = set(OVERALL_EXIT_CODES.values()) | {2, EXIT_UNKNOWN}
@@ -308,9 +311,14 @@ def test_17_hoh_receipts_exist():
 def test_18_herdr_runtime_evidence():
     """Independent check: query herdr directly (not through our adapter), then
     require the adapter to agree with reality."""
+    import shutil
     import subprocess as sp
 
     from paper_factory.adapters.herdr.adapter import HerdrAdapter
+
+    if shutil.which("herdr") is None:
+        import pytest as _pt
+        _pt.skip("herdr binary not installed — runtime evidence check NOT_RUN")
 
     direct = sp.run(["herdr", "status"], capture_output=True, text=True, timeout=15)
     herdr_really_up = direct.returncode == 0 and "running" in direct.stdout

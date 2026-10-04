@@ -17,7 +17,7 @@
   "tools": {
     "python3": {
       "present": true,
-      "path": "/home/sai/miniconda3/bin/python3",
+      "path": "~/miniconda3/bin/python3",
       "exit_code": 0,
       "version_output": [
         "Python 3.13.5"
@@ -110,7 +110,7 @@
     },
     "rg": {
       "present": true,
-      "path": "/home/sai/.kimi-code/bin/rg",
+      "path": "~/.kimi-code/bin/rg",
       "exit_code": 0,
       "version_output": [
         "ripgrep 15.0.0 (rev 3a612f88b8)",
@@ -131,7 +131,7 @@
     },
     "pi": {
       "present": true,
-      "path": "/home/sai/.npm-global/bin/pi",
+      "path": "~/.npm-global/bin/pi",
       "exit_code": 0,
       "version_output": [
         "0.87.1"
@@ -139,7 +139,7 @@
     },
     "kimi": {
       "present": true,
-      "path": "/home/sai/.kimi-code/bin/kimi",
+      "path": "~/.kimi-code/bin/kimi",
       "exit_code": 0,
       "version_output": [
         "2.1.1"
@@ -147,7 +147,7 @@
     },
     "codex": {
       "present": true,
-      "path": "/home/sai/.npm-global/bin/codex",
+      "path": "~/.npm-global/bin/codex",
       "exit_code": 0,
       "version_output": [
         "codex-cli 0.153.4"
@@ -155,7 +155,7 @@
     },
     "claude": {
       "present": true,
-      "path": "/home/sai/.local/bin/claude",
+      "path": "~/.local/bin/claude",
       "exit_code": 0,
       "version_output": [
         "2.1.285 (Claude Code)"
@@ -170,7 +170,7 @@
     },
     "herdr": {
       "present": true,
-      "path": "/home/sai/.local/bin/herdr",
+      "path": "~/.local/bin/herdr",
       "exit_code": 0,
       "version_output": [
         "herdr 0.8.0"
@@ -226,7 +226,7 @@
   "provider_config_structure": {
     "claude_settings": {
       "present": true,
-      "path": "/home/sai/.claude/settings.json",
+      "path": "~/.claude/settings.json",
       "structure": {
         "cleanupPeriodDays": 999999,
         "model": "opus",
@@ -237,11 +237,11 @@
               "hooks": [
                 {
                   "type": "command",
-                  "command": "/home/sai/.agents/hooks/deny-dangerous.sh"
+                  "command": "~/.agents/hooks/deny-dangerous.sh"
                 },
                 {
                   "type": "command",
-                  "command": "/home/sai/.agents/hooks/deny-house-rules.sh"
+                  "command": "~/.agents/hooks/deny-house-rules.sh"
                 }
               ]
             },
@@ -250,7 +250,7 @@
               "hooks": [
                 {
                   "type": "command",
-                  "command": "/home/sai/.agents/hooks/deny-house-rules.sh"
+                  "command": "~/.agents/hooks/deny-house-rules.sh"
                 }
               ]
             }
@@ -261,7 +261,7 @@
               "hooks": [
                 {
                   "type": "command",
-                  "command": "bash '/home/sai/.claude/hooks/herdr-agent-state.sh' session",
+                  "command": "bash '~/.claude/hooks/herdr-agent-state.sh' session",
                   "timeout": 10
                 }
               ]
@@ -319,15 +319,15 @@
     },
     "codex_config_toml": {
       "present": true,
-      "path": "/home/sai/.codex/config.toml",
+      "path": "~/.codex/config.toml",
       "structure": [
         "model =",
         "model_reasoning_effort =",
         "approvals_reviewer =",
         "project_doc_max_bytes =",
-        "[projects.\"/home/sai\"]",
+        "[projects.\"~\"]",
         "trust_level =",
-        "[projects.\"/home/sai/sai/sai-train\"]",
+        "[projects.\"~/sai-train\"]",
         "trust_level =",
         "[projects.\"/home\"]",
         "trust_level =",
@@ -340,24 +340,24 @@
         "hooks =",
         "memories =",
         "[hooks.state]",
-        "[hooks.state.\"/home/sai/.codex/hooks.json:pre_tool_use:0:0\"]",
+        "[hooks.state.\"~/.codex/hooks.json:pre_tool_use:0:0\"]",
         "trusted_hash =",
         "enabled =",
-        "[hooks.state.\"/home/sai/.codex/hooks.json:pre_tool_use:0:1\"]",
+        "[hooks.state.\"~/.codex/hooks.json:pre_tool_use:0:1\"]",
         "trusted_hash =",
-        "[hooks.state.\"/home/sai/.codex/hooks.json:session_start:0:0\"]",
+        "[hooks.state.\"~/.codex/hooks.json:session_start:0:0\"]",
         "trusted_hash =",
-        "[hooks.state.\"/home/sai/.codex/hooks.json:session_start:1:0\"]",
+        "[hooks.state.\"~/.codex/hooks.json:session_start:1:0\"]",
         "trusted_hash =",
-        "[hooks.state.\"/home/sai/.codex/hooks.json:session_start:2:0\"]",
+        "[hooks.state.\"~/.codex/hooks.json:session_start:2:0\"]",
         "trusted_hash =",
-        "[hooks.state.\"/home/sai/.codex/hooks.json:session_start:3:0\"]",
+        "[hooks.state.\"~/.codex/hooks.json:session_start:3:0\"]",
         "trusted_hash ="
       ]
     },
     "kimi_config": {
       "present": true,
-      "path": "/home/sai/.kimi-code/config.toml",
+      "path": "~/.kimi-code/config.toml",
       "structure": [
         "default_model =",
         "[providers.\"managed:kimi-code\"]",
