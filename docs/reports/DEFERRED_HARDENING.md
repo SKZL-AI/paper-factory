@@ -196,3 +196,32 @@ Normalisierung exakt mit dem zitierten Titel kollidiert):
 - Ruff: 217 Style-Findings (11 auto-fixable) — Hygiene-Block v1.1.
 - Social Preview (1280×640) liegt als docs/assets/banner.png — Upload nur via
   GitHub UI möglich (Settings → General), kein API-Endpoint.
+
+
+## v1.2 Verification Plane — DEFER-Entscheidungen (2026-10-04)
+
+- **LiteratureProvider/PaperQA: DEFER.** Inventur 2026-10-04: `paperqa` wird
+  nirgends im Code importiert oder aufgerufen — ein LiteratureProvider-Interface
+  hätte genau null reale Consumer und verletzte die eigene Regel „keine
+  Abstraktion ohne zweiten Consumer". PF-native Literature Discovery (P06)
+  bleibt der einzige Pfad. Der unbenutzte `LiteratureCfg.paperqa2`-Schalter
+  bleibt unverändert bestehen (keine stille Mutation); das pyproject-Extra
+  `literature=["paperqa"]` bleibt optional und ist keine Core-Hard-Dependency.
+- **W3C-PROV-Exporter: DEFER v1.3.** Kein Consumer vorhanden; die
+  PF-Provenance (Firewall, Origin-Receipts, render_provenance) bleibt
+  kanonisch. Ein Standard-Export ist ohne Abnehmer Spekulation.
+- **Reproduction Capsule (P10): DEFER v1.3.** Kein zwingender aktueller Use
+  Case; P10-DEGRADED wird transparent dokumentiert, statt eine
+  Snakemake/Nextflow/CWL-Schicht ohne Abnehmer zu bauen.
+- **SQLite-Schema-Versionierung (runs.sqlite): DEFER v1.3.** Der v1.2-Contract
+  versioniert sich selbst (`schema_version`); eine Migration des
+  bestehenden SQLite-State ist ein eigenes Risikopaket ohne v1.2-Consumer.
+- **Citation/Provenance (Phase 8): REUSE.** Keine Änderung: die bestehende
+  DOI/arXiv/authoritative-URL-Verifikation (P21) und die Protected-Prose-
+  Firewall bleiben kanonisch. Externe Resolver sind höchstens ergänzend.
+- **Historische Freeze-Abgrenzung (Phase 10).** Drei Ebenen bleiben strikt
+  getrennt: `HISTORICAL_V1_FREEZE` (Pilot 3, P21–P36, unantastbar) vs.
+  `CURRENT_V1_1_COMPLIANCE` (arXiv-Gates, v1.1) vs. `V1_2_REGRESSION_PILOT`
+  (zukünftige Replay-Vergleiche auf gespeicherten States). Neue
+  Compliance-Anforderungen machen den historischen Freeze nicht rückwirkend
+  ungültig, und es werden keine Disclosure-Inhalte erfunden.
