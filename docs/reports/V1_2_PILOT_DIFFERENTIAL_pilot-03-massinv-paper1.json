@@ -1,0 +1,1037 @@
+{
+  "pilot": "pilot-03-massinv-paper1",
+  "workspace": "/home/sai/paper-factory/pilots/pilot-03-massinv-paper1/project/.paper-factory",
+  "run_id": "complete-20261002T143931.928898Z",
+  "run_count": 16,
+  "run_created_at": "2026-10-02T14:39:31.934745Z",
+  "rows": [
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P00",
+      "native_verdict": "DEGRADED",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": true,
+      "timing": {
+        "started_at": "2026-10-02T14:39:33.253011Z",
+        "finished_at": "2026-10-02T14:39:33.253020Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"missing_optional_tools\": [\"latexmk\"]}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P01",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:39:33.305643Z",
+        "finished_at": "2026-10-02T14:39:33.305647Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"counts\": {\"bib\": 1, \"chats\": 0, \"code\": 21, \"data\": 53, \"drafts\": 12}, \"input_mode\": \"MIXED_EVIDENCE\"}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P02",
+      "native_verdict": "DEGRADED",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": true,
+      "timing": {
+        "started_at": "2026-10-02T14:39:33.347064Z",
+        "finished_at": "2026-10-02T14:39:33.347070Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"chronology_entries\": 0, \"reason\": \"no chat/history artifacts found\", \"sources\": 0}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P03",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:39:33.396621Z",
+        "finished_at": "2026-10-02T14:39:33.396625Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"storyline_entries\": 0}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P04",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:39:33.443143Z",
+        "finished_at": "2026-10-02T14:39:33.443149Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"evidence_count\": 87, \"tiers\": {\"T0\": 81, \"T1\": 2, \"T2\": 1, \"T3\": 0, \"T4\": 3}}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P05",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:39:35.645064Z",
+        "finished_at": "2026-10-02T14:39:35.645069Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"findings\": 5, \"kinds\": [\"number_mismatch\", \"unverifiable_number\"]}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P06",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:39:35.450216Z",
+        "finished_at": "2026-10-02T14:39:35.450228Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"queries\": 1, \"unique_works\": 10}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P07",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:39:35.488159Z",
+        "finished_at": "2026-10-02T14:39:35.488167Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"claims_attacked\": 10, \"pool\": 10}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P08",
+      "native_verdict": "DEGRADED",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": true,
+      "timing": {
+        "started_at": "2026-10-02T14:39:35.930874Z",
+        "finished_at": "2026-10-02T14:39:35.930878Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"claims\": 10, \"unsupported\": 10}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P09",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:39:35.558210Z",
+        "finished_at": "2026-10-02T14:39:35.558216Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"metric_count\": 146, \"small_samples\": [\"evidence/gk/GK_AUDITS/GMIX_LAYER_RUNTIME_ENUMERATION_v1__layer_id__gmix_fires_phase0True__eligible_for_gate1False__eli…"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P10",
+      "native_verdict": "DEGRADED",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": true,
+      "timing": {
+        "started_at": "2026-10-02T14:39:35.978505Z",
+        "finished_at": "2026-10-02T14:39:35.978514Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"reason\": \"no reproduction commands discovered\"}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P11",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:39:36.026626Z",
+        "finished_at": "2026-10-02T14:39:36.026634Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"figures\": 13, \"skipped\": 0}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P12",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:39:36.062073Z",
+        "finished_at": "2026-10-02T14:39:36.062092Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"tables\": 5}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P13",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:39:39.186003Z",
+        "finished_at": "2026-10-02T14:39:39.186014Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"figures\": 13}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P14",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:39:39.234145Z",
+        "finished_at": "2026-10-02T14:39:39.234150Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"output\": \"paper/generated/tables.tex\", \"tables\": 5}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P15",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:39:39.273553Z",
+        "finished_at": "2026-10-02T14:39:39.273564Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"chain\": [{\"created\": 0, \"kept_existing\": 6}]}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P16",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:39:39.305519Z",
+        "finished_at": "2026-10-02T14:39:39.305524Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"bytes\": 322, \"section\": \"methods\"}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P17",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:39:39.341179Z",
+        "finished_at": "2026-10-02T14:39:39.341186Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"bytes\": 3545, \"section\": \"results\"}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P18",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:39:39.389223Z",
+        "finished_at": "2026-10-02T14:39:39.389229Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"bytes\": 231, \"section\": \"introduction\"}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P19",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:39:39.428425Z",
+        "finished_at": "2026-10-02T14:39:39.428433Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"bytes\": 989, \"section\": \"discussion\"}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P20",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:39:39.459729Z",
+        "finished_at": "2026-10-02T14:39:39.459734Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"chain\": [{\"bytes\": 155, \"section\": \"abstract\"}, {\"finalized\": true, \"placeholders_remaining\": false}, {\"sections\": {\"abstract\": \"PASS\", \"discussion\": \"PASS\",…"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P21",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:40:12.878239Z",
+        "finished_at": "2026-10-02T14:40:12.878244Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"chain\": [{\"critical\": 0, \"entries\": 21, \"findings\": 0, \"offline\": false}, {\"dropped_false\": [], \"kept\": 21, \"upgraded\": [\"draftref1\", \"draftref10\", \"draftref…"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P22",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:40:12.920546Z",
+        "finished_at": "2026-10-02T14:40:12.920551Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"raw_numbers\": 0}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P23",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:40:12.955391Z",
+        "finished_at": "2026-10-02T14:40:12.955396Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"blocking\": 11, \"findings\": 15, \"review_id\": \"P23-methods\"}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P24",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:40:12.986942Z",
+        "finished_at": "2026-10-02T14:40:12.986948Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"blocking\": 1, \"findings\": 5, \"review_id\": \"P24-statistics\"}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P25",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:40:13.026172Z",
+        "finished_at": "2026-10-02T14:40:13.026179Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"blocking\": 1, \"findings\": 5, \"review_id\": \"P25-adversarial\"}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P26",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:40:13.074756Z",
+        "finished_at": "2026-10-02T14:40:13.074762Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"blocking\": 0, \"findings\": 0, \"review_id\": \"P26-reproducibility\"}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P27",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:40:13.247996Z",
+        "finished_at": "2026-10-02T14:40:13.248003Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"deferred\": 0, \"duplicates\": 0, \"invalid\": 0, \"not_applicable\": 0, \"remediated\": 10, \"unresolved\": 0}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P28",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:40:13.293617Z",
+        "finished_at": "2026-10-02T14:40:13.293625Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"files_frozen\": 48}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P29",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:40:13.331980Z",
+        "finished_at": "2026-10-02T14:40:13.331987Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"nits\": 0}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P30",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:40:13.361127Z",
+        "finished_at": "2026-10-02T14:40:13.361134Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"checked_at\": \"2026-10-02T14:40:13.360713Z\", \"external_edits\": true, \"reconciliation\": \"numbers/claims re-validated against metrics\"}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P31",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:40:13.405389Z",
+        "finished_at": "2026-10-02T14:40:13.405394Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"bridge\": \"manual\", \"evidence_class\": \"external_paperpal_declared\", \"inbox_items\": 3, \"semantic_diff_required\": true}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P32",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:40:13.737575Z",
+        "finished_at": "2026-10-02T14:40:13.737581Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"failed\": [], \"venue\": \"preprint\"}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P33",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:40:15.098431Z",
+        "finished_at": "2026-10-02T14:40:15.098436Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"arxiv_render\": {\"source_sha256\": \"6e814c820ba72146e0726cc530a3290d5ea3244e57d6c746933979bc4fb35e14\", \"status\": \"rendered\"}, \"files\": 53, \"paper_id\": \"massinv…"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P34",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:40:21.399184Z",
+        "finished_at": "2026-10-02T14:40:21.399194Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"arxiv\": \"ok\", \"engine\": \"/usr/bin/pdflatex\", \"exit_code\": 0, \"hard_errors\": [], \"log_tail\": [], \"pdf_produced\": true}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P35",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:40:21.480274Z",
+        "finished_at": "2026-10-02T14:40:21.480280Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"invariants\": 16}"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P36",
+      "native_verdict": "PASS",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:40:21.525930Z",
+        "finished_at": "2026-10-02T14:40:21.525942Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"at\": \"2026-10-02T14:39:31.840592+00:00\", \"receipt\": \"/home/sai/paper-factory/pilots/pilot-03-massinv-paper1/project/.paper-factory/reports/p36_signoff.json\",…"
+    },
+    {
+      "pilot": "pilot-03-massinv-paper1",
+      "run_id": "complete-20261002T143931.928898Z",
+      "node_id": "P37",
+      "native_verdict": "NOT_RUN",
+      "vh_verdict": null,
+      "vh_backend": "veriharness (offline reconstruction)",
+      "artifact_identity": {
+        "native_artifact_sha256": null,
+        "vh_artifact_sha256": null,
+        "hoh_receipts": 0,
+        "shadow_receipts": 0
+      },
+      "semantic_equivalence": "N/A",
+      "outcome": "PROVIDER_UNAVAILABLE",
+      "mismatches": [],
+      "resolution": null,
+      "degraded": false,
+      "timing": {
+        "started_at": "2026-10-02T14:40:21.557397Z",
+        "finished_at": "2026-10-02T14:40:21.557415Z",
+        "duration_s": 0.0
+      },
+      "cost": "not measurable offline — no live HoH replay was run (quota discipline); live cost evidence remains reserved for scripts/run_live_hoh.py",
+      "rationale": "no HoH receipt stored for this node in the pilot workspace; live replay out of scope (quota discipline, plan §5 Abweichung 2)",
+      "detail_excerpt": "{\"reason\": \"no external submission is ever automatic\"}"
+    }
+  ],
+  "warnings": [],
+  "limitations": "Differential computed from stored pilot state only (runs.sqlite + receipt tree), read-only. No live HoH replay was executed (plan §5 Abweichung 2, quota discipline); the VH side is therefore UNAVAILABLE/PROVIDER_UNAVAILABLE wherever no HoH receipt was persisted historically. Semantic equivalence is N/A in that case — it is a documented gap, not a PASS."
+}
