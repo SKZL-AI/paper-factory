@@ -474,17 +474,45 @@ def test_source_fingerprint_changes_on_new_commit(tmp_path):
 def test_source_fingerprint_changes_on_uncommitted_change(tmp_path):
     src = _git_repo(tmp_path / "repo")
     fp_before = VeriharnessAdapter._source_fingerprint(src)
-    src.joinpath("code.py").write_text("print(2)\n", encoding="utf-8")  # dirty, same size? no — same length
+    src.joinpath("code.py").write_text("print(2)\n", encoding="utf-8")  # dirty, same length
     fp_after = VeriharnessAdapter._source_fingerprint(src)
     assert fp_before != fp_after, (
         "uncommitted working-tree changes must change the fingerprint "
         "(mtime/size alone is forgeable)"
     )
-    # same-size in-place edit is caught via `git status --porcelain`, not size
+    # same-size in-place edit of the ALREADY dirty file: the diff CONTENT
+    # changed, so the fingerprint must change too (review B-3a)
     src.joinpath("code.py").write_text("print(9)\n", encoding="utf-8")
-    assert VeriharnessAdapter._source_fingerprint(src) == fp_after  # still dirty, same status
+    assert VeriharnessAdapter._source_fingerprint(src) != fp_after
     subprocess.run(["git", "checkout", "-q", "--", "code.py"], cwd=src, check=True)
     assert VeriharnessAdapter._source_fingerprint(src) == fp_before  # clean tree again
+
+
+def test_source_fingerprint_tracks_dirty_to_dirtier_and_back(tmp_path):
+    """Review B-3a: successive in-place edits of an already-dirty file must
+    each change the fingerprint; restoring the clean file restores it."""
+    src = _git_repo(tmp_path / "repo")
+    fp_clean = VeriharnessAdapter._source_fingerprint(src)
+    src.joinpath("code.py").write_text("v2 = True\n", encoding="utf-8")
+    fp_dirty_v2 = VeriharnessAdapter._source_fingerprint(src)
+    assert fp_dirty_v2 != fp_clean
+    src.joinpath("code.py").write_text("v3 = True\n", encoding="utf-8")  # same length, still dirty
+    fp_dirty_v3 = VeriharnessAdapter._source_fingerprint(src)
+    assert fp_dirty_v3 != fp_dirty_v2 != fp_clean
+    subprocess.run(["git", "checkout", "-q", "--", "code.py"], cwd=src, check=True)
+    assert VeriharnessAdapter._source_fingerprint(src) == fp_clean
+
+
+def test_source_fingerprint_covers_untracked_file_edits(tmp_path):
+    """Untracked files are not in `git diff HEAD` — their content is hashed
+    separately so editing one also changes the fingerprint."""
+    src = _git_repo(tmp_path / "repo")
+    fp_clean = VeriharnessAdapter._source_fingerprint(src)
+    src.joinpath("notes.txt").write_text("draft one\n", encoding="utf-8")
+    fp_untracked = VeriharnessAdapter._source_fingerprint(src)
+    assert fp_untracked != fp_clean
+    src.joinpath("notes.txt").write_text("draft two\n", encoding="utf-8")  # same length
+    assert VeriharnessAdapter._source_fingerprint(src) != fp_untracked
 
 
 def test_source_fingerprint_fallback_without_git(tmp_path):
@@ -513,3 +541,38 @@ def test_verify_result_reports_clone_fingerprint_separately(env, stub_clone, tmp
     # artifact_sha256 stays the caller-declared package binding, not the clone
     assert res.artifact_sha256 == SHA
     assert res.artifact_sha256 != res.backend.detail["clone_fingerprint"]
+
+
+# --------------------------------------------------------------------------- #
+# Re-Review B-2a: KeyboardInterrupt/SystemExit (BaseException) must also
+# trigger the orphan cleanup — and ALWAYS propagate (Ctrl+C keeps working).
+# --------------------------------------------------------------------------- #
+
+
+def test_run_phase_keyboard_interrupt_cleans_up_records_and_propagates(
+    env, stub_clone, tmp_path, monkeypatch
+):
+    adapter = env.adapter
+    cleaned: list[str] = []
+    monkeypatch.setattr(adapter, "_cleanup_panes", lambda run_id, state: cleaned.append(run_id))
+    real_call = adapter._call
+
+    def interrupting_call(*args, **kw):
+        if "run" in args:
+            raise KeyboardInterrupt()
+        return real_call(*args, **kw)
+
+    monkeypatch.setattr(adapter, "_call", interrupting_call)
+    with pytest.raises(KeyboardInterrupt):
+        adapter.verify(make_package())
+    assert len(cleaned) == 1, "own panes must be cleaned even on KeyboardInterrupt"
+    run_id = cleaned[0]
+    copied = env.ws.receipts_dir / "hoh" / run_id / "pf_run_failure.json"
+    assert copied.exists()
+    receipt = json.loads(copied.read_text(encoding="utf-8"))
+    assert receipt["error"].startswith("KeyboardInterrupt"), receipt["error"]
+    import fcntl
+
+    with open(adapter._serial_lock_path, "a+") as fh:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(fh.fileno(), fcntl.LOCK_UN)

@@ -297,9 +297,15 @@ class VeriharnessAdapter:
         """Content identity of the target source, used to detect 'source
         changed since the snapshot' for the O177 clone.
 
-        With git available this is `git rev-parse HEAD` plus a digest of
-        `git status --porcelain` (so committed AND uncommitted changes both
-        invalidate the snapshot — mtime/size would miss in-place edits).
+        With git available this is `git rev-parse HEAD` plus digests of
+        `git status --porcelain` AND the uncommitted CONTENT (`git diff HEAD`,
+        plus the bytes of untracked files): committed changes, new uncommitted
+        changes, AND repeated in-place edits of an ALREADY dirty file all
+        invalidate the snapshot — `status --porcelain` alone only names dirty
+        files, and mtime/size would miss in-place edits. Diff/untracked
+        content is hashed with a 10 MB cap per source and the total length
+        mixed in, so beyond the cap the fingerprint still tracks content
+        length — a documented, honest bound, not silent full-content identity.
         git calls have a 20s timeout; any git error falls back to the
         documented weak proxy below.
         """
@@ -324,11 +330,34 @@ class VeriharnessAdapter:
             head = _git("rev-parse", "HEAD")
             if head:
                 status = _git("status", "--porcelain") or ""
+                diff = _git("diff", "HEAD") or ""
+                cap = 10 * 1024 * 1024
                 h = hashlib.sha256()
                 h.update(b"git|")
                 h.update(head.strip().encode())
                 h.update(b"|")
                 h.update(status.encode())
+                # content of the uncommitted diff (dirty → dirtier must change
+                # the fingerprint, not just the dirty-file NAME list)
+                diff_bytes = diff.encode()
+                h.update(b"|diff:")
+                h.update(hashlib.sha256(diff_bytes[:cap]).digest())
+                h.update(b"|")
+                h.update(str(len(diff_bytes)).encode())
+                # untracked files appear in status but not in `git diff HEAD`
+                for line in sorted(status.splitlines()):
+                    if not line.startswith("?? "):
+                        continue
+                    p = src / line[3:].strip().strip('"')
+                    if not p.is_file():
+                        continue
+                    try:
+                        data = p.read_bytes()
+                    except OSError:
+                        continue
+                    h.update(str(p.relative_to(src)).encode())
+                    h.update(hashlib.sha256(data[:cap]).digest())
+                    h.update(str(len(data)).encode())
                 return h.hexdigest()
         # Fallback (no git repo / git unusable): path + size + mtime over
         # files. This is a CHANGE PROXY, not content identity — a same-size
@@ -464,16 +493,18 @@ class VeriharnessAdapter:
                     qa,
                     timeout=7200,
                 )
-            except Exception as exc:
-                # Orphan hardening (review B-1): a failure between `start` and
-                # a finished `run` (e.g. TimeoutExpired) must not leave this
-                # run's panes/tabs behind. Best-effort cleanup under the SAME
-                # provenance guard (_cleanup_panes closes only tabs whose id
-                # contains this run_id), plus a failure receipt in the run's
-                # receipts tree — then the exception propagates: the caller
-                # sees the node FAIL, nothing is swallowed. (HoH has no
-                # documented `abort` command; cleanup via herdr tab close is
-                # the only supported teardown.)
+            except BaseException as exc:  # cleanup must also run for
+                # KeyboardInterrupt/SystemExit; the exception is ALWAYS re-raised.
+                # Orphan hardening (review B-1/B-2a): a failure between `start`
+                # and a finished `run` (e.g. TimeoutExpired, KeyboardInterrupt)
+                # must not leave this run's panes/tabs behind. Best-effort
+                # cleanup under the SAME provenance guard (_cleanup_panes
+                # closes only tabs whose id contains this run_id), plus a
+                # failure receipt in the run's receipts tree — then the
+                # exception propagates: the caller sees the node FAIL, nothing
+                # is swallowed, and Ctrl+C still aborts the process. (HoH has
+                # no documented `abort` command; cleanup via herdr tab close
+                # is the only supported teardown.)
                 state = self._read_state(run_id)
                 failure_receipt = self.runs_root / run_id / "receipts" / "pf_run_failure.json"
                 failure_receipt.parent.mkdir(parents=True, exist_ok=True)

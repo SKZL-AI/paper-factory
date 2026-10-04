@@ -270,3 +270,11 @@ bewusste Design-Entscheidungen, nicht stille Annahmen:
   protokolliert und NIEMALS geschlossen — sichtbar im pane_cleanup.json,
   nie still verworfen. PF-Run-IDs setzen den Zufallsteil deshalb vor den
   Truncation-Punkt (AGENTS.md).
+- **pf_run_failure.json ohne DB-Registrierung (B-N1, Re-Review 2026-10-04).**
+  Das Failure-Receipt einer gescheiterten Run-Phase landet auf Disk (Run-Baum
+  + kollektiert in `receipts/hoh/<run_id>/`), wird aber bewusst NICHT als
+  `kind="hoh"` in der `receipts`-Tabelle recorded: die Exception propagiert,
+  der Node fällt FAIL und U7 bleibt ehrlich FAIL — ein Failure-Receipt als
+  HoH-Receipt in der DB würde das Gate künstlich sättigen (Analogon zum
+  F1-False-Close). Reine Sichtbarkeits-Inkonsistenz (Disk vs. DB), kein
+  Handlungsbedarf.
