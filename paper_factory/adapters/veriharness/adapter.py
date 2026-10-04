@@ -441,16 +441,25 @@ class VeriharnessAdapter:
         return {}
 
     def _cleanup_panes(self, run_id: str, state: dict[str, Any]) -> None:
-        """Close Herdr tabs THIS run spawned (they are listed in the run's
-        active_tasks). Foreign panes are never touched. Failure to clean is
-        recorded, not fatal."""
+        """Close Herdr tabs THIS run spawned. Provenance guard: a tab is
+        closed only if its id contains this run's run_id (HoH embeds the run
+        id in agent/tab names, e.g. 'hoh-pf-<rand8>-<node>-<role>'), matched
+        case-insensitively. Tabs failing the guard are treated as foreign,
+        NOT closed, and recorded as skipped_foreign — never silently dropped.
+        Failure to clean is recorded, not fatal."""
         tabs = {
             t.get("herdr_tab_id") for t in state.get("active_tasks", []) if t.get("herdr_tab_id")
         }
         if not tabs or not shutil.which("herdr"):
             return
-        closed, failed = [], []
+        own_run = run_id.lower()
+        closed, failed, skipped_foreign = [], [], []
         for tab_id in sorted(tabs):
+            if own_run not in tab_id.lower():
+                skipped_foreign.append(
+                    {"tab_id": tab_id, "reason": f"tab id does not contain run id {run_id}"}
+                )
+                continue
             proc = subprocess.run(
                 ["herdr", "tab", "close", tab_id],
                 capture_output=True,
@@ -459,10 +468,15 @@ class VeriharnessAdapter:
                 check=False,
             )
             (closed if proc.returncode == 0 else failed).append(tab_id)
-        if closed or failed:
+        if closed or failed or skipped_foreign:
             write_json(
                 self.runs_root / f"{run_id}.pane_cleanup.json",
-                {"at": utcnow(), "closed": closed, "failed": failed},
+                {
+                    "at": utcnow(),
+                    "closed": closed,
+                    "failed": failed,
+                    "skipped_foreign": skipped_foreign,
+                },
             )
 
     def _collect_receipts(self, run_id: str) -> list[dict[str, Any]]:

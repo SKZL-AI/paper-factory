@@ -12,8 +12,8 @@ Gaps closed on top of the existing contract/adapter/shadow suites:
 - provider TimeoutError/ConnectionError → PROVIDER_UNAVAILABLE, native untouched.
 - registry lookup of unknown backends; external identities never self-register.
 - malformed capability status strings → ValidationError.
-- pane cleanup provenance: documents the REAL behavior of _cleanup_panes when
-  the run state lists foreign tab ids (BEFUND, not fixed here).
+- pane cleanup provenance: foreign herdr tab ids in the run state are skipped
+  and recorded as skipped_foreign — never closed (WP6-Befund B1, gefixt).
 - flock serialization across TWO adapter instances on ONE workspace.
 - SQLite crash/restart/resume against tmp_path only.
 - paper_factory stays importable with paperqa blocked (works with or without
@@ -349,12 +349,7 @@ def test_capability_declaration_rejects_invalid_status_in_json():
 # --------------------------------------------------------------------------- #
 
 
-def test_cleanup_panes_documents_missing_provenance_guard(tmp_path, monkeypatch):
-    """BEFUND-Dokumentation (WP6): _cleanup_panes closes EVERY herdr_tab_id
-    listed in the run's own state.json — there is no per-task provenance check
-    (no run_id/task-owner filter). If a foreign tab id ever lands in this run's
-    active_tasks, it WOULD be closed. This test pins that real behavior so the
-    gap stays visible; the guard itself is deliberately NOT added here."""
+def _pane_env(tmp_path, monkeypatch):
     ws = Workspace(tmp_path / "target")
     adapter = VeriharnessAdapter(ws, hoh_executable="/fake/bin/hoh")
     herdr_calls: list[list[str]] = []
@@ -365,22 +360,58 @@ def test_cleanup_panes_documents_missing_provenance_guard(tmp_path, monkeypatch)
 
     monkeypatch.setattr(adapter_mod.shutil, "which", lambda name: "/fake/bin/herdr")
     monkeypatch.setattr(adapter_mod.subprocess, "run", fake_run)
+    return adapter, herdr_calls
 
+
+def test_cleanup_panes_foreign_tab_ids_are_skipped_and_recorded(tmp_path, monkeypatch):
+    """WP6-Befund B1, gefixt: eine Tab-ID, die die eigene run_id nicht enthält,
+    wird NICHT an 'herdr tab close' übergeben, sondern als skipped_foreign mit
+    Grund im Cleanup-Receipt dokumentiert (fail-visible)."""
+    adapter, herdr_calls = _pane_env(tmp_path, monkeypatch)
     state = {
         "active_tasks": [
-            {"task": "planner", "herdr_tab_id": "tab-own-1"},
-            {"task": "qa", "herdr_tab_id": "tab-own-2"},
+            {"task": "planner", "herdr_tab_id": "tab-PF-adv00001-P05-planner"},
+            {"task": "qa", "herdr_tab_id": "tab-PF-adv00001-P05-qa"},
             {"task": "foreign-run-agent", "herdr_tab_id": "tab-foreign-9"},
         ]
     }
     adapter._cleanup_panes("PF-adv00001-P05", state)
 
     closed = [c[c.index("close") + 1] for c in herdr_calls]
-    # Ist-Zustand: ALL listed tabs are closed, the foreign one included —
-    # this assertion is the Befund, not the desired end state.
-    assert closed == ["tab-foreign-9", "tab-own-1", "tab-own-2"]
-    cleanup_file = adapter.runs_root / "PF-adv00001-P05.pane_cleanup.json"
-    assert json.loads(cleanup_file.read_text(encoding="utf-8"))["closed"] == closed
+    assert closed == ["tab-PF-adv00001-P05-planner", "tab-PF-adv00001-P05-qa"]
+    assert "tab-foreign-9" not in closed  # foreign tab never touched
+    receipt = json.loads(
+        (adapter.runs_root / "PF-adv00001-P05.pane_cleanup.json").read_text(encoding="utf-8")
+    )
+    assert receipt["closed"] == closed
+    assert [s["tab_id"] for s in receipt["skipped_foreign"]] == ["tab-foreign-9"]
+    assert "PF-adv00001-P05" in receipt["skipped_foreign"][0]["reason"]
+
+
+def test_cleanup_panes_matches_run_id_case_insensitively(tmp_path, monkeypatch):
+    """herdr leitet Agentennamen lowercased ab — der Guard muss eigene Tabs
+    trotzdem erkennen (Substring-Match auf die run_id, beide Seiten lowercase)."""
+    adapter, herdr_calls = _pane_env(tmp_path, monkeypatch)
+    state = {
+        "active_tasks": [
+            {"task": "planner", "herdr_tab_id": "hoh-pf-adv00003-p05-planner"},
+        ]
+    }
+    adapter._cleanup_panes("PF-adv00003-P05", state)
+    assert [c[c.index("close") + 1] for c in herdr_calls] == ["hoh-pf-adv00003-p05-planner"]
+
+
+def test_cleanup_panes_only_foreign_tabs_still_writes_receipt(tmp_path, monkeypatch):
+    """Nur fremde Tabs: kein einziger close-Aufruf, aber das skipped_foreign
+    wird trotzdem persistiert — der Guard schweigt nie still."""
+    adapter, herdr_calls = _pane_env(tmp_path, monkeypatch)
+    adapter._cleanup_panes("PF-adv00004-P05", {"active_tasks": [{"herdr_tab_id": "t-foreign"}]})
+    assert herdr_calls == []
+    receipt = json.loads(
+        (adapter.runs_root / "PF-adv00004-P05.pane_cleanup.json").read_text(encoding="utf-8")
+    )
+    assert receipt["closed"] == [] and receipt["failed"] == []
+    assert [s["tab_id"] for s in receipt["skipped_foreign"]] == ["t-foreign"]
 
 
 def test_cleanup_panes_without_herdr_binary_is_noop(tmp_path, monkeypatch):

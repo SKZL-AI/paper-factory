@@ -225,3 +225,9 @@ Normalisierung exakt mit dem zitierten Titel kollidiert):
   (zukünftige Replay-Vergleiche auf gespeicherten States). Neue
   Compliance-Anforderungen machen den historischen Freeze nicht rückwirkend
   ungültig, und es werden keine Disclosure-Inhalte erfunden.
+- **Stale-/Frische-Mechanismus für ExecutionReceipts: DEFER v1.3.**
+  `created_at` wird validiert, aber von keinem Consumer geprüft; `compare()`
+  hat keinen Zeitstempel-Input. Der Pinning-Test
+  `tests/test_verification_adversarial.py::test_stale_execution_receipt_loads_without_any_freshness_check`
+  dokumentiert den Ist-Zustand — ein künftiger Frische-Check hat damit einen
+  roten Test, den er grün macht. (WP6-Befund B2, 2026-10-04.)
