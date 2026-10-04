@@ -189,6 +189,10 @@ def test_10_provider_failure_classified():
 def test_11_alternative_provider_resume():
     """Router returns a usable provider for a review role and records the
     selection; failover happens by preference order, never silently."""
+    import shutil
+
+    if not any(shutil.which(h) for h in ("claude", "codex", "kimi", "pi")):
+        pytest.skip("no harness CLI installed on this machine (e.g. CI)")
     from paper_factory.core.config import load_config
     from paper_factory.providers.router import ProviderRouter
 
@@ -203,6 +207,10 @@ def test_11_alternative_provider_resume():
 def test_12_same_family_review_marked_degraded():
     """Force a single-family provider world: the adversarial review must be
     marked DEGRADED_INDEPENDENCE, never silently 'independent'."""
+    import shutil
+
+    if shutil.which("kimi") is None:
+        pytest.skip("kimi CLI not installed on this machine (e.g. CI)")
     from paper_factory.core.config import (
         MarkingRegistry,
         ProviderEntry,
