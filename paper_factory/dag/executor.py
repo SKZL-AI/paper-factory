@@ -30,6 +30,7 @@ class NodeContext:
     offline: bool = False
     strict: bool = False
     target_venue: str | None = None
+    config_dir: Any = None   # Path of --config-dir (venue policy files live there)
     node_statuses: dict[str, Verdict] = field(default_factory=dict)
 
 

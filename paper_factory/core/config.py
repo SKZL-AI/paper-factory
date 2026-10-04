@@ -21,6 +21,11 @@ class PaperCfg(BaseModel):
     target: str = "preprint"
     canonical_format: str = "latex"
     draft_is_authoritative: bool = False
+    # arXiv venue compliance (P32, see docs/ARXIV_COMPLIANCE.md)
+    license: str | None = None        # one of the six arXiv options — irrevocable
+    type: str = "research"            # research | review | position
+    category: str | None = None       # e.g. cs.AI
+    journal_ref: str | None = None    # required for review/position in cs.*
 
 
 class ChatsCfg(BaseModel):

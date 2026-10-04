@@ -5,8 +5,8 @@ title: "Paper Factory: Evidence-First Agentic Research-Paper Production"
 authors:
   - family-names: "Sakızlı"
     given-names: "Furkan"
-version: 1.0.0
-date-released: "2026-10-02"
+version: 1.1.0
+date-released: "2026-10-04"
 license: MIT
 url: "https://github.com/SKZL-AI/paper-factory"
 repository-code: "https://github.com/SKZL-AI/paper-factory"

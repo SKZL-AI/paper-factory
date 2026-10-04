@@ -1,0 +1,25 @@
+# AI-use disclosure for the arXiv compliance gate (P32).
+#
+# arXiv requires significant use of generative AI to be reported in the work
+# (arxiv.org/help/moderation). Paper Factory fails closed: without this file
+# the arXiv venue gate cannot pass, and it never invents a declaration.
+#
+# Schema reference + policy sources: docs/ARXIV_COMPLIANCE.md
+disclosure:
+  schema_version: "1.0"
+  ai_use:
+    used: true                     # false → renders a negative declaration
+    tools:
+      - name: "Claude"             # tool name (must appear in the manuscript)
+        developer: "Anthropic"
+        version: "4.5"             # or model_id
+    tasks:                         # GAIDeT stages: ideation|literature|
+      - stage: writing             # data_collection|analysis|code|writing|
+        task: language_polishing   # translation|figures|review
+        scope: "full manuscript"
+        generated_content: false   # true = substantive content was generated
+    human_oversight:
+      reviewed: true               # hard gate: must be true
+      reviewed_by: "all authors"
+  responsibility:
+    ai_not_author: true            # hard gate: must be true

@@ -39,6 +39,11 @@ machinery lives in the core.
   claim support, citation identity, number-to-metric binding, remediation
   integrity, external-edit reconciliation and more. `exit 0` means `CLOSED` —
   and nothing else.
+- **arXiv compliance built in.** The venue gate (P32) enforces the current
+  arXiv rules: AI-use disclosure with structured `ai_disclosure.yaml`
+  (GAIDeT vocabulary), no LLM authorship, chatbot meta-comment scan,
+  license irrevocability, English full text, filename/format rules — verified
+  against primary sources (see [docs/ARXIV_COMPLIANCE.md](docs/ARXIV_COMPLIANCE.md)).
 - **Human authority where it matters.** P36 is an explicit human final
   sign-off. P37 (external submission, e.g. arXiv) is never executed
   automatically.
@@ -90,6 +95,7 @@ Full detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 | `report` | Run report |
 | `audit` | Receipts |
 | `release` | Release bundle state — currently a fail-closed stub (`NOT_RUN`) |
+| `compliance` | Standalone venue-compliance check (`--target arxiv`) |
 
 Interactive frontends (`/complete-paper` skills for agentic CLIs) are thin
 wrappers around the same core; see [frontends/](frontends/).
@@ -121,6 +127,7 @@ Reports: [docs/reports/](docs/reports/) · Freeze evidence:
 | [VERIHARNESS_INTEGRATION](docs/VERIHARNESS_INTEGRATION.md) | You touch the verification kernel |
 | [SCIENTIFIC_INTEGRITY](docs/SCIENTIFIC_INTEGRITY.md) | You want the evidence rules |
 | [PROVENANCE_POLICY](docs/PROVENANCE_POLICY.md) | You want the write-firewall rules |
+| [ARXIV_COMPLIANCE](docs/ARXIV_COMPLIANCE.md) | You target arXiv (disclosure, policy gates) |
 | [RECOVERY](docs/RECOVERY.md) | Something crashed mid-run |
 
 Optional runtimes: [Herdr](https://github.com/SKZL-AI) (session/pane/worktree

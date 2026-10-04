@@ -1,6 +1,6 @@
 [project]
 name = "paper-factory"
-version = "1.0.0"
+version = "1.1.0"
 description = "Harness-neutral, evidence-first, agentic research-paper production system. Deterministic orchestration core; VeriHarness/HoH as verification kernel; Herdr as runtime."
 requires-python = ">=3.11"
 readme = "README.md"

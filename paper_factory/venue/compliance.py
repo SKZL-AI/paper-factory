@@ -6,10 +6,12 @@ from __future__ import annotations
 from ..core.results import Verdict
 from ..core.util import utcnow, write_json
 from ..dag.executor import NodeContext, NodeOutcome
+from .arxiv_policy import ARXIV_CHECKS
 
 VENUE_RULES = {
     "preprint": ["main_tex_exists", "bib_exists", "compiles"],
-    "arxiv": ["main_tex_exists", "bib_exists", "compiles", "no_absolute_paths", "source_archive_ready"],
+    "arxiv": ["main_tex_exists", "bib_exists", "compiles", "no_absolute_paths",
+              "source_archive_ready"] + ARXIV_CHECKS,
 }
 
 
@@ -82,6 +84,18 @@ def run_venue_compliance(ctx: NodeContext) -> NodeOutcome:
         checks["no_absolute_paths"] = {"pass": not bad, "offenders": bad}
     if "source_archive_ready" in rules:
         checks["source_archive_ready"] = {"pass": True, "note": "archive created in P33"}
+    if venue == "arxiv":
+        from . import arxiv_policy as ax
+        checks["ai_disclosure"] = ax.check_ai_disclosure(paper, ctx.config_dir)
+        checks["no_ai_authorship"] = ax.check_no_ai_authorship(paper)
+        checks["no_meta_comments"] = ax.check_no_meta_comments(paper)
+        checks["english_language"] = ax.check_english(paper)
+        checks["license_declared"] = ax.check_license(ctx.config)
+        checks["filenames_and_figures"] = ax.check_filenames_and_figures(paper)
+        checks["self_overlap"] = ax.check_self_overlap(paper)
+        checks["position_paper_rule"] = ax.check_position_paper_rule(ctx.config)
+        write_json(ctx.workspace.reports_dir / "arxiv_submission_preflight.json",
+                   ax.submission_preflight(ctx.config))
 
     failed = [k for k, v in checks.items() if not v.get("pass")]
     report = {"checked_at": utcnow(), "venue": venue, "checks": checks, "failed": failed}

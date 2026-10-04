@@ -33,6 +33,7 @@ def _ctx(args: argparse.Namespace, run_id: str) -> NodeContext:
         offline=getattr(args, "offline", False),
         strict=getattr(args, "strict", False),
         target_venue=getattr(args, "target", None),
+        config_dir=Path(args.config_dir),
     )
 
 
@@ -150,6 +151,22 @@ def cmd_intake(args) -> int:
     return _execute(args, run_id, resume=False)
 
 
+def cmd_compliance(args) -> int:
+    """Standalone venue-compliance check (P32) without a full pipeline run."""
+    from ..venue.compliance import run_venue_compliance
+
+    ctx = _ctx(args, args.run_id or f"compliance-{utcnow().replace(':', '').replace('-', '')}")
+    outcome = run_venue_compliance(ctx)
+    ws = ctx.workspace
+    report = {}
+    rep_path = ws.reports_dir / "venue_compliance.json"
+    if rep_path.exists():
+        report = json.loads(rep_path.read_text(encoding="utf-8"))
+    _print_json({"venue": report.get("venue"), "verdict": outcome.verdict.value,
+                 "failed": report.get("failed", []), "checks": report.get("checks", {})})
+    return 0 if outcome.verdict.value == "PASS" else EXIT_INCOMPLETE
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="paper-factory",
                                 description="Harness-neutral evidence-first paper production system.")
@@ -170,6 +187,8 @@ def build_parser() -> argparse.ArgumentParser:
     add("audit", cmd_audit)
     add("intake", cmd_intake)
     add("release", cmd_release)
+    spc = add("compliance", cmd_compliance)
+    spc.add_argument("--target", default=None, help="venue override (e.g. arxiv)")
 
     sp = add("run", cmd_run)
     sp.add_argument("--dry-run", action="store_true")
