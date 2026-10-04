@@ -29,7 +29,9 @@ Evidence → Claims → Stats → Figures/Tables → Manuscript → Reviews → 
   SQLite run store, machine inventory), `cli/`.
 - **Adapters**: `adapters/` — `base.py` defines the harness contract
   (doctor/version/capabilities/invoke/identities). `veriharness/` and
-  `herdr/` are first-class adapters with hard policies (below).
+  `herdr/` are first-class adapters with hard policies (below). The
+  verification wiring lives one layer up, in `dag/handlers.py` (see
+  *Verification Plane* below).
 - **Pipeline**: `context/` (intake, chat mining), `evidence/`, `claims/`,
   `literature/` (discovery, DOI verification, novelty attack),
   `statistics/` (metrics, integrity audit, reproducibility, numbers audit),
@@ -54,6 +56,36 @@ Evidence → Claims → Stats → Figures/Tables → Manuscript → Reviews → 
    findings (PASS = the audit ran), reviews fold findings into structured
    reports, remediation resolves them (never by copying reviewer prose),
    closure re-checks the post-remediation artifacts.
+
+## Verification Plane (v1.2)
+
+- **Contract modules** (`paper_factory/verification/`):
+  `contract.py` (strict, versioned models — `WorkPackage`,
+  `VerificationResult`, `BackendIdentity`; `schema_version=1`),
+  `registry.py` (`VerificationBackend` protocol + `register`/`BACKENDS`),
+  `capabilities.py` (`CapabilityStatus`: SUPPORTED / SUPPORTED_DEGRADED /
+  UNAVAILABLE / UNSUPPORTED / REQUIRES_NETWORK / REQUIRES_HUMAN;
+  declarations reuse the existing doctor/inventory probes),
+  `shadow.py` (differential comparison + receipts),
+  `findings_map.py`.
+- **Adapter wiring** (`dag/handlers.py::build_handlers`): at handler-build
+  time, the base handlers of `hoh_nodes ∪ shadow_nodes` (intersected with
+  `VERIHARNESS_CAPABLE = {P04, P05, P07, P09, P10, P16, P17, P18, P20}`)
+  are wrapped. `hoh_nodes` defaults to `["P05"]`. The wrapper runs the
+  deterministic/agentic base handler, then — unless offline — drives the
+  VeriHarness adapter and folds the verification verdict into the node
+  outcome (a HoH FAIL fails the node; an incomplete verification degrades
+  it, never hidden).
+- **Shadow / differential mode**: nodes listed in `shadow_nodes` (also
+  intersected with `VERIHARNESS_CAPABLE`) additionally get a
+  `DifferentialReceipt` (kind="shadow") comparing the PF-native verdict
+  with the backend verdict (`MATCH` / `SEMANTIC_MATCH` / `MISMATCH` /
+  `PROVIDER_UNAVAILABLE` / `INCOMPARABLE`). Shadow never changes the node
+  verdict. A node in both lists causes exactly one adapter run that feeds
+  both planes.
+- **Closure gate U7** (`release/closure.py`) counts only `kind="hoh"`
+  receipts for configured `hoh_nodes`; shadow receipts are observational
+  and would false-close the gate if counted.
 
 ## State model
 

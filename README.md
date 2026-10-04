@@ -69,6 +69,38 @@ flowchart TD
 
 Full detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
+### Verification Plane (v1.2, this branch)
+
+The verification kernel sits behind a **versioned contract**, not behind
+per-node ad-hoc calls:
+
+- **Contract** (`paper_factory/verification/`, `schema_version=1`) —
+  `WorkPackage` / `VerificationResult` / `BackendIdentity` as strict,
+  versioned models; backends implement the `VerificationBackend` protocol
+  and register in a small in-process **registry**; capability negotiation
+  reuses the existing doctor/inventory probes and reports a
+  `CapabilityStatus` per capability (no parallel discovery stack).
+- **VeriHarness behind the contract** — one HoH run flow in the adapter,
+  two façades: the generic `verify(WorkPackage)` (contract-facing) and the
+  legacy `verify_work_package(...)` consumed by the DAG wrappers. HoH
+  specifics stay in `BackendIdentity.detail`, never as new contract fields.
+- **Shadow / differential mode** (`verification.shadow_nodes` in
+  paper-factory.yaml) — for a shadow-listed node, the PF-native verdict and
+  the backend verdict for the same package are compared into a
+  `DifferentialReceipt` (`MATCH` / `SEMANTIC_MATCH` / `MISMATCH` /
+  `PROVIDER_UNAVAILABLE` / `INCOMPARABLE`). Shadow is observational: it
+  **never changes the node verdict**. A node listed in both `hoh_nodes` and
+  `shadow_nodes` gets exactly one adapter run that feeds both planes.
+
+Status: **IMPLEMENTED** — versioned contract, backend registry, shadow /
+differential mode, VeriHarness adapter. **OPTIONAL / not integrated** —
+external verification providers (none ship yet; PaperQA is *not*
+integrated). **PLANNED (v1.3)** — Reproduction Capsule, W3C-PROV exporter,
+literature provider. Details:
+[docs/V1_2_VERIFICATION_PLANE_PLAN.md](docs/V1_2_VERIFICATION_PLANE_PLAN.md)
+(plan history, fixed) and
+[docs/VERIHARNESS_INTEGRATION.md](docs/VERIHARNESS_INTEGRATION.md).
+
 ## Hard rules the system enforces
 
 - No empirical final-paper claim without evidence linkage (T0–T4 authority tiers).
@@ -110,7 +142,7 @@ Real pilot (a mass-invariance research paper, draft-assisted intake):
 - 245 unique writing-assistant suggestions processed capture-only, 100 %
   dispositioned: 75 applied under semantic guards, 124 rejected with
   evidence, 46 not applicable
-- **574 tests passing** (+2 environment skips for Windows-only Word paths)
+- **751 tests passing** (+2 environment skips for Windows-only Word paths)
 
 Reports: [docs/reports/](docs/reports/) · Freeze evidence:
 [V1_FREEZE_REPORT.md](V1_FREEZE_REPORT.md)
@@ -139,7 +171,7 @@ runtime; not on PyPI — the core works without it) and the `hoh` PyPI package
 ```bash
 git clone https://github.com/SKZL-AI/paper-factory && cd paper-factory
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
-.venv/bin/python -m pytest tests -q     # 574 tests
+.venv/bin/python -m pytest tests -q     # 751 tests (+2 environment skips)
 ```
 
 The test suite never spends LLM quota: E2E configs disable HoH nodes, and
