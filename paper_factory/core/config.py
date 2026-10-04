@@ -4,6 +4,7 @@ Four YAML files, all with built-in defaults derived from the v1.1 blueprint
 examples. None of them may contain secrets; provider entries reference
 environment variable *names*, never values.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -22,10 +23,10 @@ class PaperCfg(BaseModel):
     canonical_format: str = "latex"
     draft_is_authoritative: bool = False
     # arXiv venue compliance (P32, see docs/ARXIV_COMPLIANCE.md)
-    license: str | None = None        # one of the six arXiv options — irrevocable
-    type: str = "research"            # research | review | position
-    category: str | None = None       # e.g. cs.AI
-    journal_ref: str | None = None    # required for review/position in cs.*
+    license: str | None = None  # one of the six arXiv options — irrevocable
+    type: str = "research"  # research | review | position
+    category: str | None = None  # e.g. cs.AI
+    journal_ref: str | None = None  # required for review/position in cs.*
 
 
 class ChatsCfg(BaseModel):
@@ -66,6 +67,10 @@ class VerificationCfg(BaseModel):
     # Quota-aware default: one representative verification node gets a real HoH
     # run; the dashboard reports exactly which nodes carry HoH receipts.
     hoh_nodes: list[str] = Field(default_factory=lambda: ["P05"])
+    # Shadow/differential mode (plan §3 Phase 5): native PF result vs HoH result
+    # are compared per node and recorded; empty default = shadow off. Never
+    # changes node verdicts.
+    shadow_nodes: list[str] = Field(default_factory=list)
 
 
 class PaperpalCfg(BaseModel):
@@ -110,7 +115,12 @@ class ProviderEntry(BaseModel):
 
 class RoutingCfg(BaseModel):
     independence_required_for: list[str] = Field(
-        default_factory=lambda: ["methods_review", "statistics_review", "adversarial_review", "semantic_diff"]
+        default_factory=lambda: [
+            "methods_review",
+            "statistics_review",
+            "adversarial_review",
+            "semantic_diff",
+        ]
     )
     native_cli_first: bool = True
     gateway_second: bool = True
@@ -167,7 +177,9 @@ class ProviderPolicyConfig(BaseModel):
 class MarkingEntry(BaseModel):
     provider_family: str
     model_family: str
-    status: Literal["documented_marking", "documented_no_marking", "unknown", "not_applicable", "human"]
+    status: Literal[
+        "documented_marking", "documented_no_marking", "unknown", "not_applicable", "human"
+    ]
     scope: str = "generated_text"
     verified_at: str | None = None
     source_type: str | None = None
@@ -177,7 +189,9 @@ class MarkingEntry(BaseModel):
 
 class MarkingRegistry(BaseModel):
     version: int = 1
-    policy_note: str = "This registry reports only documented status. Unknown does not mean unmarked."
+    policy_note: str = (
+        "This registry reports only documented status. Unknown does not mean unmarked."
+    )
     entries: list[MarkingEntry] = Field(default_factory=list)
 
     def status_for(self, provider_family: str, model_family: str) -> str:
@@ -197,7 +211,9 @@ def _load_yaml(path: Path) -> dict[str, Any]:
     return data or {}
 
 
-def load_config(config_dir: Path) -> tuple[PaperFactoryConfig, ProvidersConfig, ProviderPolicyConfig, MarkingRegistry]:
+def load_config(
+    config_dir: Path,
+) -> tuple[PaperFactoryConfig, ProvidersConfig, ProviderPolicyConfig, MarkingRegistry]:
     """Load all four config files from *config_dir*, falling back to defaults."""
     pf = PaperFactoryConfig(**_load_yaml(config_dir / "paper-factory.yaml"))
     prov = ProvidersConfig(**_load_yaml(config_dir / "providers.yaml"))

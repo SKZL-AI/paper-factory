@@ -1,6 +1,10 @@
 """Node handler registry. Each pipeline module registers its handler here;
 nodes without a registered handler report NOT_RUN (never silently PASS)."""
+
 from __future__ import annotations
+
+import json
+from pathlib import Path
 
 from ..core.results import Verdict
 from ..state.inventory import collect_inventory
@@ -14,13 +18,13 @@ def _doctor(ctx: NodeContext, node: Node) -> NodeOutcome:
     inv = collect_inventory()
     write_json(ctx.workspace.reports_dir / "doctor_inventory.json", inv)
     missing_core = [
-        t for t in ("python3", "git", "pdflatex")
-        if not inv["tools"].get(t, {}).get("present")
+        t for t in ("python3", "git", "pdflatex") if not inv["tools"].get(t, {}).get("present")
     ]
     if missing_core:
         return NodeOutcome(Verdict.FAIL, {"missing_core_tools": missing_core})
     degraded = [
-        t for t in ("latexmk", "dot", "qpdf", "pdftotext")
+        t
+        for t in ("latexmk", "dot", "qpdf", "pdftotext")
         if not inv["tools"].get(t, {}).get("present")
     ]
     detail = {"missing_optional_tools": degraded}
@@ -45,8 +49,13 @@ def _compose(ctx: NodeContext, section: str) -> NodeOutcome:
 
 def _chain(ctx: NodeContext, handlers: list) -> NodeOutcome:
     """Run handlers in order; worst verdict wins (FAIL > DEGRADED > PASS)."""
-    order = {Verdict.PASS: 0, Verdict.DEGRADED: 1, Verdict.FAIL: 2,
-             Verdict.HUMAN_REQUIRED: 3, Verdict.NOT_RUN: 4}
+    order = {
+        Verdict.PASS: 0,
+        Verdict.DEGRADED: 1,
+        Verdict.FAIL: 2,
+        Verdict.HUMAN_REQUIRED: 3,
+        Verdict.NOT_RUN: 4,
+    }
     worst = NodeOutcome(Verdict.PASS, {})
     details = []
     for h in handlers:
@@ -74,25 +83,34 @@ _BASE_HANDLERS: dict[str, Handler] = {
     "P12": _lazy("paper_factory.tables.build", "run_table_plan"),
     "P13": _lazy("paper_factory.figures.build", "run_figure_generation"),
     "P14": _lazy("paper_factory.tables.build", "run_table_generation"),
-    "P15": lambda ctx, node: _chain(ctx, [
-        _lazy("paper_factory.manuscript.scaffold", "run_manuscript_architecture"),
-    ]),
+    "P15": lambda ctx, node: _chain(
+        ctx,
+        [
+            _lazy("paper_factory.manuscript.scaffold", "run_manuscript_architecture"),
+        ],
+    ),
     "P16": lambda ctx, node: _compose(ctx, "methods"),
     "P17": lambda ctx, node: _compose(ctx, "results"),
     "P18": lambda ctx, node: _compose(ctx, "introduction"),
     "P19": lambda ctx, node: _compose(ctx, "discussion"),
-    "P20": lambda ctx, node: _chain(ctx, [
-        lambda c, n: _compose(c, "abstract"),
-        _lazy("paper_factory.manuscript.compose", "run_finalize_main"),
-        _lazy("paper_factory.manuscript.scaffold", "run_manuscript_structure_check"),
-    ]),
+    "P20": lambda ctx, node: _chain(
+        ctx,
+        [
+            lambda c, n: _compose(c, "abstract"),
+            _lazy("paper_factory.manuscript.compose", "run_finalize_main"),
+            _lazy("paper_factory.manuscript.scaffold", "run_manuscript_structure_check"),
+        ],
+    ),
     # audit BEFORE build (release audit 2026-10-02): the verified registry
     # metadata (authors/year) must land in the same run's references.bib —
     # building in P15 read the PREVIOUS run's audit (upgraded: 0)
-    "P21": lambda ctx, node: _chain(ctx, [
-        _lazy("paper_factory.literature.verify", "run_citation_audit"),
-        _lazy("paper_factory.literature.verify", "build_references"),
-    ]),
+    "P21": lambda ctx, node: _chain(
+        ctx,
+        [
+            _lazy("paper_factory.literature.verify", "run_citation_audit"),
+            _lazy("paper_factory.literature.verify", "build_references"),
+        ],
+    ),
     "P22": _lazy("paper_factory.statistics.numbers_audit", "run_numbers_units_audit"),
     "P23": _lazy("paper_factory.reviews.runners", "run_methods_review"),
     "P24": _lazy("paper_factory.reviews.runners", "run_statistics_review"),
@@ -108,8 +126,9 @@ _BASE_HANDLERS: dict[str, Handler] = {
     "P34": _lazy("paper_factory.release.export", "run_clean_rebuild"),
     "P35": _lazy("paper_factory.release.closure", "run_global_closure"),
     "P36": _lazy("paper_factory.release.signoff", "run_human_signoff"),
-    "P37": lambda ctx, node: NodeOutcome(Verdict.NOT_RUN,
-                                         {"reason": "no external submission is ever automatic"}),
+    "P37": lambda ctx, node: NodeOutcome(
+        Verdict.NOT_RUN, {"reason": "no external submission is ever automatic"}
+    ),
 }
 
 # verification-grade nodes that route through the HoH adapter when the config
@@ -117,20 +136,109 @@ _BASE_HANDLERS: dict[str, Handler] = {
 VERIHARNESS_CAPABLE = {"P04", "P05", "P07", "P09", "P10", "P16", "P17", "P18", "P20"}
 
 
-def build_handlers(cfg_hoh_nodes: list[str] | None = None) -> dict[str, Handler]:
+def _pf_version() -> str:
+    try:
+        from importlib.metadata import version
+
+        return version("paper-factory")
+    except Exception:  # noqa: BLE001 — version is nice-to-have, never blocking
+        return "unknown"
+
+
+def _write_node_spec(workspace, node_id: str, node: Node | None) -> Path:
+    name = node.name if node is not None else node_id
+    spec = workspace.sub("hoh-specs") / f"{node_id}.md"
+    spec.write_text(
+        f"# PF verification node {node_id}: {name}\n\n"
+        f"Work package: add a `VERIFICATION.md` to this repository that\n"
+        f"documents exactly how the experiment results are reproduced\n"
+        f"(commands, expected artifacts). Keep it factual and short.\n\n"
+        f"## Acceptance criteria\n"
+        f"- K1: `python3 code/analyze.py` exits 0 (analysis reproduces)\n"
+        f"- K2: `test -s results/summary.json` (result artifact exists)\n"
+        f"- K3: `test -s VERIFICATION.md` (documentation written)\n"
+        f"- K4: `grep -q analyze VERIFICATION.md` (docs name the analysis)\n",
+        encoding="utf-8",
+    )
+    return spec
+
+
+def _run_shadow_differential(
+    ctx: NodeContext, node: Node | None, node_id: str, adapter, outcome: NodeOutcome
+) -> None:
+    """Shadow mode (plan §3 Phase 5): compare the PF-native result with the
+    HoH backend's verdict for the same package and record the difference.
+
+    The node verdict is NEVER changed by shadow — MISMATCH is only visible
+    via outcome.detail and the DifferentialReceipt on disk.
+    """
+    from datetime import UTC, datetime
+
+    from ..core.util import sha256_file, write_json
+    from ..verification.contract import BackendIdentity, VerificationResult, WorkPackage
+    from ..verification.shadow import run_shadow
+
+    if ctx.offline:
+        outcome.detail["shadow"] = "NOT_RUN"
+        outcome.detail["shadow_reason"] = "offline mode"
+        return
+    spec = _write_node_spec(ctx.workspace, node_id, node)
+    package = WorkPackage(
+        package_id=f"shadow-{node_id}-{ctx.run_id}",
+        node_id=node_id,
+        spec_markdown=spec.read_text(encoding="utf-8"),
+    )
+    started_at = datetime.now(UTC)
+
+    def native_fn(package: WorkPackage) -> VerificationResult:
+        # The native side is whatever the deterministic/agent handler already
+        # produced; PF-native results carry no artifact binding here (honest
+        # None, not a fabricated hash).
+        return VerificationResult(
+            package_id=package.package_id,
+            backend=BackendIdentity(
+                kind="pf_native", name=f"pf_native:{node_id}", version=_pf_version()
+            ),
+            verdict=outcome.verdict,
+            artifact_sha256=None,
+            started_at=started_at,
+            finished_at=datetime.now(UTC),
+        )
+
+    _, receipt = run_shadow(native_fn, adapter, package)
+    receipt_path = ctx.workspace.receipts_dir / "shadow" / f"{node_id}-{ctx.run_id}.json"
+    write_json(receipt_path, json.loads(receipt.model_dump_json()))
+    ctx.workspace.record_receipt(
+        receipt_path.name, ctx.run_id, node_id, "shadow", receipt_path, sha256_file(receipt_path)
+    )
+    outcome.detail["shadow_outcome"] = receipt.outcome.value
+    outcome.detail["shadow_receipt"] = str(receipt_path)
+
+
+def build_handlers(
+    cfg_hoh_nodes: list[str] | None = None, cfg_shadow_nodes: list[str] | None = None
+) -> dict[str, Handler]:
     enabled = set(cfg_hoh_nodes if cfg_hoh_nodes is not None else ["P05"]) & VERIHARNESS_CAPABLE
+    shadow_enabled = set(cfg_shadow_nodes or []) & VERIHARNESS_CAPABLE
+    wrapped_nodes = enabled | shadow_enabled
     handlers: dict[str, Handler] = dict(_BASE_HANDLERS)
-    for nid in enabled:
+    for nid in wrapped_nodes:
         base = handlers.get(nid)
         if base is None:
             continue
 
-        def make_wrapped(node_id: str, base_handler: Handler) -> Handler:
+        def make_wrapped(
+            node_id: str, base_handler: Handler, *, hoh: bool, shadow: bool
+        ) -> Handler:
             def wrapped(ctx: NodeContext, node: Node) -> NodeOutcome:
                 from ..adapters.veriharness.adapter import VeriharnessAdapter
 
                 outcome = base_handler(ctx, node)
                 adapter = VeriharnessAdapter(ctx.workspace)
+                if shadow:
+                    _run_shadow_differential(ctx, node, node_id, adapter, outcome)
+                if not hoh:
+                    return outcome
                 diag = adapter.doctor()
                 if ctx.offline:
                     outcome.detail["hoh"] = "NOT_RUN"
@@ -138,21 +246,11 @@ def build_handlers(cfg_hoh_nodes: list[str] | None = None) -> dict[str, Handler]
                     return outcome
                 if not (diag.get("present") and diag.get("herdr")):
                     outcome.detail["hoh"] = "NOT_RUN"
-                    outcome.detail["hoh_reason"] = ("DEGRADED_RUNTIME" if diag.get("present")
-                                                    else "hoh missing")
+                    outcome.detail["hoh_reason"] = (
+                        "DEGRADED_RUNTIME" if diag.get("present") else "hoh missing"
+                    )
                     return outcome
-                spec = ctx.workspace.sub("hoh-specs") / f"{node_id}.md"
-                spec.write_text(
-                    f"# PF verification node {node_id}: {node.name}\n\n"
-                    f"Work package: add a `VERIFICATION.md` to this repository that\n"
-                    f"documents exactly how the experiment results are reproduced\n"
-                    f"(commands, expected artifacts). Keep it factual and short.\n\n"
-                    f"## Acceptance criteria\n"
-                    f"- K1: `python3 code/analyze.py` exits 0 (analysis reproduces)\n"
-                    f"- K2: `test -s results/summary.json` (result artifact exists)\n"
-                    f"- K3: `test -s VERIFICATION.md` (documentation written)\n"
-                    f"- K4: `grep -q analyze VERIFICATION.md` (docs name the analysis)\n",
-                    encoding="utf-8")
+                spec = _write_node_spec(ctx.workspace, node_id, node)
                 result = adapter.verify_work_package(node_id, spec)
                 outcome.detail["hoh_run_id"] = result.run_id
                 outcome.detail["hoh_verdict"] = result.verdict.value
@@ -160,9 +258,13 @@ def build_handlers(cfg_hoh_nodes: list[str] | None = None) -> dict[str, Handler]
                 outcome.detail["hoh_blocked_kind"] = result.blocked_kind
                 for r in result.receipts:
                     ctx.workspace.record_receipt(
-                        r["receipt_file"], ctx.run_id, node_id, "hoh",
+                        r["receipt_file"],
+                        ctx.run_id,
+                        node_id,
+                        "hoh",
                         ctx.workspace.receipts_dir / "hoh" / result.run_id / r["receipt_file"],
-                        r["sha256"])
+                        r["sha256"],
+                    )
                 # Verification-grade semantics: a node whose config demands HoH
                 # verification does not keep a bare PASS without it.
                 if outcome.verdict == Verdict.PASS:
@@ -171,13 +273,15 @@ def build_handlers(cfg_hoh_nodes: list[str] | None = None) -> dict[str, Handler]
                         outcome.detail["note"] = "HoH verification failed"
                     elif result.verdict != Verdict.PASS:
                         outcome.verdict = Verdict.DEGRADED
-                        outcome.detail["note"] = ("deterministic work passed; HoH verification "
-                                                  "incomplete/degraded — recorded honestly")
+                        outcome.detail["note"] = (
+                            "deterministic work passed; HoH verification "
+                            "incomplete/degraded — recorded honestly"
+                        )
                 return outcome
 
             return wrapped
 
-        handlers[nid] = make_wrapped(nid, base)
+        handlers[nid] = make_wrapped(nid, base, hoh=nid in enabled, shadow=nid in shadow_enabled)
     return handlers
 
 

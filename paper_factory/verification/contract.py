@@ -106,6 +106,7 @@ class VerificationResult(Strict):
     backend: BackendIdentity
     verdict: Verdict
     findings: list[VerificationFinding] = Field(default_factory=list)
+    receipts: list[ExecutionReceipt] = Field(default_factory=list)
     artifact_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
     started_at: datetime
     finished_at: datetime

@@ -14,6 +14,7 @@ from .contract import (
     statement_digest,
 )
 from .registry import BACKENDS, VerificationBackend, available, get, register
+from .shadow import DifferentialOutcome, DifferentialReceipt, compare, run_shadow
 
 __all__ = [
     "BACKENDS",
@@ -22,6 +23,8 @@ __all__ = [
     "BackendIdentity",
     "CapabilityDeclaration",
     "CapabilityStatus",
+    "DifferentialOutcome",
+    "DifferentialReceipt",
     "EvidenceRef",
     "ExecutionReceipt",
     "VerificationBackend",
@@ -29,9 +32,11 @@ __all__ = [
     "VerificationResult",
     "WorkPackage",
     "available",
+    "compare",
     "declare",
     "get",
     "normalize_statement",
     "register",
+    "run_shadow",
     "statement_digest",
 ]
