@@ -343,6 +343,20 @@ def test_wrapper_invocation_has_no_resume_flag(tmp_path, monkeypatch):
     assert "-resume" not in argv
 
 
+def test_relative_run_dir_is_resolved_before_launch(tmp_path, monkeypatch):
+    """A caller-provided relative run_dir must be absolutized before launch:
+    otherwise `nextflow run` receives a relative script path from a changed
+    working directory, mistakes main.nf for a remote pipeline name and
+    tries to pull it from GitHub (observed without this hardening; network
+    where none was due)."""
+    _fake_nextflow(tmp_path, monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    capsule, root = _script_capsule(tmp_path, "pass\n", outputs=["o.txt"])
+    receipt = NextflowBackend().run(capsule, root, run_dir=Path("rel-run"))
+    assert receipt.status == "completed"
+    assert (tmp_path / "rel-run" / "main.nf").is_file()
+
+
 def _wait_gone(pid: int, timeout: float = 5.0) -> bool:
     """True once `pid` is fully gone (incl. the post-SIGKILL zombie window)."""
     deadline = time.monotonic() + timeout

@@ -201,8 +201,12 @@ class SnakemakeBackend(LocalReproductionRunner):
         self._verify_declared_refs(capsule, root)
 
         own_run_dir = run_dir is None
-        run_path = Path(run_dir) if run_dir is not None else Path(
-            tempfile.mkdtemp(prefix="pf-snakemake-"))
+        # Resolve caller paths: a relative run_dir would reach snakemake as
+        # a relative --snakefile/--directory path from a different working
+        # directory and silently target the wrong tree. Receipt/staging
+        # semantics are unchanged. (Same hardening as the Nextflow adapter.)
+        run_path = (Path(run_dir).resolve() if run_dir is not None else Path(
+            tempfile.mkdtemp(prefix="pf-snakemake-")))
         try:
             return self._run_in(capsule, root, binary, run_path, timeout)
         finally:

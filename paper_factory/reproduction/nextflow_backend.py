@@ -286,8 +286,13 @@ class NextflowBackend(LocalReproductionRunner):
         self._verify_declared_refs(capsule, root)
 
         own_run_dir = run_dir is None
-        run_path = Path(run_dir) if run_dir is not None else Path(
-            tempfile.mkdtemp(prefix="pf-nextflow-"))
+        # Resolve caller paths: a relative run_dir would reach nextflow as
+        # a relative script path from a different working directory, and
+        # nextflow then mistakes main.nf for a remote pipeline name and
+        # tries to pull it from GitHub (observed; network where none was
+        # due). The receipt/staging semantics are unchanged.
+        run_path = (Path(run_dir).resolve() if run_dir is not None else Path(
+            tempfile.mkdtemp(prefix="pf-nextflow-")))
         try:
             return self._run_in(capsule, root, binary, run_path, timeout)
         finally:

@@ -198,6 +198,19 @@ def test_default_run_dir_is_cleaned_up(tmp_path, monkeypatch):
     assert leftover == set(), f"leaked run directories: {leftover}"
 
 
+def test_relative_run_dir_is_resolved_before_launch(tmp_path, monkeypatch):
+    """A caller-provided relative run_dir must be absolutized before it
+    reaches `--snakefile`/`--directory` (same hardening as the Nextflow
+    adapter: relative backend paths from a changed working directory would
+    silently target the wrong tree)."""
+    _fake_snakemake(tmp_path, monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    capsule, root = _script_capsule(tmp_path, "pass\n", outputs=["o.txt"])
+    receipt = SnakemakeBackend().run(capsule, root, run_dir=Path("rel-run"))
+    assert receipt.status == "completed"
+    assert (tmp_path / "rel-run" / "Snakefile").is_file()
+
+
 def test_caller_run_dir_is_never_removed(tmp_path, monkeypatch):
     _fake_snakemake(tmp_path, monkeypatch)
     run_dir = tmp_path / "audit"
