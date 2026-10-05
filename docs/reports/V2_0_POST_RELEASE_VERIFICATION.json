@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "kind": "post_release_verification_receipt",
+  "created_utc": "2026-10-05T20:02:50Z",
+  "release": "v2.0.0",
+  "note": "Supplements V2_FREEZE_MANIFEST.json (which contains release_commit_pending=true at tag time) without modifying the immutable release.",
+  "git": {
+    "annotated_tag_object_sha1": "8ca87588b00f5cc5d3dc116231b8bac88ba6d170",
+    "peeled_tag_commit_sha1": "b3eaec340c3c446f3c61e109b25dc216dde7141d",
+    "origin_main_at_verification": "b3eaec340c3c446f3c61e109b25dc216dde7141d"
+  },
+  "freeze_manifest_sha256": "22bcdd8bff49c3790e17d429dd1481365ce678aca932812f33a9ff98e6686b0d",
+  "github_release_url": "https://github.com/SKZL-AI/paper-factory/releases/tag/v2.0.0",
+  "ci": {
+    "main_ci_run_id": 37353010493,
+    "main_ci_conclusion": "success",
+    "release_attestation_run_id": 37353404390,
+    "release_attestation_conclusion": "success"
+  },
+  "assets": {
+    "paper_factory-2.0.0-py3-none-any.whl": {
+      "sha256": "f8459fa40af2adb07d00549744680de44646a49d2d5402b7dbcc129ef04ec53b",
+      "attestation_verified": true
+    },
+    "paper_factory-2.0.0.tar.gz": {
+      "sha256": "430ccd5f7cf5ea323ddf2210c947dd1ef0dcd7248add39533b405d7b177049b2",
+      "attestation_verified": true
+    }
+  },
+  "p37_executed": false,
+  "external_submission": false
+}
