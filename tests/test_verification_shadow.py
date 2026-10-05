@@ -678,3 +678,26 @@ def test_match_rationale_declares_binding_by_construction():
     assert receipt.outcome == DifferentialOutcome.MATCH
     assert "identical by construction" in receipt.rationale
     assert "did not independently re-hash" in receipt.rationale
+
+
+def test_hoh_only_handler_path_runs_gate_without_dual_branch(tmp_path, monkeypatch):
+    """Regression for the fixloop CRITICAL: the hoh-only path (default config
+    has hoh_nodes=["P05"], shadow_nodes=[]) must not depend on names that only
+    the dual branch binds (UnboundLocalError: WorkPackage). The suite's e2e
+    quota discipline never builds a hoh-only handler, so this crash was
+    invisible until review."""
+    def fake_base(ctx: NodeContext, node) -> NodeOutcome:
+        return NodeOutcome(Verdict.PASS, {"base": "stub"})
+
+    monkeypatch.setattr(handlers_mod, "_BASE_HANDLERS", {"P05": fake_base})
+    monkeypatch.setattr(VeriharnessAdapter, "verify",
+                        lambda self, package: _fake_verify_with_receipt(self, package))
+    monkeypatch.setattr(VeriharnessAdapter, "doctor",
+                        lambda self: {"present": True, "herdr": True, "bwrap": True})
+    handler = build_handlers(["P05"], [])["P05"]
+    ws = Workspace(tmp_path)
+    outcome = handler(_ctx(ws), NODE)
+    assert outcome.verdict == Verdict.PASS
+    assert outcome.detail["hoh_receipts"] == 1
+    kinds = {r["kind"] for r in ws.receipts_for("shadow-test", "P05")}
+    assert kinds == {"hoh"}

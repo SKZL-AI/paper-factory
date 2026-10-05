@@ -514,11 +514,11 @@ def build_handlers(
         ) -> Handler:
             def wrapped(ctx: NodeContext, node: Node) -> NodeOutcome:
                 from ..adapters.veriharness.adapter import VeriharnessAdapter
+                from ..verification.contract import WorkPackage
 
                 outcome = base_handler(ctx, node)
                 adapter = VeriharnessAdapter(ctx.workspace)
                 if hoh and shadow:
-                    from ..verification.contract import WorkPackage
                     # Review fix F7: a node in BOTH lists gets exactly ONE
                     # adapter.verify() call; the result feeds the shadow
                     # differential AND the HoH gate. Receipts stay recorded
