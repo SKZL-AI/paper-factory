@@ -354,16 +354,25 @@ def _ingest_verification_findings(ctx: NodeContext, node_id: str, result, outcom
     outcome.detail["verification_findings_review"] = report.review_id
 
 
-def _hoh_result_from_verify(node_id: str, res, package=None, workspace=None):
+def _hoh_result_from_verify(node_id: str, res, package=None, workspace=None,
+                            run_id: str | None = None):
     """Map a generic verify() VerificationResult onto the legacy HohResult
     shape (same field derivation as VeriharnessAdapter.verify_work_package),
     so the HoH gate can consume a SHARED verify() result.
 
     ``package``/``workspace`` are optional context for the WP2 receipt
-    freshness check: when the result carries ExecutionReceipts, each one is
-    validated at consumption time (current artifact binding, backend, run,
-    store-backed replay evidence) and a stale/replayed/rebound receipt raises
-    ReceiptFreshnessError — it can never satisfy the gate silently.
+    freshness check: when the result carries ExecutionReceipts (the
+    VeriHarness adapter fills them from the collected receipt files, review
+    MAJOR-1 2026-10-05), each one is validated at consumption time (current
+    artifact binding, backend, run, store-backed replay evidence) and a
+    stale/replayed/rebound receipt raises ReceiptFreshnessError — it can
+    never satisfy the gate silently.
+
+    ``run_id`` is the CONSUMING DAG run id — the namespace the state store
+    records receipts under. It must NOT be the producer's HoH run id: the
+    store ties receipt keys to DAG runs, so replay evidence compares against
+    the DAG run. Falls back to ``backend.detail["run_id"]`` only for legacy
+    callers that have no DAG context.
     """
     from ..adapters.veriharness.adapter import HohResult
     from ..core.util import sha256_file
@@ -376,13 +385,28 @@ def _hoh_result_from_verify(node_id: str, res, package=None, workspace=None):
             if package is not None and package.artifacts
             else res.artifact_sha256
         )
+        # store keys: the state store records kind="hoh" receipts under
+        # "<hoh_run_id>/<receipt file>" (_apply_hoh_gate) — the freshness
+        # lookup must use the SAME namespace, else the replay dimension
+        # misses forever (review B MAJOR: receipt body ids are a different
+        # namespace and were silently inert). receipts and raw_receipt_refs
+        # are index-aligned by construction (both derived from one collected
+        # list in the adapter).
+        hoh_run = res.backend.detail.get("run_id") or ""
+        store_keys = None
+        if len(res.raw_receipt_refs) == len(res.receipts):
+            store_keys = [
+                f"{hoh_run}/{Path(p).name}" if hoh_run else Path(p).name
+                for p in res.raw_receipt_refs
+            ]
         res.check_receipt_freshness(
             ReceiptExpectation(
                 artifact_sha256=expected_artifact,
                 backend_kind=res.backend.kind,
-                run_id=res.backend.detail.get("run_id") or None,
+                run_id=run_id or res.backend.detail.get("run_id") or None,
                 known_receipt_runs=workspace.receipt_runs() if workspace is not None else None,
-            )
+            ),
+            store_keys=store_keys,
         )
 
     hoh_detail = dict(res.backend.detail.get("hoh_detail") or {})
@@ -424,8 +448,15 @@ def _apply_hoh_gate(ctx: NodeContext, node_id: str, result, outcome: NodeOutcome
         # visible on the node detail, never silently dropped by the gate path
         outcome.detail["hoh_evidence_note"] = result.detail["evidence_note"]
     for r in result.receipts:
+        # run-scoped store key (review B MAJOR, 2026-10-05): the bare receipt
+        # file name repeats across HoH runs (e.g. failure receipts), so as a
+        # PRIMARY KEY it would tie an unrelated later receipt to this DAG run
+        # and make the store-backed replay dimension fire on honest runs.
+        # "<hoh_run_id>/<file>" is unique per produced receipt; the freshness
+        # gate in _hoh_result_from_verify derives the identical key.
+        key = f"{result.run_id}/{r['receipt_file']}" if result.run_id else r["receipt_file"]
         ctx.workspace.record_receipt(
-            r["receipt_file"],
+            key,
             ctx.run_id,
             node_id,
             "hoh",
@@ -530,7 +561,7 @@ def build_handlers(
                     _run_shadow_differential(ctx, node, node_id, adapter, outcome,
                                              shadow_result=shared, artifacts=artifacts)
                     _apply_hoh_gate(ctx, node_id, _hoh_result_from_verify(
-                        node_id, shared, package, ctx.workspace), outcome)
+                        node_id, shared, package, ctx.workspace, run_id=ctx.run_id), outcome)
                     _ingest_verification_findings(ctx, node_id, shared, outcome)
                     return outcome
                 if shadow:
@@ -549,9 +580,22 @@ def build_handlers(
                         "DEGRADED_RUNTIME" if diag.get("present") else "hoh missing"
                     )
                     return outcome
+                # same shared-verify() mapping as the dual path (review
+                # MAJOR-1, 2026-10-05): the legacy verify_work_package ->
+                # HohResult shortcut bypassed the WP2 receipt-freshness gate
+                # entirely (res.receipts was never populated on that path
+                # either). One verify() per package, one gate mapping, both
+                # wrapper modes.
                 spec = _write_node_spec(ctx.workspace, node_id, node)
-                result = adapter.verify_work_package(node_id, spec)
-                _apply_hoh_gate(ctx, node_id, result, outcome)
+                package = WorkPackage(
+                    package_id=f"hoh-{node_id}-{ctx.run_id}",
+                    node_id=node_id,
+                    spec_markdown=spec.read_text(encoding="utf-8"),
+                    artifacts=_node_artifact_refs(ctx, node_id),
+                )
+                result = adapter.verify(package)
+                _apply_hoh_gate(ctx, node_id, _hoh_result_from_verify(
+                    node_id, result, package, ctx.workspace, run_id=ctx.run_id), outcome)
                 return outcome
 
             return wrapped

@@ -33,6 +33,7 @@ from ...provenance.firewall import PolicyViolation
 from ...verification.capabilities import CapabilityStatus, declare
 from ...verification.contract import (
     BackendIdentity,
+    ExecutionReceipt,
     VerificationResult,
     WorkPackage,
     artifact_binding,
@@ -218,6 +219,7 @@ class VeriharnessAdapter:
             elif hoh_detail is not None:
                 detail["hoh_detail"] = hoh_detail
             res_backend = backend.model_copy(update={"detail": detail})
+            collected = hoh.receipts if hoh else []
             return VerificationResult(
                 package_id=package.package_id,
                 backend=res_backend,
@@ -226,7 +228,8 @@ class VeriharnessAdapter:
                 started_at=started_at,
                 finished_at=datetime.now(UTC),
                 failure_reason=failure_reason,
-                raw_receipt_refs=[r["copied_to"] for r in hoh.receipts] if hoh else [],
+                receipts=self._build_execution_receipts(package, backend, collected),
+                raw_receipt_refs=[r["copied_to"] for r in collected],
             )
 
         diag = self.doctor()
@@ -713,6 +716,95 @@ class VeriharnessAdapter:
                 f"{run_id!r}; refusing to register foreign evidence"
             )
         return "verified"
+
+    def _build_execution_receipts(
+        self,
+        package: WorkPackage,
+        backend: BackendIdentity,
+        collected: list[dict[str, Any]],
+    ) -> list[ExecutionReceipt]:
+        """WP2 gate wiring (review MAJOR-1, 2026-10-05): turn the collected
+        receipt FILES into real ``verification.contract.ExecutionReceipt``
+        objects on ``VerificationResult.receipts``. Before this, no
+        production path populated ``receipts``, so the consumption-time
+        freshness gate in ``dag/handlers.py`` was vacuum-verdrahtet (its
+        ``if res.receipts:`` never fired) — receipts were copied and
+        SHA-registered, never freshness-checked.
+
+        Real values, never filler:
+        - receipt_id: the receipt body's own id when present, else the
+          receipt file name (the store-visible identifier);
+        - artifact binding: ``artifact_binding(package.artifacts)`` — the
+          candidate/work-package binding THIS run verified (None when the
+          package carries no artifacts: honest, and the gate then compares
+          against the result's own binding, also None);
+        - backend: the run's real BackendIdentity;
+        - sha256: the collected receipt file's content hash;
+        - created_at: the receipt payload's own timestamp when present; the
+          copied file's mtime when the producer stamps none (HoH receipts
+          are not required to carry one — an honest bound, not utcnow());
+        - run_id: the payload's own run_id (already provenance-validated by
+          _collect_receipts against the run directory).
+
+        Fail-visible, consistent with _validate_receipt_provenance: a
+        receipt that was collectable but cannot be turned into a truthful
+        ExecutionReceipt (unparseable JSON, non-object payload, present-but-
+        unparseable created_at) raises ReceiptValidationError — the run
+        fails loudly instead of carrying a half-true receipt into the gate.
+        The output order matches ``collected`` exactly, so ``receipts`` and
+        ``raw_receipt_refs`` on the result stay index-aligned (the gate
+        derives per-receipt store keys from raw_receipt_refs by position).
+        """
+        binding = artifact_binding(package.artifacts)
+        out: list[ExecutionReceipt] = []
+        for entry in collected:
+            dest = Path(entry["copied_to"])
+            try:
+                data = json.loads(dest.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise ReceiptValidationError(
+                    f"collected receipt {dest.name} is not parseable JSON ({exc}); "
+                    "refusing to turn it into a gate receipt"
+                ) from exc
+            if not isinstance(data, dict):
+                raise ReceiptValidationError(
+                    f"collected receipt {dest.name} is a {type(data).__name__}, "
+                    "not an object; refusing to turn it into a gate receipt"
+                )
+            out.append(
+                ExecutionReceipt(
+                    receipt_id=str(data.get("receipt_id") or entry["receipt_file"]),
+                    backend=backend,
+                    artifact_sha256=binding,
+                    sha256=entry["sha256"],
+                    created_at=self._receipt_created_at(dest, data),
+                    run_id=data.get("run_id"),
+                )
+            )
+        return out
+
+    @staticmethod
+    def _receipt_created_at(dest: Path, data: dict[str, Any]) -> datetime:
+        """created_at for a gate receipt: the payload's own timestamp when
+        present (naive values are read as UTC), the copied file's mtime when
+        absent. A present-but-unparseable timestamp is a provable
+        inconsistency — fail-visible, never silently replaced."""
+        raw = data.get("created_at")
+        if raw is None:
+            return datetime.fromtimestamp(dest.stat().st_mtime, UTC)
+        if isinstance(raw, str):
+            try:
+                parsed = datetime.fromisoformat(raw)
+            except ValueError:
+                parsed = None
+            if parsed is not None:
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=UTC)
+                return parsed
+        raise ReceiptValidationError(
+            f"collected receipt {dest.name} carries an unparseable created_at "
+            f"({raw!r}); refusing to turn it into a gate receipt"
+        )
 
     def _collect_receipts(self, run_id: str) -> list[dict[str, Any]]:
         out = []

@@ -156,6 +156,7 @@ class VerificationResult(Strict):
         expect: ReceiptExpectation | None = None,
         *,
         raws: list[dict | None] | None = None,
+        store_keys: list[str] | None = None,
     ) -> None:
         """Consumption-time freshness check for every ExecutionReceipt this
         result carries (WP2, v1.3). The gate path calls this before a
@@ -165,10 +166,22 @@ class VerificationResult(Strict):
         ``raws``: optional per-receipt raw JSON payloads (same order as
         self.receipts) enabling the missing-timestamp dimension; entries may
         be None where no raw payload exists.
+
+        ``store_keys``: optional per-receipt keys into
+        ``expect.known_receipt_runs`` (same order as self.receipts). The
+        state store records receipts under its own key namespace, which is
+        NOT necessarily the receipt body's ``receipt_id`` (review B MAJOR,
+        2026-10-05: store keys are the recorded receipt identifiers, e.g.
+        ``"<run_id>/<receipt file>"`` for kind="hoh" rows). A lookup under
+        the wrong namespace is always a miss, which would make the
+        store-backed replay dimension silently inert (fail-open). Callers
+        that know the store key MUST pass it; omitted entries fall back to
+        the receipt's own ``receipt_id``.
         """
         for idx, receipt in enumerate(self.receipts):
             raw = raws[idx] if raws is not None and idx < len(raws) else None
-            receipt.check_freshness(expect, raw=raw)
+            key = store_keys[idx] if store_keys is not None and idx < len(store_keys) else None
+            receipt.check_freshness(expect, raw=raw, store_key=key)
 
 
 class ReceiptFreshnessError(ValueError):
@@ -201,7 +214,12 @@ class ReceiptExpectation:
     - known_receipt_runs: store-backed mapping receipt_id -> run_id already
       recorded in the state store; proves replay/wrong-run "soweit im Store
       nachweisbar". A receipt whose ID the store ties to another run is a
-      replay even if every field matches.
+      replay even if every field matches. WARNING (review B MAJOR,
+      2026-10-05): the store's keys are the RECORDED receipt identifiers
+      (run-scoped file keys for kind="hoh" rows), not necessarily the
+      receipt body's receipt_id — callers must pass the matching store key
+      via check_freshness(store_key=...), or the lookup misses forever
+      (fail-open).
     - max_age_seconds: OPTIONAL wall-clock guard, default None (off). Only
       when a caller sets it does age become a freshness dimension.
     """
@@ -216,14 +234,28 @@ class ReceiptExpectation:
 
 
 class ExecutionReceipt(Strict):
+    """One receipt for one verification execution, as consumed by gates.
+
+    - artifact_sha256 is OPTIONAL: an unbound receipt (producer bound no
+      artifacts, e.g. a spec-only legacy package) is honest data — it just
+      can never satisfy a binding-specific freshness expectation
+      (fail-visible at consumption, see check_freshness).
+    - run_id is the PRODUCER's run identifier taken from the receipt
+      payload (None when the producer stamps none); it is evidence, never
+      freshness-compared against the consuming run's id (different
+      namespace, see check_freshness docstring).
+    """
+
     receipt_id: str
     backend: BackendIdentity
-    artifact_sha256: str = Field(pattern=_SHA256_PATTERN)
+    artifact_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
     sha256: str = Field(pattern=_SHA256_PATTERN)
     created_at: datetime = Field(default_factory=utcnow)
+    run_id: str | None = None
 
     def check_freshness(
-        self, expect: ReceiptExpectation | None = None, *, raw: dict | None = None
+        self, expect: ReceiptExpectation | None = None, *, raw: dict | None = None,
+        store_key: str | None = None,
     ) -> None:
         """Semantic freshness check at consumption time (WP2, v1.3). Raises
         ReceiptFreshnessError on every provable contradiction; returns None
@@ -237,6 +269,16 @@ class ExecutionReceipt(Strict):
         at load: v1.2-era receipts without timestamps/schema_version still
         deserialize; a caller that consumes them without raw payloads simply
         cannot apply those two dimensions (documented, not assumed).
+
+        ``store_key``: the key under which this receipt is (or will be)
+        recorded in the state store. Defaults to the receipt's own
+        ``receipt_id``. The namespaces differ in production (store keys for
+        kind="hoh" rows are run-scoped file identifiers), so a wrong key
+        makes the replay lookup a guaranteed miss — pass the real key.
+        ``run_id`` on the receipt is the PRODUCER's run identifier (e.g. the
+        HoH run id) and is never compared to ``expect.run_id``: the store's
+        run namespace is the consuming DAG run, mixing them would fail every
+        honest receipt (documented, 2026-10-05).
         """
         expect = expect or ReceiptExpectation()
         where = f"receipt {self.receipt_id!r}"
@@ -270,21 +312,26 @@ class ExecutionReceipt(Strict):
                     "by the caller)"
                 )
 
-        if expect.artifact_sha256 is not None and (
-            self.artifact_sha256 != expect.artifact_sha256
-        ):
-            raise ReceiptFreshnessError(
-                f"{where}: bound to artifact {self.artifact_sha256}, but the current "
-                f"binding is {expect.artifact_sha256} — stale receipt from an older "
-                "artifact state; refusing to let it satisfy the current gate"
-            )
+        if expect.artifact_sha256 is not None:
+            if self.artifact_sha256 is None:
+                raise ReceiptFreshnessError(
+                    f"{where}: carries no artifact binding, but the consuming gate "
+                    f"expects binding {expect.artifact_sha256}; an unbound receipt "
+                    "can never prove freshness against a binding-specific expectation"
+                )
+            if self.artifact_sha256 != expect.artifact_sha256:
+                raise ReceiptFreshnessError(
+                    f"{where}: bound to artifact {self.artifact_sha256}, but the current "
+                    f"binding is {expect.artifact_sha256} — stale receipt from an older "
+                    "artifact state; refusing to let it satisfy the current gate"
+                )
         if expect.backend_kind is not None and self.backend.kind != expect.backend_kind:
             raise ReceiptFreshnessError(
                 f"{where}: issued by backend {self.backend.kind!r}, expected "
                 f"{expect.backend_kind!r}; wrong-backend receipt refused"
             )
         if expect.known_receipt_runs is not None:
-            known_run = expect.known_receipt_runs.get(self.receipt_id)
+            known_run = expect.known_receipt_runs.get(store_key or self.receipt_id)
             if known_run is not None and known_run != (expect.run_id or ""):
                 raise ReceiptFreshnessError(
                     f"{where}: receipt_id is already recorded for run {known_run!r}, not "
