@@ -1,0 +1,60 @@
+{
+  "capsule": {
+    "capsule_digest": "3cb31773760b30b793aa9738b38a102fbf4c4a1c0ec44d2614106b40eacc2dfc",
+    "capsule_id": "repro-pilot-01",
+    "command": [
+      "pilot_compute.py"
+    ]
+  },
+  "comparison": {
+    "classification": "REPRODUCED_EXACT",
+    "differing_outputs": [],
+    "missing_outputs": [],
+    "notes": []
+  },
+  "generated_at_utc": "2026-10-05T12:23:07.911878+00:00",
+  "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "proof": "V1_3_WP7_SNAKEMAKE_PROOF",
+  "python_version": "3.13.5",
+  "sides": {
+    "local_runner": {
+      "backend": {
+        "detail": {},
+        "kind": "pf_native",
+        "name": "local-reproduction-runner",
+        "version": "0.1.0"
+      },
+      "capsule_digest": "3cb31773760b30b793aa9738b38a102fbf4c4a1c0ec44d2614106b40eacc2dfc",
+      "exit_code": 0,
+      "failure_reason": null,
+      "outputs": {
+        "summary.json": "8f76c7d9d07d070ba3aa3fffa058a4d65212fc9a97915596587531ce1d4ec5b2",
+        "table.txt": "01e71442cf89bf465d78c3c972f8c969825b2dd62db8546e5e7e972d98a483de"
+      },
+      "status": "completed",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "snakemake_backend": {
+      "backend": {
+        "detail": {
+          "cores": 1
+        },
+        "kind": "external",
+        "name": "snakemake",
+        "version": "9.27.0"
+      },
+      "capsule_digest": "3cb31773760b30b793aa9738b38a102fbf4c4a1c0ec44d2614106b40eacc2dfc",
+      "exit_code": 0,
+      "failure_reason": null,
+      "outputs": {
+        "summary.json": "8f76c7d9d07d070ba3aa3fffa058a4d65212fc9a97915596587531ce1d4ec5b2",
+        "table.txt": "01e71442cf89bf465d78c3c972f8c969825b2dd62db8546e5e7e972d98a483de"
+      },
+      "status": "completed",
+      "stderr_sha256": "b4a79315ef937b854a62925025ef5fbea19d15773b820cba67aef0a66956e114",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "snakemake_version": "9.27.0"
+}
