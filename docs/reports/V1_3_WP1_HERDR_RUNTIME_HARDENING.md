@@ -47,7 +47,7 @@ compounded by TUI-specific lifecycle recognition gaps for newer CLI versions.
 
 - No PF-side hack (no synthetic keystrokes, no pane scraping, no fake lifecycle
   pokes) to dodge the stall window.
-- No modification of `/home/sai/veriharness` (read-only) or of the herdr binary.
+- No modification of `~/veriharness` (read-only) or of the herdr binary.
 - The `--no-herdr` path (`use_herdr=False`) remains the supported PF fallback,
   with its honest evidence trade-off (no A01/A02/A12 pane evidence).
 
