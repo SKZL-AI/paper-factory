@@ -18,6 +18,10 @@ db = ["duckdb>=0.10", "pandas>=2.0", "pyarrow>=14.0"]
 literature = ["paperqa"]
 gateway = ["litellm>=1.40"]
 snakemake = ["snakemake>=9.0"]
+# nextflow is intentionally NOT a pip extra: the backend needs the binary
+# Nextflow launcher (bash + JVM), not a Python package. Install per
+# docs/reports/V1_4_NEXTFLOW_CONFORMANCE_PROOF.md, e.g. into PF's own venv
+# bin dir or <repo>/tools/: curl -s https://get.nextflow.io -o nextflow
 dev = ["pytest>=8.0", "ruff>=0.5"]
 
 [project.scripts]
