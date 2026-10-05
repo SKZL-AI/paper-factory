@@ -1,0 +1,61 @@
+# Release Artifact Attestation (v1.4 WP-D).
+#
+# Builds the sdist + wheel of paper-factory for every pushed v* tag and
+# generates GitHub Artifact Attestations for both artifacts via actions/attest
+# (official path per GitHub docs, verified 2026-10-05:
+# https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds).
+#
+# Scope discipline:
+# - Trigger: tags only. The existing CI workflow (ci.yml) is untouched.
+# - This workflow does NOT publish to PyPI and does NOT create a GitHub
+#   Release; it attests the artifacts it builds. See docs/RELEASING.md for
+#   the full release procedure.
+# - Permissions are minimal and job-scoped (id-token + attestations only).
+# - The historical v1.2.0/v1.3.0 tags stay unsigned (immutable history);
+#   attestation starts with the next tag release.
+
+name: Release Attestation
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions: {} # minimal by default; the job grants only what it needs
+
+jobs:
+  build-and-attest:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tooling
+        run: pip install build
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      - name: List built artifacts
+        run: ls -l dist/
+
+      - name: Generate artifact attestations (sdist + wheel)
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.whl
+
+      - name: Upload attested artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dist
+          path: dist/

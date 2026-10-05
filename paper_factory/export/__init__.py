@@ -19,7 +19,8 @@ is pinned by defined exported invariants tested in tests/test_export_*.py
 export), not by re-importing into PF.
 """
 
-from . import prov, rocrate, workflow_card
+from . import cwl, prov, rocrate, workflow_card
+from .cwl import build_cwl_tool, write_cwl_tool
 from ._shared import ExportBundle, ExportError
 from .prov import build_prov_document, write_prov_document
 from .rocrate import build_rocrate, write_rocrate
@@ -34,13 +35,16 @@ __all__ = [
     "CARD_DISCLAIMER",
     "ExportBundle",
     "ExportError",
+    "build_cwl_tool",
     "build_prov_document",
     "build_rocrate",
     "build_workflow_card",
+    "cwl",
     "prov",
     "render_workflow_card_markdown",
     "rocrate",
     "workflow_card",
+    "write_cwl_tool",
     "write_prov_document",
     "write_rocrate",
     "write_workflow_card",
