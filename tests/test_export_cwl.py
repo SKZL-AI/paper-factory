@@ -62,6 +62,22 @@ def test_command_preserved_exactly():
     assert [doc["baseCommand"], *doc["arguments"]] == capsule.command
 
 
+def test_command_metacharacters_escaped_against_parameter_references():
+    """CWL interpolates `$(...)` in string fields as a parameter reference —
+    an argument like `price$(100)` would be evaluated, not passed through
+    (same bug class as the Nextflow GString, review MAJOR-1 B). The export
+    escapes per spec (`\\$(`); spec-conforming consumers unescape it back
+    to the literal argv. Arguments without `$(` stay byte-identical."""
+    capsule = pilot_capsule().model_copy(update={
+        "command": [sys.executable, "case.py", "price$(100)", "plain$100",
+                    "$(refs.x)"]})
+    doc = build_cwl_tool(capsule)
+    assert doc["arguments"] == ["case.py", "price\\$(100)", "plain$100",
+                                "\\$(refs.x)"]
+    # arguments without the parameter-reference opener are untouched
+    assert "plain$100" in doc["arguments"]
+
+
 # --------------------------------------------------------------------------- #
 # Declared files: inputs + hashes + staging
 # --------------------------------------------------------------------------- #

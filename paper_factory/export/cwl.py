@@ -40,6 +40,13 @@ Honest limitations (documented, not hidden):
 - Round-trip is not a goal; exported invariants are pinned by
   tests/test_export_cwl.py (every declared file hash, parameter and output
   path of the capsule appears in the CWL document).
+- Metacharacter fidelity (review MAJOR-1 B): CWL parameter-reference
+  syntax (`$(`) in baseCommand/arguments is escaped per spec (`\\$(`), so
+  literal capsule argv is preserved instead of being evaluated. Residual
+  edge: an argument that itself already contains `\\$(` may double-escape
+  — documented in docs/reports/DEFERRED_HARDENING.md. Consumer-side
+  round-trip verification with cwltool is not wired (not a project
+  dependency).
 
 The document is serialized as JSON, which is a valid YAML 1.2 document and
 therefore a valid CWL document; tests parse the written file with both json
@@ -65,6 +72,19 @@ _ROLE_DOC = {
     "code": "declared code",
     "dependency_lock": "declared dependency lock",
 }
+
+
+def _cwl_literal(text: str) -> str:
+    """Escape a literal argv string for CWL string fields (baseCommand,
+    arguments).
+
+    CWL v1.2 interpolates `$(...)` in string fields as a parameter
+    reference; a capsule argument like `price$(100)` would be evaluated,
+    not passed through. `\\$(` is the spec-defined escape and
+    spec-conforming consumers (cwltool class) unescape it back to `$(`, so
+    runtime argv semantics are preserved. Same metacharacter class as the
+    Nextflow GString / Snakemake format fixes (review MAJOR-1 B)."""
+    return text.replace("$(", "\\$(")
 
 
 def _slug(text: str) -> str:
@@ -118,8 +138,8 @@ class _ToolBuilder:
                 "the authoritative reproduction identity; pf:* extension "
                 "fields carry the contract facts CWL cannot express natively."
             ),
-            "baseCommand": capsule.command[0],
-            "arguments": list(capsule.command[1:]),
+            "baseCommand": _cwl_literal(capsule.command[0]),
+            "arguments": [_cwl_literal(a) for a in capsule.command[1:]],
             "$namespaces": {"pf": PF_CWL_NAMESPACE},
             "pf:capsule_id": capsule.capsule_id,
             "pf:capsule_digest": capsule.capsule_digest,
