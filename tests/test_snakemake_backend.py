@@ -143,6 +143,91 @@ def test_unavailable_error_mentions_install_hint(tmp_path, monkeypatch):
 # Real executions via the actual snakemake binary (env-gated)
 # --------------------------------------------------------------------------- #
 
+# --------------------------------------------------------------------------- #
+# Run-directory lifecycle (review B-MINOR-3) — fake snakemake, no binary needed
+# --------------------------------------------------------------------------- #
+
+_FAKE_SNAKEMAKE = """\
+#!/usr/bin/env python3
+import re, sys
+from pathlib import Path
+
+args = sys.argv[1:]
+if "--version" in args:
+    print("9.9.9")
+    sys.exit(0)
+snakefile = Path(args[args.index("--snakefile") + 1])
+directory = Path(args[args.index("--directory") + 1])
+text = snakefile.read_text(encoding="utf-8")
+out_section = text.split("output:", 1)[1].split("shell:", 1)[0]
+for pattern in re.findall(r'"((?:[^"\\\\]|\\\\.)*)"', out_section):
+    pattern = pattern.replace('\\\\"', '"').replace("\\\\\\\\", "\\\\")
+    target = directory / pattern
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("fake output\\n", encoding="utf-8")
+# execute the capsule shell command like real snakemake would
+shell_line = text.split("shell:", 1)[1].strip().strip('"')
+import subprocess
+sys.exit(subprocess.run(shell_line, shell=True, cwd=directory).returncode)
+"""
+
+
+def _fake_snakemake(tmp_path, monkeypatch):
+    binary = tmp_path / "fake_snakemake.py"
+    binary.write_text(_FAKE_SNAKEMAKE, encoding="utf-8")
+    binary.chmod(0o755)
+    monkeypatch.setattr(snakemake_backend, "snakemake_binary",
+                        lambda: str(binary))
+
+
+def test_default_run_dir_is_cleaned_up(tmp_path, monkeypatch):
+    """Without run_dir the backend's private pf-snakemake-* directory must
+    not leak (review B-MINOR-3). A caller-provided run_dir is audit
+    evidence and must survive."""
+    import tempfile
+
+    _fake_snakemake(tmp_path, monkeypatch)
+    leak_probe = Path(tempfile.gettempdir())
+    before = {p.name for p in leak_probe.glob("pf-snakemake-*")}
+
+    capsule, root = _script_capsule(tmp_path, "pass\n", outputs=["o.txt"])
+    receipt = SnakemakeBackend().run(capsule, root)
+    assert receipt.status == "completed"
+
+    leftover = {p.name for p in leak_probe.glob("pf-snakemake-*")} - before
+    assert leftover == set(), f"leaked run directories: {leftover}"
+
+
+def test_caller_run_dir_is_never_removed(tmp_path, monkeypatch):
+    _fake_snakemake(tmp_path, monkeypatch)
+    run_dir = tmp_path / "audit"
+    capsule, root = _script_capsule(tmp_path, "pass\n", outputs=["o.txt"])
+    receipt = SnakemakeBackend().run(capsule, root, run_dir=run_dir)
+    assert receipt.status == "completed"
+    assert (run_dir / "Snakefile").is_file()
+    assert (run_dir / "capsule").is_dir()
+
+
+def test_default_run_dir_cleaned_even_on_undeclared_output(tmp_path, monkeypatch):
+    """Cleanup runs in finally: an UndeclaredOutputError must not leak the
+    private run directory either."""
+    import tempfile
+
+    _fake_snakemake(tmp_path, monkeypatch)
+    leak_probe = Path(tempfile.gettempdir())
+    before = {p.name for p in leak_probe.glob("pf-snakemake-*")}
+    capsule, root = _script_capsule(
+        tmp_path,
+        "from pathlib import Path\n"
+        "Path('o.txt').write_text('x')\n"
+        "Path('scratch.bin').write_text('undeclared')\n",
+        outputs=["o.txt"])
+    with pytest.raises(UndeclaredOutputError):
+        SnakemakeBackend().run(capsule, root)
+    leftover = {p.name for p in leak_probe.glob("pf-snakemake-*")} - before
+    assert leftover == set(), f"leaked run directories: {leftover}"
+
+
 @requires_snakemake
 def test_pilot_runs_via_snakemake_and_maps_receipt(tmp_path):
     root = pilot_root(tmp_path)

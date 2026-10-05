@@ -33,7 +33,8 @@ and any timestamp/mtime/random field.
 All rel_paths inside a capsule are relative to the capsule root; the process
 runs in `capsule_root / cwd`. rel_paths reject control characters (same
 convention as verification.artifact_binding: a newline in a path would
-silently forge or split manifest lines).
+silently forge or split manifest lines), and — exactly like `cwd` — absolute
+paths, backslashes and `..` (all variants a path could escape the root with).
 """
 from __future__ import annotations
 
@@ -89,8 +90,18 @@ class FileRef(Strict):
 
     @field_validator("rel_path")
     @classmethod
-    def _no_control_chars(cls, v: str) -> str:
-        return _check_no_control_chars(v, "rel_path")
+    def _rel_path_is_safe_relative(cls, v: str) -> str:
+        """Same rules as ReproductionCapsule.cwd (review B-MINOR-2,
+        2026-10-05): absolute paths, backslashes and '..' are rejected — a
+        declared ref must stay inside the capsule root, never escape it or
+        address foreign files via absolute paths / Windows separators."""
+        _check_no_control_chars(v, "rel_path")
+        if v.startswith("/") or "\\" in v:
+            raise ValueError("rel_path must be a relative POSIX path")
+        parts = [p for p in v.split("/") if p not in ("", ".")]
+        if any(p == ".." for p in parts):
+            raise ValueError("rel_path must not escape the capsule root (no '..')")
+        return v
 
 
 class EnvironmentIdentity(Strict):

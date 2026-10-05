@@ -27,6 +27,21 @@ Design decisions (all fail-visible, none of them hidden):
 - `.snakemake` metadata is the backend's own bookkeeping, so the
   undeclared-output snapshot ignores it. Files the JOB writes outside
   expected_outputs are still flagged exactly as in the local runner.
+- Run-directory lifecycle: when ``run_dir`` is not given, the backend
+  creates a private ``pf-snakemake-*`` directory and removes it in a
+  ``finally`` after the receipt is built (review B-MINOR-3, 2026-10-05) —
+  no temp-directory leaks. A caller-provided ``run_dir`` is NEVER removed
+  (it is the caller's audit trail; the staged copy inside it stays
+  inspectable).
+- exit_code semantics (review B-MINOR-4, documented, deferred): the
+  receipt's ``exit_code`` is the WRAPPER's exit code — the ``snakemake``
+  process itself. Snakemake exits nonzero when the job's shell command
+  fails, but a job "succeeding" in snakemake's eyes while the capsule's
+  real intent failed (wrong outputs written, silent in-shell failure
+  patterns snakemake cannot see) is NOT separately captured: the capsule
+  command runs inside snakemake's shell, its own exit status is not
+  propagated into the receipt. The receipt's honest signals are the
+  output content hashes plus status/failure_reason.
 - Same documented hard limits as the local runner: this is not a sandbox. A
   job that writes outside the workdir subtree, touches the network, or reads
   undeclared inputs elsewhere is not detected by the snapshot diff.
@@ -147,7 +162,13 @@ class SnakemakeBackend(LocalReproductionRunner):
         SnakemakeUnavailableError / CapsuleIntegrityError /
         UndeclaredOutputError (fail-visible); a job-side failure (nonzero
         exit, timeout) is recorded in the receipt with status
-        failed/timeout instead of raising."""
+        failed/timeout instead of raising.
+
+        ``run_dir``: caller-owned audit directory (never removed). When
+        None, a private temp directory is created and cleaned up after the
+        receipt is built. NOTE (B-MINOR-4): the receipt's exit_code is the
+        snakemake WRAPPER's exit code, not the capsule command's own shell
+        exit status — see the module docstring."""
         binary = snakemake_binary()
         if binary is None:
             raise SnakemakeUnavailableError(
@@ -163,8 +184,21 @@ class SnakemakeBackend(LocalReproductionRunner):
             raise FileNotFoundError(f"capsule cwd is not a directory: {workdir}")
         self._verify_declared_refs(capsule, root)
 
+        own_run_dir = run_dir is None
         run_path = Path(run_dir) if run_dir is not None else Path(
             tempfile.mkdtemp(prefix="pf-snakemake-"))
+        try:
+            return self._run_in(capsule, root, binary, run_path, timeout)
+        finally:
+            # PF-owned scratch only; a caller-provided run_dir is audit
+            # evidence and stays on disk. The receipt is fully built before
+            # this point (_run_in returns it), so cleanup never truncates
+            # receipt data.
+            if own_run_dir:
+                shutil.rmtree(run_path, ignore_errors=True)
+
+    def _run_in(self, capsule: ReproductionCapsule, root: Path, binary: str,
+                run_path: Path, timeout: float) -> ExecutionReceipt:
         run_path.mkdir(parents=True, exist_ok=True)
         stage = run_path / "capsule"
         shutil.copytree(root, stage)

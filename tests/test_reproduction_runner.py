@@ -129,6 +129,41 @@ def test_undeclared_modified_input_fails_visible(tmp_path):
         LocalReproductionRunner().run(capsule, root)
 
 
+def test_deleted_declared_input_fails_visible(tmp_path):
+    """Deletion detection (review B-MINOR-1): a process that deletes a
+    declared input destroys evidence the capsule is bound to — fail-visible,
+    not a silent pass."""
+    root = tmp_path / "case"
+    root.mkdir()
+    (root / "case.py").write_text("pass\n", encoding="utf-8")
+    (root / "input.csv").write_text("v\n1\n", encoding="utf-8")
+    capsule = ReproductionCapsule(
+        capsule_id="case-del",
+        command=[sys.executable, "case.py"],
+        code_refs=[FileRef(rel_path="case.py",
+                           sha256=sha256_file(root / "case.py"))],
+        input_refs=[FileRef(rel_path="input.csv",
+                            sha256=sha256_file(root / "input.csv"))],
+        environment={"python_version": "3", "platform": "test"},
+        expected_outputs=["summary.json"],
+        producer={"kind": "pf_native", "name": "test", "version": "0"},
+    )
+    # run 1: deletes the declared input before the runner even snapshots? No —
+    # the deletion must happen INSIDE the executed process, so the capsule
+    # command itself removes the input (case.py is bound, so drive the
+    # deletion from a helper the command invokes).
+    (root / "case.py").write_text(
+        "from pathlib import Path\n"
+        "Path('input.csv').unlink()\n"
+        "Path('summary.json').write_text('{}')\n",
+        encoding="utf-8")
+    capsule = capsule.model_copy(update={
+        "code_refs": [FileRef(rel_path="case.py",
+                              sha256=sha256_file(root / "case.py"))]})
+    with pytest.raises(UndeclaredOutputError, match="input.csv"):
+        LocalReproductionRunner().run(capsule, root)
+
+
 def test_declared_nondeterministic_output_allowed(tmp_path):
     capsule, root = _script_capsule(
         tmp_path,

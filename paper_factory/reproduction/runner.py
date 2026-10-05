@@ -14,7 +14,12 @@ Declared vs. discovered access — what this runner does and does NOT detect:
   compares afterwards. Files that are new or modified and match no
   expected_outputs pattern raise UndeclaredOutputError — including declared
   refs: a computation that rewrites its own inputs/config/code is exactly
-  what must not pass silently.
+  what must not pass silently. DELETIONS are detected the same way (review
+  B-MINOR-1, 2026-10-05): a file present before and gone afterwards is an
+  undeclared output event (the process consumed/destroyed evidence), unless
+  it matches an expected_outputs pattern — an output the process wrote and
+  then removed again is the differential's missing-output problem, not a
+  hidden side effect. A process that deletes a declared input raises.
 - HARD LIMITS (documented, not hidden): this is NOT a sandbox. A process that
   writes outside the cwd subtree, mutates a file while preserving
   (mtime_ns, size), touches the network, or reads undeclared inputs elsewhere
@@ -46,7 +51,7 @@ class CapsuleIntegrityError(RuntimeError):
 
 
 class UndeclaredOutputError(RuntimeError):
-    """The process created or modified files outside expected_outputs."""
+    """The process created, modified or deleted files outside expected_outputs."""
 
 
 def _native_backend() -> BackendIdentity:
@@ -174,8 +179,16 @@ class LocalReproductionRunner:
             rel for rel, stat in after.items()
             if before.get(rel) != stat and not is_expected(rel)
         )
+        # deletions: present before, gone after. Expected-output removals
+        # are tolerated (a removed expected output surfaces honestly as a
+        # missing output in the differential); anything else the process
+        # destroyed (e.g. a declared input) is an undeclared output event.
+        undeclared += sorted(
+            rel for rel in before
+            if rel not in after and not is_expected(rel)
+        )
         if undeclared:
             raise UndeclaredOutputError(
-                "process wrote files outside expected_outputs (undeclared "
-                f"outputs): {undeclared}. Declare them in the capsule or "
-                "remove the write.")
+                "process created, modified or deleted files outside "
+                f"expected_outputs (undeclared outputs): {undeclared}. Declare "
+                "them in the capsule or remove the side effect.")

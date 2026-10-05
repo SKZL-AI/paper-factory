@@ -150,6 +150,15 @@ def test_cwd_must_be_safe_relative(bad_cwd):
         capsule(cwd=bad_cwd)
 
 
+@pytest.mark.parametrize("bad_rel", ["/abs/file", "..", "a/../b", "a\\b"])
+def test_file_ref_rel_path_must_be_safe_relative(bad_rel):
+    """review B-MINOR-2: declared/produced refs must stay inside the capsule
+    root — absolute paths, parent traversal and Windows separators fail at
+    the model boundary, exactly like cwd."""
+    with pytest.raises(ValidationError):
+        FileRef(rel_path=bad_rel, sha256=SHA)
+
+
 def test_cwd_defaults_and_normalizes():
     assert capsule().cwd == "."
     assert capsule(cwd="sub/dir").cwd == "sub/dir"
