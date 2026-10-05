@@ -22,10 +22,15 @@ Herdr runtime (sessions, panes, worktrees, restore)
 Evidence → Claims → Stats → Figures/Tables → Manuscript → Reviews → Release
 ```
 
-v1.3 adds the **Reproduction Plane** (capsule contract, differential,
+v1.3 added the **Reproduction Plane** (capsule contract, differential,
 local/Snakemake runners, P10 gate) — owned by the PF core, same control-
 plane role — and a pure **export layer** (RO-Crate / W3C-PROV / Workflow
-Card) that projects canonical evidence without ever feeding gates. The
+Card) that projects canonical evidence without ever feeding gates. v1.4
+extended the reproduction plane with a **Nextflow backend** behind the
+same capsule contract, and the export layer with **CWL v1.2** (export
+only). Since v2.0 every contract is inventoried and carries an explicit
+stability guarantee (see *Contract stability* below and
+[CONTRACTS.md](CONTRACTS.md)). The
 role split is unchanged: **PF = Scientific Control Plane** (incl.
 reproduction and exports), **VeriHarness/HoH = Verification Plane**,
 **Herdr = Runtime Plane**.
@@ -47,14 +52,16 @@ reproduction and exports), **VeriHarness/HoH = Verification Plane**,
   `reviews/` (framework, runners, remediation, verification-finding
   ingest), `paperpal/` (manual bridge),
   `venue/`, `release/` (secret scan, export, rebuild, closure U1–U16).
-- **Reproduction plane (v1.3)**: `reproduction/` — versioned, content-
-  addressed Reproduction Capsule, six-class Reproduction Differential,
-  native local runner, and the optional Snakemake backend (capability-
-  probed; `UNAVAILABLE` instead of a fake when absent).
-- **Export layer (v1.3)**: `export/` — pure exporters (RO-Crate 1.3 /
-  Process Run Crate 0.6, W3C-PROV, derived Workflow Card) over the
-  canonical model. Exports never feed gates; PF provenance stays
-  canonical.
+- **Reproduction plane (v1.3, Nextflow added v1.4)**: `reproduction/` —
+  versioned, content-addressed Reproduction Capsule, six-class
+  Reproduction Differential, native local runner, the optional Snakemake
+  backend (capability-probed; `UNAVAILABLE` instead of a fake when
+  absent), and the Nextflow backend (binary launcher, deliberately not a
+  pip extra).
+- **Export layer (v1.3, CWL added v1.4)**: `export/` — pure exporters
+  (RO-Crate 1.3 / Process Run Crate 0.6, W3C-PROV, CWL v1.2 Tool,
+  derived Workflow Card) over the canonical model. Exports never feed
+  gates; PF provenance stays canonical.
 
 ## Hard boundaries (code-enforced)
 
@@ -131,7 +138,8 @@ backends, the same adapter pattern as the provider router:
   `NONDETERMINISTIC_DECLARED`, `UNAVAILABLE`, `INCOMPARABLE`. Declared
   non-determinism matches honestly; anything uncomparable is a visible
   class, never a rounded-up PASS.
-- **Backends** (`reproduction/runner.py`, `reproduction/snakemake_backend.py`):
+- **Backends** (`reproduction/runner.py`, `reproduction/snakemake_backend.py`,
+  `reproduction/nextflow_backend.py`):
   the native local runner enforces declared-input verification, output
   collection, and undeclared-output detection (deletion/tamper is caught
   by a pre/post subtree snapshot, not by trust). The Snakemake backend
@@ -141,8 +149,8 @@ backends, the same adapter pattern as the provider router:
 - **P10 wiring** (`statistics/reproducibility.py` + the DAG): P10 loads a
   declared capsule, runs it twice and gates on the differential. Honest
   scope: this proves a *declared* capsule reproduces itself; it is not
-  system-level environment capture (ReproZip-class tooling stays a v1.4+
-  decision, gated on a real interchange consumer).
+  system-level environment capture (ReproZip-class tooling: DEFER,
+  `docs/reports/V1_4_REPROZIP_DECISION.md`).
 
 ## Export layer (v1.3)
 
@@ -153,6 +161,8 @@ exporters are **pure projections** of canonical PF evidence
 - `rocrate.py` — RO-Crate 1.3 metadata conforming to the *Process Run
   Crate 0.6* profile (Workflow Run RO-Crate family).
 - `prov.py` — W3C-PROV document (`prov.json`).
+- `cwl.py` — CWL v1.2 CommandLineTool export; interchange only, no
+  third runtime engine (v1.4).
 - `workflow_card.py` — derived, human- and LLM-readable card (JSON +
   Markdown); explicitly never a gate input.
 
@@ -171,3 +181,38 @@ all-or-nothing, never half-true.
 - Immutable artifacts: evidence ledger (JSONL), claims (YAML), review reports
   (JSON), manifests, release bundle with SHA256SUMS.
 - Resume: `paper-factory resume` re-executes only nodes not yet PASS/DEGRADED.
+
+## Contract stability (v2.0)
+
+Every PF contract with a real consumer in the code is inventoried in
+[CONTRACTS.md](CONTRACTS.md) — 10 contracts, **all `schema_version=1`**:
+verification contract and receipts, shadow/differential receipt,
+reproduction capsule and receipt, the two backend protocols (verification
++ reproduction), the provenance export formats, the state-DB schema, and
+finding identity. The stability policy is:
+
+- **Strict models, visible failure.** All contract payloads are strict
+  Pydantic models (`extra="forbid"`); unknown fields and unknown schema
+  versions fail visibly at load, never parse leniently into a gate.
+- **No silent field changes.** Any semantic field change is a
+  `schema_version=2` event. The empirical trigger criteria for a v2 are
+  written down in `docs/reports/V2_0_SCHEMA_DECISION.md`; as of v2.0 no
+  proven need exists, so every contract stays on v1 (incl. the state DB,
+  whose `schema_version` field deliberately sits inside the
+  `capsule_digest` payload).
+- **Deprecation discipline.** Breaking renames without consumer benefit
+  do not happen. The one documented example: two `ExecutionReceipt`
+  classes (verification vs reproduction) share a name — inventoried, no
+  proven defect (no file imports both), and the rename TODO is bound to
+  schema v2, where it lands in the same version-bump transaction as any
+  field change. Existing compatibility anchors (`legacy_dedupe_key`,
+  lenient load of v1.2-era receipts without timestamps) are tested and
+  are removed only through the same versioned path.
+- **Migrations never rewrite history.** State-DB migrations are
+  registered (`MIGRATIONS` chain), idempotent, and copy the database
+  before any mutation; a future v2 would ship as `MIGRATIONS[1]` with
+  the same copy-before-mutate contract, and old v1 payloads stay
+  readable.
+- **Conformance is measured, not asserted.** 48 matrix cells (38 green,
+  1 locally verified, 2 pinned limits, 7 honestly open) in
+  `docs/reports/V2_0_CONFORMANCE_MATRIX.md`.

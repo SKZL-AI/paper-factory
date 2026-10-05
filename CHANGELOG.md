@@ -1,5 +1,38 @@
 # Changelog
 
+## [2.0.0] — 2026-10-05
+
+Contract Stabilization & Production Freeze:
+
+- **Contract Inventory** (`docs/CONTRACTS.md`): 10 Contracts mit echtem
+  Consumer im Code, **alle `schema_version=1`**; Stabilitätszusage — strenge
+  Modelle (`extra="forbid"`, unbekannte Felder/Versionen scheitern sichtbar),
+  jede semantische Feldsänderung nur als `schema_version=2`-Event
+- **Schema-v2-Entscheidung** (`docs/reports/V2_0_SCHEMA_DECISION.md`): v1
+  bleibt — kein belegtes Problem gefunden (keine Alt-Payloads, keine aktive
+  Bruchstelle); die empirischen Trigger-Kriterien für einen künftigen v2-Bump
+  sind schriftlich festgelegt; der `ExecutionReceipt`-Rename-TODO ist an
+  schema v2 gebunden
+- **Plattform/Packaging** (`docs/reports/V2_0_PLATFORM_PACKAGING.md`): ehrliche
+  Support-Matrix (Ubuntu/WSL2 getestet-unterstützt; Windows-native/macOS
+  explizit *nicht* als unterstützt deklariert); Packaging-Fix: `pfword.ps1` +
+  `paper.mplstyle` fehlten in Wheel+sdist (`[tool.setuptools.package-data]`),
+  Rebuild + Installationsweg aus frischem venv verifiziert
+- **Full Conformance Matrix + Failure Injection**
+  (`docs/reports/V2_0_CONFORMANCE_MATRIX.md`): 48 Zellen — 38 grün in der
+  Suite, 1 lokal verifiziert (historische Pilot-Migration), 2 gepinnte
+  Limits (unsigned historische Tags; DB-Row-Trust), 7 ehrlich offen mit
+  dokumentiertem Grund; dabei **2 echte Produktionsfixes**: Receipt-
+  **Digest-Guard** Collect→Gate (Tamper dazwischen fail-visible) und
+  **Export-Guard** für deklarierte, nicht gelieferte Outputs
+- **Historical State Migration** (`docs/reports/V2_0_STATE_MIGRATION.md`):
+  5 echte Pilot-States (v1.0–v1.3) lokal migriert (0→1), Originale
+  byte-identisch (SHA-256 vorher/nachher), Backups exakt die
+  Pre-Migration-Bytes; verankert über synthetische v0-Fixtures in der Suite
+- 1070 Tests passing (+4 honest environment skips); dual adversarial
+  review A/B = [ERGÄNZEN — Review-Ergebnis wird nach dem Review
+  eingetragen]
+
 ## [1.4.0] — 2026-10-05
 
 - **Backend Conformance Suite** (`tests/conformance/`): parametrisiert über

@@ -92,7 +92,7 @@ Messnachweis.
   `pyproject.toml` — Standard-Set, nichts Privates.
 - Versions-String: `1.3.0` korrekt in beiden Artefakten.
 
-## 4. Checkliste für das nächste Release (v1.4.0+)
+## 4. Checkliste für das nächste Release (v1.4.0+, gilt einschließlich v2.0.0)
 
 1. `pyproject.toml`-`version` auf das Release setzen und mit dem
    CHANGELOG-Eintrag abstimmen (Reviewer MAJOR-1 A, v1.4-Fixloop: der

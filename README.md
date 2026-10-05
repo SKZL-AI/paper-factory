@@ -149,8 +149,53 @@ findings wiring, RO-Crate/PROV/Card exporters; real pilot evidence in the
 reports linked above. **OPTIONAL** — the Snakemake backend (extra
 dependency, capability-probed with honest `UNAVAILABLE` when absent) and
 the literature provider (PaperQA stays *not* integrated; no real consumer
-exists). **PLANNED (v1.4)** — Nextflow/CWL backends behind the stable
-capsule contract, ReproZip-class capture, cryptographic attestation.
+exists). **SHIPPED (v1.4)** — Nextflow backend behind the same capsule
+contract, CWL v1.2 as interchange export, a backend conformance suite,
+and release artifact attestations (see the next section).
+**DEFER** — ReproZip-class capture
+(`docs/reports/V1_4_REPROZIP_DECISION.md`).
+
+### Multi-backend & attestation (v1.4)
+
+- **Nextflow backend** behind the same capsule→receipt contract (binary
+  launcher, deliberately not a pip extra) with a real 3-way reproduction
+  proof: local + Snakemake + Nextflow → `REPRODUCED_EXACT`
+  ([docs/reports/V1_4_NEXTFLOW_CONFORMANCE_PROOF.md](docs/reports/V1_4_NEXTFLOW_CONFORMANCE_PROOF.md)).
+- **CWL v1.2 export** — capsule → CommandLineTool with hash-pinned
+  declared files; export only, the capsule stays canonical
+  ([docs/reports/V1_4_CWL_DECISION.md](docs/reports/V1_4_CWL_DECISION.md)).
+- **Backend conformance suite** — 12 semantic cases (input/output
+  binding, undeclared outputs, timeout, cleanup, …) × every reproduction
+  backend, honest skips when a binary is absent.
+- **Release artifact attestations** — sdist/wheel attested via GitHub
+  Artifact Attestations on every `v*` tag. No SLSA level claimed;
+  historical tags stay unsigned ([docs/RELEASING.md](docs/RELEASING.md)).
+
+Status: **IMPLEMENTED**. v1.5 was evaluated without a release
+(gates: PaperQA2 DEFER, citation provider REJECT, provider SDK REJECT,
+reviewer ensemble REUSED — [docs/reports/V1_5_DECISIONS.md](docs/reports/V1_5_DECISIONS.md)).
+
+### Stability (v2.0)
+
+- **Contract inventory** ([docs/CONTRACTS.md](docs/CONTRACTS.md)): 10
+  contracts with real consumers in the code, **all `schema_version=1`** —
+  strict models (`extra="forbid"`, unknown fields and versions fail
+  visibly at load). **Stability commitment:** no field-level change
+  without a `schema_version=2` event; the empirical trigger criteria for
+  a v2 are written down, and no proven need exists today
+  ([docs/reports/V2_0_SCHEMA_DECISION.md](docs/reports/V2_0_SCHEMA_DECISION.md)).
+- **Full conformance matrix** — 48 cells: 38 green in the test suite,
+  1 verified locally, 2 pinned limits, 7 honestly open with documented
+  reasons ([docs/reports/V2_0_CONFORMANCE_MATRIX.md](docs/reports/V2_0_CONFORMANCE_MATRIX.md)).
+- **Honest platform matrix** — Ubuntu Linux tested and supported (CI),
+  WSL2 tested locally; Windows-native and macOS are explicitly *not*
+  declared supported
+  ([docs/reports/V2_0_PLATFORM_PACKAGING.md](docs/reports/V2_0_PLATFORM_PACKAGING.md)).
+- **Historical state migration** — 5 real pilot states (v1.0–v1.3)
+  migrated `0→1` with byte-identical originals and exact pre-migration
+  backups ([docs/reports/V2_0_STATE_MIGRATION.md](docs/reports/V2_0_STATE_MIGRATION.md)).
+- **Suite:** 1070 tests passing (+4 honest environment skips), no LLM/HoH
+  quota spent.
 
 **Known limitations (unchanged, tracked):** Herdr's 5 s dispatch-stall
 window is hard-coded upstream; the adapter workaround carries an honest
@@ -203,7 +248,8 @@ Real pilot (a mass-invariance research paper, draft-assisted intake):
 - 245 unique writing-assistant suggestions processed capture-only, 100 %
   dispositioned: 75 applied under semantic guards, 124 rejected with
   evidence, 46 not applicable
-- **968 tests passing** (+2 environment skips for Windows-only Word paths)
+- **1070 tests passing** (+4 honest environment skips: 2 Windows-only Word
+  paths, 2 native-backend conformance N/A rows)
 
 Reports: [docs/reports/](docs/reports/) · v1.3 evidence:
 [docs/reports/V1_3_PILOT_MATRIX.md](docs/reports/V1_3_PILOT_MATRIX.md) ·
@@ -215,6 +261,7 @@ Freeze evidence: [V1_FREEZE_REPORT.md](V1_FREEZE_REPORT.md)
 |---|---|
 | [Position paper (PDF)](docs/paper/position-paper.pdf) | You want the concise "what & why" as a citable document |
 | [ARCHITECTURE](docs/ARCHITECTURE.md) | You want the system design |
+| [CONTRACTS](docs/CONTRACTS.md) | You integrate against a PF contract |
 | [OPERATIONS](docs/OPERATIONS.md) | You run it on a real machine |
 | [PAPER_WORKFLOW](docs/PAPER_WORKFLOW.md) | You produce an actual paper |
 | [PROVIDER_ROUTING](docs/PROVIDER_ROUTING.md) | You wire up model backends |
@@ -233,7 +280,7 @@ runtime; not on PyPI — the core works without it) and the `hoh` PyPI package
 ```bash
 git clone https://github.com/SKZL-AI/paper-factory && cd paper-factory
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
-.venv/bin/python -m pytest tests -q     # 968 tests (+2 environment skips)
+.venv/bin/python -m pytest tests -q     # 1070 tests (+4 honest environment skips)
 ```
 
 The test suite never spends LLM quota: E2E configs disable HoH nodes, and
