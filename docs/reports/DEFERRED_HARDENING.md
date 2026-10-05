@@ -216,6 +216,11 @@ Normalisierung exakt mit dem zitierten Titel kollidiert):
 - **SQLite-Schema-Versionierung (runs.sqlite): DEFER v1.3.** Der v1.2-Contract
   versioniert sich selbst (`schema_version`); eine Migration des
   bestehenden SQLite-State ist ein eigenes Risikopaket ohne v1.2-Consumer.
+  - *Korrektur-Provenance (2026-10-05): ERLEDIGT auf Branch
+    `v1.3/wp2-3-state-hardening` (WP3, Commit 51ecd5b).*
+    `PRAGMA user_version` + Migrations-Registry in `state/store.py`,
+    Backup-Kopie vor Migration, Idempotenz, fail-visible bei unknown-newer —
+    ersetzt die DEFER-Entscheidung; v1.2-DBs migrieren sauber (0→1).
 - **Citation/Provenance (Phase 8): REUSE.** Keine Änderung: die bestehende
   DOI/arXiv/authoritative-URL-Verifikation (P21) und die Protected-Prose-
   Firewall bleiben kanonisch. Externe Resolver sind höchstens ergänzend.
@@ -231,6 +236,14 @@ Normalisierung exakt mit dem zitierten Titel kollidiert):
   `tests/test_verification_adversarial.py::test_stale_execution_receipt_loads_without_any_freshness_check`
   dokumentiert den Ist-Zustand — ein künftiger Frische-Check hat damit einen
   roten Test, den er grün macht. (WP6-Befund B2, 2026-10-04.)
+  - *Korrektur-Provenance (2026-10-05): ERLEDIGT auf Branch
+    `v1.3/wp2-3-state-hardening` (WP2.3, Commit 8352422).* Semantische
+    Freshness at consumption (`ExecutionReceipt.check_freshness` /
+    `ReceiptExpectation` in `verification/contract.py`): stale binding,
+    replay/wrong-run (store-backed), wrong backend, wrong schema_version,
+    future/missing Timestamp fail-visible; Wall-Clock-Guard opt-in
+    (default aus). Der Pinning-Test wurde entsprechend umgeschrieben
+    (Laden bleibt backward-kompatibel, Konsumtion geprüft).
 
 ## v1.2 Verification Plane — Review-Runde-1-Nachträge (2026-10-04, Dual-Review NEIN)
 
@@ -322,6 +335,9 @@ Restpunkte:
   `use_herdr=False` muss die Mapping-Asymmetrie geschlossen werden, sonst
   würde der Evidenz-Vorbehalt still verschwinden (Verletzung des
   „never silently dropped"-Kommentars, handlers.py:328-329).
+  - *Korrektur-Provenance (2026-10-05): ERLEDIGT (WP2.2, Commit 0783c6e).*
+    Die Felder werden wie im Shim in `hoh_detail` übernommen; Regressionstests
+    (Mapping + dual path) liegen vor — das zukünftige Plumbing ist entlastet.
 - **MINOR: `_collect_receipts` validiert Receipt-Interna nicht
   (Reviewer B).** `adapter.py:668-681` schützt run_id-Provenance nur indirekt
   über Verzeichnis-Scoping (`runs_root/<run_id>/receipts`); ein inhaltlich
@@ -329,6 +345,9 @@ Restpunkte:
   Hardening: beim Kollektieren `receipt["run_id"] == run_id` fail-visible
   prüfen. Kein akuter Vektor (Receipt-Verzeichnis ist run-scoped und
   PF-owned), aber ein billiger zusätzlicher Guard.
+  - *Korrektur-Provenance (2026-10-05): ERLEDIGT (WP2.1, Commit 2f51260).*
+    `ReceiptValidationError` + `receipt_provenance.json`-Marker; fehlende
+    run_id wird sichtbar markiert statt still akzeptiert (Backward-Compat).
 - **NIT (A):** `shadow.py:14-15` Outcome-Docstring beschreibt MATCH ohne den
   By-Construction-Vorbehalt, den die Dualpfad-Rationale trägt (shadow.py:111-116).
   Generisch korrekt; bei Doc-Berührung präzisieren.

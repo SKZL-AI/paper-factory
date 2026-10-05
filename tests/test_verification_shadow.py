@@ -419,6 +419,57 @@ def test_dual_node_verdict_downgrade_unchanged(tmp_path, monkeypatch):
     assert outcome.detail["shadow_outcome"] == DifferentialOutcome.MISMATCH.value
 
 
+def test_hoh_result_from_verify_keeps_top_level_backend_evidence_fields():
+    """WP2 (review A MINOR): backend.detail fields that live OUTSIDE
+    hoh_detail (evidence_note, herdr=False from the --no-herdr trade-off)
+    must survive the verify() -> HohResult mapping — never silently dropped."""
+    from paper_factory.dag.handlers import _hoh_result_from_verify
+
+    res = make_result(Verdict.PASS)
+    res = res.model_copy(update={
+        "backend": res.backend.model_copy(update={"detail": {
+            "run_id": "PF-noherdr1-P05",
+            "herdr": False,
+            "evidence_note": "--no-herdr: keine A01/A02/A12-Akzeptanz-Evidenz",
+            "hoh_detail": {"run_rc": 0, "stage": "qa"},
+        }})
+    })
+    mapped = _hoh_result_from_verify("P05", res)
+    assert mapped.detail["evidence_note"] == (
+        "--no-herdr: keine A01/A02/A12-Akzeptanz-Evidenz"
+    )
+    assert mapped.detail["herdr"] is False
+    # the pre-existing hoh_detail content is untouched by the copy
+    assert mapped.detail["run_rc"] == 0 and mapped.detail["stage"] == "qa"
+
+
+def test_dual_node_no_herdr_evidence_note_reaches_node_detail(tmp_path, monkeypatch):
+    """End-to-end through the dual handler: the evidence reservation set by
+    verify() at backend.detail top level lands on the node outcome via the
+    gate (hoh_evidence_note) — before the WP2 fix it vanished in
+    _hoh_result_from_verify."""
+    def fake_verify(self, package):
+        res = _fake_verify_with_receipt(self, package)
+        return res.model_copy(update={
+            "backend": res.backend.model_copy(update={"detail": {
+                **res.backend.detail,
+                "herdr": False,
+                "evidence_note": "--no-herdr: keine A01/A02/A12-Akzeptanz-Evidenz",
+            }})
+        })
+
+    monkeypatch.setattr(VeriharnessAdapter, "verify", fake_verify)
+    monkeypatch.setattr(VeriharnessAdapter, "doctor",
+                        lambda self: {"present": True, "herdr": True, "bwrap": True})
+    handler = _build_dual_handler(monkeypatch, base_verdict=Verdict.PASS)
+    ws = Workspace(tmp_path)
+    outcome = handler(_ctx(ws), NODE)
+    assert outcome.verdict == Verdict.PASS
+    assert outcome.detail["hoh_evidence_note"] == (
+        "--no-herdr: keine A01/A02/A12-Akzeptanz-Evidenz"
+    )
+
+
 # --------------------------------------------------------------------------- #
 # F5/F6: the shadow receipt write is atomic (tmp + os.replace, no .tmp
 # leftovers) and the receipt path sanitizes run_id/node_id (a "../evil"

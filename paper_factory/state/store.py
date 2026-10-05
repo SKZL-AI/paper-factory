@@ -2,16 +2,34 @@
 
 Mutable orchestration state lives in SQLite; scientific evidence lives in
 immutable JSON/JSONL/YAML artifacts on disk.
+
+Schema versioning (WP3, v1.3): the DB carries PRAGMA user_version. Current
+schema = SCHEMA_VERSION. Migrations live in the MIGRATIONS registry
+(version -> fn); before any migration mutates an existing DB, the file is
+COPIED (never moved/deleted) next to the original. A DB newer than this
+code understands fails visibly (SchemaVersionError) — unknown newer schemas
+are never interpreted silently, and a version with no registered migration
+path fails visibly too. Re-running migrations is idempotent.
 """
 from __future__ import annotations
 
+import shutil
 import sqlite3
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from ..core.util import utcnow
 
 WORKSPACE_DIRNAME = ".paper-factory"
+
+SCHEMA_VERSION = 1
+
+
+class SchemaVersionError(RuntimeError):
+    """Fail-visible: runs.sqlite is on a schema this code cannot interpret —
+    either newer than SCHEMA_VERSION (unknown newer schema, no silent
+    guessing) or on a version without a registered migration path."""
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs (
@@ -49,6 +67,20 @@ CREATE TABLE IF NOT EXISTS events (
   payload TEXT
 );
 """
+
+
+def _migrate_0_to_1(conn: sqlite3.Connection) -> None:
+    """Legacy v1.2 databases: they already carry the full v1 schema but were
+    created before user_version existed (PRAGMA reads 0). Ensure the schema
+    is complete (IF NOT EXISTS — idempotent) so the version can be stamped
+    honestly; a v0 DB missing tables gets them here, a complete one is
+    untouched."""
+    conn.executescript(SCHEMA)
+
+
+MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
+    0: _migrate_0_to_1,
+}
 
 
 class Workspace:
@@ -114,8 +146,52 @@ class Workspace:
         self.root.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
-        conn.executescript(SCHEMA)
+        try:
+            self._migrate(conn)
+        except SchemaVersionError:
+            conn.close()
+            raise
         return conn
+
+    def _migrate(self, conn: sqlite3.Connection) -> None:
+        """Bring the DB to SCHEMA_VERSION. Fresh/legacy DBs (user_version 0)
+        run the registered migration chain; an already-current DB is a no-op
+        (idempotency: connecting twice must not change anything twice).
+        Unknown newer schemas and missing migration paths raise
+        SchemaVersionError BEFORE any schema statement runs."""
+        version = conn.execute("PRAGMA user_version").fetchone()[0]
+        if version > SCHEMA_VERSION:
+            raise SchemaVersionError(
+                f"{self.db_path.name}: runs.sqlite schema_version {version} is NEWER than "
+                f"the highest version this paper-factory understands "
+                f"({SCHEMA_VERSION}); refusing to interpret an unknown newer schema "
+                "(upgrade paper-factory or migrate the DB down explicitly)"
+            )
+        while version < SCHEMA_VERSION:
+            migration = MIGRATIONS.get(version)
+            if migration is None:
+                raise SchemaVersionError(
+                    f"{self.db_path.name}: no migration registered from schema_version "
+                    f"{version} to {SCHEMA_VERSION}; the DB is neither current nor "
+                    "migratable — refusing to guess"
+                )
+            self._backup_before_migration(version)
+            migration(conn)
+            version += 1
+            conn.execute(f"PRAGMA user_version = {version}")
+            conn.commit()
+
+    def _backup_before_migration(self, from_version: int) -> None:
+        """Copy (never move, never delete) the DB file before a migration
+        mutates it. A fresh empty file (sqlite3.connect just created it,
+        0 bytes) has nothing to preserve — no backup noise."""
+        if not self.db_path.exists() or self.db_path.stat().st_size == 0:
+            return
+        stamp = utcnow().replace(":", "")
+        dest = self.db_path.with_name(
+            f"{self.db_path.name}.v{from_version}.pre-migration-{stamp}"
+        )
+        shutil.copy2(self.db_path, dest)
 
     def create_run(self, run_id: str, config_hash: str = "") -> None:
         with self.connect() as c:
@@ -220,3 +296,12 @@ class Workspace:
         with self.connect() as c:
             row = c.execute("SELECT run_id FROM runs ORDER BY created_at DESC LIMIT 1").fetchone()
         return row["run_id"] if row else None
+
+    def receipt_runs(self) -> dict[str, str]:
+        """receipt_id -> run_id over every recorded receipt row. This is the
+        store-backed evidence for the WP2 replay/wrong-run dimension of
+        receipt freshness: a receipt whose ID the store ties to a different
+        run is a replay, provable without trusting the receipt's own fields."""
+        with self.connect() as c:
+            rows = c.execute("SELECT receipt_id, run_id FROM receipts").fetchall()
+        return {r["receipt_id"]: r["run_id"] for r in rows}

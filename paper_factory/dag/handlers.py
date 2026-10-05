@@ -292,14 +292,47 @@ def _run_shadow_differential(
     outcome.detail["shadow_receipt"] = str(receipt_path)
 
 
-def _hoh_result_from_verify(node_id: str, res):
+def _hoh_result_from_verify(node_id: str, res, package=None, workspace=None):
     """Map a generic verify() VerificationResult onto the legacy HohResult
     shape (same field derivation as VeriharnessAdapter.verify_work_package),
-    so the HoH gate can consume a SHARED verify() result."""
+    so the HoH gate can consume a SHARED verify() result.
+
+    ``package``/``workspace`` are optional context for the WP2 receipt
+    freshness check: when the result carries ExecutionReceipts, each one is
+    validated at consumption time (current artifact binding, backend, run,
+    store-backed replay evidence) and a stale/replayed/rebound receipt raises
+    ReceiptFreshnessError — it can never satisfy the gate silently.
+    """
     from ..adapters.veriharness.adapter import HohResult
     from ..core.util import sha256_file
 
+    if res.receipts:
+        from ..verification.contract import ReceiptExpectation, artifact_binding
+
+        expected_artifact = (
+            artifact_binding(package.artifacts)
+            if package is not None and package.artifacts
+            else res.artifact_sha256
+        )
+        res.check_receipt_freshness(
+            ReceiptExpectation(
+                artifact_sha256=expected_artifact,
+                backend_kind=res.backend.kind,
+                run_id=res.backend.detail.get("run_id") or None,
+                known_receipt_runs=workspace.receipt_runs() if workspace is not None else None,
+            )
+        )
+
     hoh_detail = dict(res.backend.detail.get("hoh_detail") or {})
+    # backend-evidence fields that live OUTSIDE hoh_detail must survive this
+    # mapping too (review A MINOR, 2026-10-05): verify() sets them at
+    # backend.detail top level (e.g. the --no-herdr evidence_note trade-off);
+    # dropping them here would silently remove the evidence reservation from
+    # the gate path the moment use_herdr=False gets DAG plumbing.
+    if res.backend.detail.get("evidence_note"):
+        hoh_detail["evidence_note"] = res.backend.detail["evidence_note"]
+    if res.backend.detail.get("herdr") is False:
+        hoh_detail["herdr"] = False
     executed = "run_rc" in hoh_detail
     receipts = [
         {"receipt_file": Path(p).name, "copied_to": p, "sha256": sha256_file(Path(p))}
@@ -434,8 +467,8 @@ def build_handlers(
                         raise
                     _run_shadow_differential(ctx, node, node_id, adapter, outcome,
                                              shadow_result=shared, artifacts=artifacts)
-                    _apply_hoh_gate(ctx, node_id, _hoh_result_from_verify(node_id, shared),
-                                    outcome)
+                    _apply_hoh_gate(ctx, node_id, _hoh_result_from_verify(
+                        node_id, shared, package, ctx.workspace), outcome)
                     return outcome
                 if shadow:
                     _run_shadow_differential(ctx, node, node_id, adapter, outcome)
