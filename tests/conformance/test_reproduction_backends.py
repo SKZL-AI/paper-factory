@@ -8,6 +8,7 @@ when their binary is missing.
 from __future__ import annotations
 
 import re
+import sys
 import tempfile
 from pathlib import Path
 
@@ -15,11 +16,14 @@ import pytest
 
 from paper_factory.reproduction import (
     CapsuleIntegrityError,
+    FileRef,
     LocalReproductionRunner,
     NondeterminismDecl,
     ReproClassification,
+    ReproductionCapsule,
     UndeclaredOutputError,
     compare_executions,
+    sha256_file,
 )
 
 from .reproduction_backends import (
@@ -338,6 +342,42 @@ def test_unavailable_fails_visible_when_binary_missing(backend, tmp_path,
     with pytest.raises(backend.unavailable_exc):
         backend.invoke(backend.factory(), pilot_capsule(),
                        pilot_root(tmp_path), tmp_path / "run", 60.0)
+
+
+# --------------------------------------------------------------------------- #
+# 13. argv metacharacter fidelity (review MAJOR-1 B)
+# --------------------------------------------------------------------------- #
+
+@parametrized
+def test_argv_metacharacters_arrive_verbatim(backend, tmp_path):
+    """Capsule argv with shell/Groovy metacharacters (`$`, `${...}`,
+    `$(...)`, quotes, backslash, spaces) must reach the job byte-identically
+    on every backend — pre-fix, the nextflow adapter silently dropped `$`
+    (`price$100` -> `price00`, status completed). local and snakemake are
+    the reference behaviour; nextflow must match after the Groovy-escape
+    fix."""
+    ensure_available(backend)
+    root = tmp_path / "case"
+    root.mkdir()
+    script = root / "case.py"
+    script.write_text(
+        "import sys\nfrom pathlib import Path\n"
+        "Path('echo.txt').write_text(sys.argv[1])\n", encoding="utf-8")
+    token = 'price$100 ${x} $(y) "q" a\\b spa ce'
+    capsule = ReproductionCapsule(
+        capsule_id="meta-1",
+        command=[sys.executable, "case.py", token],
+        cwd=".",
+        code_refs=[FileRef(rel_path="case.py", sha256=sha256_file(script))],
+        environment={"python_version": "3", "platform": "test"},
+        expected_outputs=["echo.txt"],
+        producer={"kind": "pf_native", "name": "conformance", "version": "0"})
+    receipt = backend.invoke(backend.factory(), capsule, root,
+                             tmp_path / "run", 120.0)
+    assert receipt.status == "completed"
+    produced = list(tmp_path.rglob("echo.txt"))
+    assert produced, "no output written"
+    assert produced[0].read_text(encoding="utf-8") == token
 
 
 # --------------------------------------------------------------------------- #

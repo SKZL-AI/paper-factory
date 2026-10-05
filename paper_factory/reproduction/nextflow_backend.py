@@ -18,7 +18,11 @@ Design decisions (all fail-visible, none of them hidden):
   caller's tree never sees `.nextflow*` metadata or the `work/` directory.
 - One process per capsule. The generated main.nf declares exactly one
   `process capsule_run` whose script block cds into the staged
-  `capsule_root / cwd` and runs exactly the capsule's command. The process
+  `capsule_root / cwd` and runs exactly the capsule's command: argv is
+  shlex-quoted and then escaped for the Groovy GString layer (`$`, `\\`),
+  so Groovy interpolation cannot alter it and bash receives the capsule's
+  bytes verbatim (review MAJOR-1 B; `\"\"\"`-containing argv is rejected
+  fail-visible, not silently truncated). The process
   declares NO output block: output evidence is PF's own post-hoc hash
   collection (same as the local runner), not the workflow engine's. This
   is deliberate — it keeps receipt semantics identical across backends
@@ -89,6 +93,21 @@ def _nextflow_version(binary: str) -> str:
     return match.group(1) if match else "unknown"
 
 
+def _groovy_dquote_escape(text: str) -> str:
+    """Escape text for embedding in a Groovy ``\"\"\"`` GString (Nextflow's
+    `script` block is one).
+
+    Nextflow interpolates `$var`/`${var}` itself, before bash ever sees the
+    script, and `\\` starts a Groovy escape sequence — both silently corrupt
+    capsule argv (reproduced, review MAJOR-1 B: `price$100` arrived as
+    `price00` while the receipt claimed completed). Escaping happens AFTER
+    shlex quoting and only at the Groovy layer: the backslashes are consumed
+    when Nextflow parses the GString, so the bash-level string is byte-
+    identical to the capsule's argv. Backslash first, then dollar, so the
+    backslash just introduced for `\\$` is not doubled."""
+    return text.replace("\\", "\\\\").replace("$", "\\$")
+
+
 def render_nextflow_script(capsule: ReproductionCapsule,
                            staged_workdir: Path) -> str:
     """Deterministic minimal main.nf for one capsule.
@@ -97,16 +116,34 @@ def render_nextflow_script(capsule: ReproductionCapsule,
     inside the backend's private run directory (runtime scratch, never a
     committed file — embedding it is what reproduces the local runner's
     working-directory semantics). The process declares no outputs; PF
-    collects output evidence itself after the run."""
+    collects output evidence itself after the run.
+
+    Fail-visible limits (review MAJOR-1 B): an argv element containing
+    `\"\"\"` would terminate the Groovy script block early and run a
+    truncated command with a `completed` receipt — it is rejected with a
+    clear error instead. `$` and `\\` in argv (and in the staged path) are
+    escaped for the Groovy layer only, so the job receives the capsule's
+    exact command."""
+    if any('"""' in arg for arg in capsule.command):
+        raise ValueError(
+            'capsule command argument contains \'"""\', which would '
+            "terminate the generated main.nf Groovy script block early and "
+            "run a truncated command with a completed receipt — refusing "
+            "to render (fail-visible; see "
+            "docs/reports/DEFERRED_HARDENING.md)")
     shell_cmd = " ".join(shlex.quote(a) for a in capsule.command)
+    script_block = "\n".join(
+        f"    {_groovy_dquote_escape(line)}" for line in (
+            "set -e",
+            f"cd {shlex.quote(str(Path(staged_workdir).resolve()))}",
+            f"{shell_cmd}",
+        ))
     lines = [
         _MAIN_NF_HEADER.rstrip("\n"),
         "process capsule_run {",
         "    script:",
         '    """',
-        "    set -e",
-        f"    cd {shlex.quote(str(Path(staged_workdir).resolve()))}",
-        f"    {shell_cmd}",
+        script_block,
         '    """',
         "}",
         "",

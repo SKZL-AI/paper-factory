@@ -20,7 +20,10 @@ Design decisions (all fail-visible, none of them hidden):
 - One rule per capsule. The Snakefile declares exactly the capsule's
   expected_outputs and runs exactly the capsule's command in `capsule_root /
   cwd`. No multi-rule orchestration, no Snakemake semantics in the core
-  contract — the adapter maps, it does not orchestrate.
+  contract — the adapter maps, it does not orchestrate. The shell string
+  is escaped for Snakemake's format layer (`{`/`}` doubled, `\\`/`\"`
+  backslash-escaped) so the job receives the capsule's exact argv
+  (review MAJOR-1 B conformance case).
 - `--forceall`: a receipt must prove that the command ran in THIS execution,
   not that cached outputs were fresh. The staged copy is fresh on every run
   anyway; the flag makes the guarantee explicit.
@@ -96,8 +99,16 @@ def _snakemake_version(binary: str) -> str:
 
 
 def _snakefile_escape(text: str) -> str:
-    """Escape a string for embedding in a double-quoted Snakefile string."""
-    return text.replace("\\", "\\\\").replace('"', '\\"')
+    """Escape a string for embedding in a double-quoted Snakefile string.
+
+    Snakemake applies format-style substitution (`str.format` semantics) to
+    shell commands and output strings: `{`/`}` must be doubled, `\\` and
+    `\"` backslash-escaped. Same metacharacter class as the Nextflow
+    GString interpolation (review MAJOR-1 B conformance case: without this,
+    an argv element containing `${x}` failed the job with
+    "The name 'x' is unknown in this context")."""
+    return (text.replace("{", "{{").replace("}", "}}")
+            .replace("\\", "\\\\").replace('"', '\\"'))
 
 
 def render_snakefile(capsule: ReproductionCapsule) -> str:

@@ -11,6 +11,8 @@ skipped honestly when nextflow is not installed (same convention as the
 environment-gated snakemake skips)."""
 from __future__ import annotations
 
+import re
+import shlex
 import shutil
 import sys
 from pathlib import Path
@@ -97,8 +99,6 @@ def test_main_nf_declares_no_outputs_and_cds_into_staged_workdir(tmp_path):
 
 
 def test_main_nf_shell_command_is_quoted(tmp_path):
-    import shlex
-
     capsule, _ = _script_capsule(tmp_path, "pass\n", outputs=["o.txt"])
     capsule = capsule.model_copy(update={
         "command": [sys.executable, "case.py", 'arg with "quotes"']})
@@ -107,6 +107,66 @@ def test_main_nf_shell_command_is_quoted(tmp_path):
     # shlex.quote wraps the dangerous arg in single quotes
     assert shlex.quote('arg with "quotes"') in script_block
     assert "case.py" in script_block
+
+
+def _groovy_unescape(text: str) -> str:
+    """What Nextflow's GString parse turns the source into (single pass:
+    only `\\` and `$` can be escaped in a Groovy GString)."""
+    out: list[str] = []
+    i = 0
+    while i < len(text):
+        if (text[i] == "\\" and i + 1 < len(text)
+                and text[i + 1] in "\\$"):
+            out.append(text[i + 1])
+            i += 2
+        else:
+            out.append(text[i])
+            i += 1
+    return "".join(out)
+
+
+def test_main_nf_dollar_escaped(tmp_path):
+    """Review MAJOR-1 B: the `script` block is a Groovy GString — Nextflow
+    interpolates `$` itself, before bash ever sees the script (reproduced
+    pre-fix: `price$100` arrived as `price00` with status completed). The
+    `$` must be escaped at the Groovy layer only, so the bash-level command
+    is unchanged and the job receives the capsule's exact argv."""
+    capsule, _ = _script_capsule(tmp_path, "pass\n", outputs=["o.txt"])
+    capsule = capsule.model_copy(update={
+        "command": [sys.executable, "case.py", "price$100", "${HOME}"]})
+    text = render_nextflow_script(capsule, tmp_path / "stage")
+    script_block = text.split('"""')[1]
+    # escaped in the Groovy source
+    assert "price\\$100" in script_block
+    assert "\\${HOME}" in script_block
+    # no unescaped `$` may remain — Nextflow would interpolate it
+    assert not re.search(r"(?<!\\)\$", script_block)
+    # after the GString parse the bash text is the exact shlex-quoted argv
+    assert shlex.quote("price$100") in _groovy_unescape(script_block)
+    assert shlex.quote("${HOME}") in _groovy_unescape(script_block)
+
+
+def test_main_nf_backslash_escaped(tmp_path):
+    """`\\` starts a Groovy escape sequence too; a literal backslash in argv
+    must survive the GString parse unchanged (same bug class as `$`)."""
+    capsule, _ = _script_capsule(tmp_path, "pass\n", outputs=["o.txt"])
+    capsule = capsule.model_copy(update={
+        "command": [sys.executable, "case.py", "a\\b"]})
+    text = render_nextflow_script(capsule, tmp_path / "stage")
+    script_block = text.split('"""')[1]
+    assert "a\\\\b" in script_block            # source: doubled backslash
+    assert shlex.quote("a\\b") in _groovy_unescape(script_block)
+
+
+def test_main_nf_rejects_triple_quote_arg(tmp_path):
+    """An argv element containing `\"\"\"` would terminate the Groovy script
+    block early and run a truncated command with a `completed` receipt —
+    fail-visible rejection instead (review MAJOR-1 B)."""
+    capsule, _ = _script_capsule(tmp_path, "pass\n", outputs=["o.txt"])
+    capsule = capsule.model_copy(update={
+        "command": [sys.executable, "case.py", 'say """hi"""']})
+    with pytest.raises(ValueError, match='"""'):
+        render_nextflow_script(capsule, tmp_path / "stage")
 
 
 def test_main_nf_contains_no_caller_root_paths(tmp_path):
@@ -323,3 +383,24 @@ def test_cwd_capsule_runs_in_staged_workdir(tmp_path):
     assert [f.rel_path for f in receipt.outputs] == ["sub/summary.json"]
     # cwd staging is private to the run directory
     assert not (root / "sub" / "summary.json").exists()
+
+
+@requires_nextflow
+def test_dollar_and_metachar_args_arrive_verbatim_e2e(tmp_path):
+    """E2E proof for review MAJOR-1 B: a real `nextflow run` must deliver
+    argv containing `$`, `${...}`, `$(...)`, quotes, backslashes and spaces
+    byte-identically. Pre-fix, Groovy GString interpolation in the generated
+    main.nf silently turned `price$100` into `price00` while the receipt
+    claimed completed."""
+    capsule, root = _script_capsule(
+        tmp_path,
+        "import sys\nfrom pathlib import Path\n"
+        "Path('echo.txt').write_text(sys.argv[1])\n",
+        outputs=["echo.txt"])
+    token = 'price$100 ${x} $(y) "q" a\\b spa ce'
+    capsule = capsule.model_copy(update={
+        "command": [sys.executable, "case.py", token]})
+    receipt = NextflowBackend().run(capsule, root, run_dir=tmp_path / "run")
+    assert receipt.status == "completed"
+    echo = tmp_path / "run" / "capsule" / "echo.txt"
+    assert echo.read_text(encoding="utf-8") == token
