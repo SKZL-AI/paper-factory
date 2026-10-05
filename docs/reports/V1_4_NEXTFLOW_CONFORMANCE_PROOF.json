@@ -1,0 +1,177 @@
+{
+  "capsule": {
+    "capsule_digest": "3cb31773760b30b793aa9738b38a102fbf4c4a1c0ec44d2614106b40eacc2dfc",
+    "capsule_id": "repro-pilot-01",
+    "command": [
+      "pilot_compute.py"
+    ]
+  },
+  "conformance_matrix": {
+    "cases": {
+      "test_cleanup_caller_root_never_polluted": {
+        "local": "PASSED",
+        "nextflow": "PASSED",
+        "snakemake": "PASSED"
+      },
+      "test_cleanup_no_scratch_leak_with_private_run_dir": {
+        "local": "SKIPPED",
+        "nextflow": "PASSED",
+        "snakemake": "PASSED"
+      },
+      "test_duplicate_execution_reproduced_exact": {
+        "local": "PASSED",
+        "nextflow": "PASSED",
+        "snakemake": "PASSED"
+      },
+      "test_failed_job_recorded_in_receipt_not_raised": {
+        "local": "PASSED",
+        "nextflow": "PASSED",
+        "snakemake": "PASSED"
+      },
+      "test_input_binding_hash_mismatch_fails_before_execution": {
+        "local": "PASSED",
+        "nextflow": "PASSED",
+        "snakemake": "PASSED"
+      },
+      "test_nondeterminism_declaration_classified_honestly": {
+        "local": "PASSED",
+        "nextflow": "PASSED",
+        "snakemake": "PASSED"
+      },
+      "test_output_binding_collects_declared_outputs": {
+        "local": "PASSED",
+        "nextflow": "PASSED",
+        "snakemake": "PASSED"
+      },
+      "test_partial_outputs_recorded_and_differenced": {
+        "local": "PASSED",
+        "nextflow": "PASSED",
+        "snakemake": "PASSED"
+      },
+      "test_receipt_carries_honest_backend_identity": {
+        "local": "PASSED",
+        "nextflow": "PASSED",
+        "snakemake": "PASSED"
+      },
+      "test_receipt_mandatory_fields_and_digest": {
+        "local": "PASSED",
+        "nextflow": "PASSED",
+        "snakemake": "PASSED"
+      },
+      "test_three_way_reproduced_exact": {
+        "all": "PASSED"
+      },
+      "test_timeout_recorded_not_raised": {
+        "local": "PASSED",
+        "nextflow": "PASSED",
+        "snakemake": "PASSED"
+      },
+      "test_unavailable_fails_visible_when_binary_missing": {
+        "local": "SKIPPED",
+        "nextflow": "PASSED",
+        "snakemake": "PASSED"
+      },
+      "test_undeclared_output_fails_visible": {
+        "local": "PASSED",
+        "nextflow": "PASSED",
+        "snakemake": "PASSED"
+      }
+    },
+    "pytest_exit_code": 0
+  },
+  "environment": {
+    "java_version": "21.0.12.1",
+    "nextflow_version": "26.04.6",
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "python_version": "3.13.5",
+    "snakemake_version": "9.27.0"
+  },
+  "generated_at_utc": "2026-10-05T14:38:28.600623+00:00",
+  "proof": "V1_4_NEXTFLOW_CONFORMANCE_PROOF",
+  "three_way": {
+    "comparisons": [
+      {
+        "a": "local_runner",
+        "b": "nextflow_backend",
+        "classification": "REPRODUCED_EXACT",
+        "differing_outputs": [],
+        "missing_outputs": [],
+        "notes": []
+      },
+      {
+        "a": "local_runner",
+        "b": "snakemake_backend",
+        "classification": "REPRODUCED_EXACT",
+        "differing_outputs": [],
+        "missing_outputs": [],
+        "notes": []
+      },
+      {
+        "a": "nextflow_backend",
+        "b": "snakemake_backend",
+        "classification": "REPRODUCED_EXACT",
+        "differing_outputs": [],
+        "missing_outputs": [],
+        "notes": []
+      }
+    ],
+    "sides": {
+      "local_runner": {
+        "backend": {
+          "detail": {},
+          "kind": "pf_native",
+          "name": "local-reproduction-runner",
+          "version": "0.1.0"
+        },
+        "capsule_digest": "3cb31773760b30b793aa9738b38a102fbf4c4a1c0ec44d2614106b40eacc2dfc",
+        "exit_code": 0,
+        "failure_reason": null,
+        "outputs": {
+          "summary.json": "8f76c7d9d07d070ba3aa3fffa058a4d65212fc9a97915596587531ce1d4ec5b2",
+          "table.txt": "01e71442cf89bf465d78c3c972f8c969825b2dd62db8546e5e7e972d98a483de"
+        },
+        "status": "completed",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "nextflow_backend": {
+        "backend": {
+          "detail": {},
+          "kind": "external",
+          "name": "nextflow",
+          "version": "26.04.6"
+        },
+        "capsule_digest": "3cb31773760b30b793aa9738b38a102fbf4c4a1c0ec44d2614106b40eacc2dfc",
+        "exit_code": 0,
+        "failure_reason": null,
+        "outputs": {
+          "summary.json": "8f76c7d9d07d070ba3aa3fffa058a4d65212fc9a97915596587531ce1d4ec5b2",
+          "table.txt": "01e71442cf89bf465d78c3c972f8c969825b2dd62db8546e5e7e972d98a483de"
+        },
+        "status": "completed",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "f4751bf5918d7dee7d7d21c36b00ba427292e4635b9ecb87058d970bff7b3748"
+      },
+      "snakemake_backend": {
+        "backend": {
+          "detail": {
+            "cores": 1
+          },
+          "kind": "external",
+          "name": "snakemake",
+          "version": "9.27.0"
+        },
+        "capsule_digest": "3cb31773760b30b793aa9738b38a102fbf4c4a1c0ec44d2614106b40eacc2dfc",
+        "exit_code": 0,
+        "failure_reason": null,
+        "outputs": {
+          "summary.json": "8f76c7d9d07d070ba3aa3fffa058a4d65212fc9a97915596587531ce1d4ec5b2",
+          "table.txt": "01e71442cf89bf465d78c3c972f8c969825b2dd62db8546e5e7e972d98a483de"
+        },
+        "status": "completed",
+        "stderr_sha256": "7d625a5e74193fde1fb218f2612319002cceccb0aa9c13caf8db9fff9fc2c0bb",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  }
+}

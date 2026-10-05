@@ -18,3 +18,6 @@ scratch/
 # Reviewer-/Test-Scratch (basetemp-Ablagen)
 .cache/
 .worktrees/
+# PF-eigenes Tools-Verzeichnis (Installationsziel u.a. fuer den Nextflow-
+# Launcher; der Backend-Resolver pruebt <repo>/tools/nextflow)
+/tools/

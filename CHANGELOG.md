@@ -1,6 +1,23 @@
 # Changelog
 
-## [Unreleased] — 1.4 (Attestation & Interchange-Evaluation, WP-C..WP-F)
+## [1.4.0] — 2026-10-05
+
+- **Backend Conformance Suite** (`tests/conformance/`): parametrisiert über
+  jeden Reproduction-Backend; 12 aus PFLocal + Snakemake abgeleitete
+  Semantikfälle (input/output binding, undeclared outputs, backend identity,
+  failure, timeout, duplicate execution, partial outputs, cleanup,
+  nondeterminism declarations, receipt-Pflichtfelder, UNAVAILABLE bei
+  fehlendem Binary); ehrliche Skips ohne Binary
+- **Nextflow backend** (`paper_factory/reproduction/nextflow_backend.py`):
+  dünner Adapter hinter demselben Capsule→Receipt-Contract (Staging,
+  Receipt-Form, Prozessgruppen-Reaping bei Timeout; bewusst KEINE
+  Output-Deklaration im generierten main.nf — Output-Evidenz bleibt PF's
+  post-hoc-Hash-Sammlung); Nextflow ist bewusst KEIN pip-extra
+  (binärer Launcher, Installationsweg in
+  `docs/reports/V1_4_NEXTFLOW_CONFORMANCE_PROOF.md`)
+- **3-Wege-Reproduktionsbeweis** (`scripts/proof_v14_nextflow_conformance.py`):
+  gleiche Kapsel auf local + snakemake + nextflow, paarweise
+  REPRODUCED_EXACT + Conformance-Matrix als Report/JSON
 
 - **CWL v1.2 export** (`paper_factory/export/cwl.py`, EXPORT ONLY): capsule →
   CommandLineTool (argv, declared files + hashes as `pf:*` extension
@@ -16,6 +33,7 @@
   timestamps) — no reproduced-build claim
 - **ReproZip decision gate**: DEFER (`docs/reports/V1_4_REPROZIP_DECISION.md`) —
   no demonstrated system-capture gap in the real capsule pilots, no consumer
+
 
 ## [1.3.0] — 2026-10-05
 
