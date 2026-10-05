@@ -602,3 +602,46 @@ def test_verify_uses_manifest_digest_for_multiple_artifacts(env, stub_clone):
     # single-artifact behavior unchanged: the artifact's own sha256
     single = env.adapter.verify(make_package())
     assert single.artifact_sha256 == SHA
+
+
+# --------------------------------------------------------------------------- #
+# Live-field-test finding: the legacy shim silently dropped planner/developer/
+# qa/iterations — verify() called _execute with defaults, so a caller choosing
+# developer="codex" still got kimi. The options now pass through both layers.
+# --------------------------------------------------------------------------- #
+
+
+def _spy_execute(monkeypatch, adapter) -> dict:
+    captured: dict = {}
+    real_execute = adapter._execute
+
+    def spy(run_id, spec_text, **kw):
+        captured.update(kw)
+        return real_execute(run_id, spec_text, **kw)
+
+    monkeypatch.setattr(adapter, "_execute", spy)
+    return captured
+
+
+def test_shim_passes_role_parameters_through_to_execute(env, stub_clone, tmp_path, monkeypatch):
+    captured = _spy_execute(monkeypatch, env.adapter)
+    spec = tmp_path / "spec.md"
+    spec.write_text("# spec\n", encoding="utf-8")
+    env.adapter.verify_work_package("P05", spec, developer="codex", qa="kimi", iterations=3)
+    assert captured["developer"] == "codex", "shim must not drop the developer role"
+    assert captured["qa"] == "kimi"
+    assert captured["planner"] == "claude"  # untouched default
+    assert captured["iterations"] == 3
+
+
+def test_verify_passes_options_through(env, stub_clone, monkeypatch):
+    captured = _spy_execute(monkeypatch, env.adapter)
+    env.adapter.verify(make_package(), qa="kimi")
+    assert captured["qa"] == "kimi"
+    assert captured["developer"] == "kimi"  # default untouched
+
+
+def test_verify_role_defaults_unchanged(env, stub_clone, monkeypatch):
+    captured = _spy_execute(monkeypatch, env.adapter)
+    env.adapter.verify(make_package())
+    assert captured == {"planner": "claude", "developer": "kimi", "qa": "codex", "iterations": 1}

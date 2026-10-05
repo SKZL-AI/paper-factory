@@ -18,13 +18,21 @@ from .contract import BackendIdentity, VerificationResult, WorkPackage
 
 @runtime_checkable
 class VerificationBackend(Protocol):
-    """Structural contract every verification backend must satisfy."""
+    """Structural contract every verification backend must satisfy.
+
+    ``verify`` MAY declare backend-specific optional keywords (e.g. the
+    VeriHarness agent roles planner/developer/qa, iterations) — they are
+    backend options, not part of the core WorkPackage contract. Generic
+    protocol callers (like ``shadow.run_shadow``) call ``verify(package)``
+    without options; the ``**backend_options`` here only documents that
+    option-passing stays protocol-compatible.
+    """
 
     def identity(self) -> BackendIdentity: ...
 
     def capabilities(self) -> list[CapabilityDeclaration]: ...
 
-    def verify(self, package: WorkPackage) -> VerificationResult: ...
+    def verify(self, package: WorkPackage, **backend_options: object) -> VerificationResult: ...
 
 
 BACKENDS: dict[str, VerificationBackend] = {}

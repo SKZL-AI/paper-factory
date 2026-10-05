@@ -133,8 +133,21 @@ class VeriharnessAdapter:
             ]
         return [declare(backend, "verify", CapabilityStatus.SUPPORTED)]
 
-    def verify(self, package: WorkPackage) -> VerificationResult:
+    def verify(
+        self,
+        package: WorkPackage,
+        *,
+        planner: str = "claude",
+        developer: str = "kimi",
+        qa: str = "codex",
+        iterations: int = 1,
+    ) -> VerificationResult:
         """Generic façade: one HoH run per WorkPackage (module policy applies).
+
+        ``planner``/``developer``/``qa``/``iterations`` are VeriHarness-level
+        backend options (agent role assignment), NOT part of the core
+        WorkPackage contract — they travel as optional keywords so the shim
+        and direct callers can choose roles without extending the contract.
 
         HoH specifics (run_id, blocked_kind, stage/condition/rc summary) stay
         out of the core contract fields — they live in BackendIdentity.detail
@@ -201,7 +214,14 @@ class VeriharnessAdapter:
             reason = "DEGRADED_RUNTIME: herdr unavailable, HoH refused"
             return result(Verdict.DEGRADED, failure_reason=reason, hoh_detail={"reason": reason})
 
-        hoh = self._execute(run_id, package.spec_markdown)
+        hoh = self._execute(
+            run_id,
+            package.spec_markdown,
+            planner=planner,
+            developer=developer,
+            qa=qa,
+            iterations=iterations,
+        )
         if hoh.verdict == Verdict.PASS:
             return result(Verdict.PASS, hoh=hoh)
         if hoh.blocked_kind:
@@ -409,9 +429,10 @@ class VeriharnessAdapter:
         """Legacy façade for dag/handlers.py — one run flow, two façades.
 
         Builds a WorkPackage from the legacy parameters, delegates to the
-        generic verify(), and maps VerificationResult back onto HohResult so
-        existing consumers keep identical fields (run_id/verdict/accepted/
-        blocked_kind/receipts/detail).
+        generic verify() (passing the role/iteration options through — they
+        are backend options, not contract fields), and maps the
+        VerificationResult back onto HohResult so existing consumers keep
+        identical fields (run_id/verdict/accepted/blocked_kind/receipts/detail).
         """
         import uuid
 
@@ -430,7 +451,13 @@ class VeriharnessAdapter:
             node_id=node_id,
             spec_markdown=spec_path.read_text(encoding="utf-8"),
         )
-        res = self.verify(package)
+        res = self.verify(
+            package,
+            planner=planner,
+            developer=developer,
+            qa=qa,
+            iterations=iterations,
+        )
         hoh_detail = dict(res.backend.detail.get("hoh_detail") or {})
         executed = "run_rc" in hoh_detail
         receipts = [

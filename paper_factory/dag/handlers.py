@@ -181,7 +181,8 @@ def _node_artifact_refs(ctx: NodeContext, node_id: str, limit: int = 20) -> list
     guarantee: the current attempt's shadow receipt is written only after
     this read, so it can never contaminate its own binding either. rel_path
     is workspace-root-relative, sha256 comes from the DB row. At most
-    `limit` rows are bound AFTER kind/sha/path filtering — the binding is a
+    `limit` rows enter the sha/path filtering (kind filter applied first),
+    so skipped rows can consume window slots — the binding is a
     representative artifact set, not a full manifest (receipt-flood bound).
     Rows without sha256 or with paths outside the workspace are skipped.
     """
