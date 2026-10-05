@@ -26,7 +26,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -42,6 +42,8 @@ from paper_factory.verification.contract import (
     ArtifactRef,
     BackendIdentity,
     ExecutionReceipt,
+    ReceiptExpectation,
+    ReceiptFreshnessError,
     VerificationResult,
     WorkPackage,
 )
@@ -222,16 +224,17 @@ def test_run_shadow_pass_with_unbound_shadow_is_incomparable():
 
 
 # --------------------------------------------------------------------------- #
-# 5. stale receipts — Ist-Zustand-Dokumentation (BEFUND: kein Frische-Mechanismus)
+# 5. stale receipts — WP2: früher Befund (kein Frische-Mechanismus), jetzt
+#    semantische Frische-prüfung AT CONSUMPTION ( Laden bleibt backward-kompatibel)
 # --------------------------------------------------------------------------- #
 
 
-def test_stale_execution_receipt_loads_without_any_freshness_check():
-    """BEFUND-Dokumentation (WP6): the contract has NO staleness derivation.
-    A receipt created 400 days ago validates cleanly and is carried through a
-    VerificationResult round-trip without complaint; compare() has no timestamp
-    input at all. This test pins the honest Ist-Zustand so a future freshness
-    check has a red test to turn green — it deliberately does NOT invent one."""
+def test_stale_execution_receipt_still_loads_but_fails_freshness_at_consumption():
+    """Umschriebener WP6-Pinning-Test (WP2, v1.3): das Laden eines 400 Tage
+    alten Receipts bleibt aus Backward-Compatibility lenient — aber die
+    Konsumtion prüft jetzt semantische Frische: ein Receipt, das an ein
+    älteres Artifact-Binding gebunden ist, darf den aktuellen Gate-Kontext
+    nie still passieren."""
     ancient = datetime(2025, 8, 1, tzinfo=UTC)
     stale = ExecutionReceipt(
         receipt_id="r-stale",
@@ -240,12 +243,166 @@ def test_stale_execution_receipt_loads_without_any_freshness_check():
         sha256=SHA_B,
         created_at=ancient,
     )
+    # 1) load path unchanged: an ancient receipt still round-trips cleanly
     res = make_result(Verdict.PASS, sha=SHA_A, receipts=[stale])
     restored = VerificationResult.model_validate_json(res.model_dump_json())
-    assert restored.receipts[0].created_at == ancient  # stale, but accepted as-is
-    # no consumer-side freshness hook exists today:
-    assert not hasattr(ExecutionReceipt, "is_stale")
-    assert not hasattr(VerificationResult, "check_receipt_freshness")
+    assert restored.receipts[0].created_at == ancient
+
+    # 2) consumption path (WP2): fresh in its OWN context (same binding) ...
+    restored.check_receipt_freshness(
+        ReceiptExpectation(artifact_sha256=SHA_A, backend_kind="veriharness")
+    )
+    # 3) ... but fail-visible against a NEWER binding (stale receipt)
+    with pytest.raises(ReceiptFreshnessError, match="stale"):
+        restored.check_receipt_freshness(
+            ReceiptExpectation(artifact_sha256=SHA_B, backend_kind="veriharness")
+        )
+
+
+# --------------------------------------------------------------------------- #
+# 16. adversarial: semantische Receipt-Freshness (WP2, v1.3)
+# --------------------------------------------------------------------------- #
+
+
+def _receipt(**kw) -> ExecutionReceipt:
+    base = dict(
+        receipt_id="r-1",
+        backend=BackendIdentity(kind="veriharness", name="hoh", version="0.1.0"),
+        artifact_sha256=SHA_A,
+        sha256=SHA_B,
+        created_at=NOW,
+    )
+    base.update(kw)
+    return ExecutionReceipt(**base)
+
+
+def test_freshness_wrong_artifact_fails_visible():
+    with pytest.raises(ReceiptFreshnessError, match="stale"):
+        _receipt().check_freshness(ReceiptExpectation(artifact_sha256=SHA_B))
+
+
+def test_freshness_wrong_backend_fails_visible():
+    with pytest.raises(ReceiptFreshnessError, match="wrong-backend"):
+        _receipt().check_freshness(ReceiptExpectation(backend_kind="pf_native"))
+
+
+def test_freshness_future_timestamp_fails_visible():
+    future = NOW + timedelta(hours=1)
+    with pytest.raises(ReceiptFreshnessError, match="future"):
+        _receipt(created_at=future).check_freshness(ReceiptExpectation(now=NOW))
+
+
+def test_freshness_missing_timestamp_in_raw_payload_fails_visible():
+    payload = {"receipt_id": "r-1", "artifact_sha256": SHA_A, "sha256": SHA_B}
+    with pytest.raises(ReceiptFreshnessError, match="created_at"):
+        _receipt().check_freshness(ReceiptExpectation(now=NOW), raw=payload)
+
+
+def test_freshness_wrong_schema_version_fails_visible():
+    with pytest.raises(ReceiptFreshnessError, match="schema_version"):
+        _receipt().check_freshness(ReceiptExpectation(declared_schema_version=2))
+
+
+def test_freshness_absent_schema_version_is_honest_v1_default():
+    # missing schema_version == v1 default (same rule as the loading boundary)
+    _receipt().check_freshness(ReceiptExpectation(declared_schema_version=None))
+
+
+def test_freshness_replay_detected_via_store_evidence():
+    """Replay: receipt_id ist im Store bereits einem ANDEREN Run zugeordnet —
+    nachweisbar ohne dem Receipt selbst zu trauen."""
+    expect = ReceiptExpectation(run_id="run-B", known_receipt_runs={"r-1": "run-A"})
+    with pytest.raises(ReceiptFreshnessError, match="replay"):
+        _receipt().check_freshness(expect)
+
+
+def test_freshness_wrong_run_detected_via_store_evidence():
+    # same-run re-consumption is legitimate (resume); another run is not
+    _receipt().check_freshness(
+        ReceiptExpectation(run_id="run-A", known_receipt_runs={"r-1": "run-A"})
+    )
+    with pytest.raises(ReceiptFreshnessError, match="replay"):
+        _receipt().check_freshness(
+            ReceiptExpectation(run_id="run-C", known_receipt_runs={"r-1": "run-A"})
+        )
+
+
+def test_freshness_unknown_receipt_id_is_not_a_replay():
+    # 'soweit im Store nachweisbar': unbekannte ID → keine Replay-Evidenz,
+    # die anderen Dimensionen entscheiden (konservativ: kein Spurious-Fail)
+    _receipt().check_freshness(
+        ReceiptExpectation(run_id="run-A", known_receipt_runs={"other": "run-Z"})
+    )
+
+
+def test_freshness_wall_clock_guard_is_opt_in_default_off():
+    """WP2-Designentscheidung: Wall-Clock-Alter ist KEIN Frische-Kriterium.
+    Ein 400-Tage-altes Receipt, das semantisch passt, besteht ohne Guard —
+    erst mit explizit gesetztem max_age_seconds fällt es."""
+    ancient = datetime(2025, 8, 1, tzinfo=UTC)
+    old = _receipt(created_at=ancient)
+    expect = ReceiptExpectation(artifact_sha256=SHA_A, now=NOW)
+    old.check_freshness(expect)  # default: keine Altersprüfung
+    with pytest.raises(ReceiptFreshnessError, match="wall-clock"):
+        old.check_freshness(
+            ReceiptExpectation(artifact_sha256=SHA_A, now=NOW, max_age_seconds=3600)
+        )
+
+
+def test_freshness_full_match_passes_all_dimensions():
+    _receipt().check_freshness(
+        ReceiptExpectation(
+            artifact_sha256=SHA_A,
+            backend_kind="veriharness",
+            run_id="run-A",
+            known_receipt_runs={"r-1": "run-A"},
+            declared_schema_version=1,
+            now=LATER,
+        )
+    )
+
+
+def test_gate_path_rejects_stale_execution_receipt(tmp_path, monkeypatch):
+    """End-to-end dual path: ein verify()-Ergebnis mit einem ExecutionReceipt,
+    das an ein anderes Artifact gebunden ist, bricht den Gate-Pfad laut —
+    ReceiptFreshnessError propagiert (fail-visible), statt den Node still
+    PASS zu lassen."""
+    from paper_factory.dag.handlers import _hoh_result_from_verify
+
+    ws = Workspace(tmp_path / "target")
+    ws.create_run("shadow-test")
+    ws.record_receipt("r-1", "shadow-test", "P05", "hoh",
+                      tmp_path / "r.json", SHA_B)
+    stale_receipt = _receipt()  # binds SHA_A; the package binds SHA_B
+    res = make_result(Verdict.PASS, sha=SHA_B, receipts=[stale_receipt])
+    res = res.model_copy(update={
+        "backend": res.backend.model_copy(update={"detail": {"run_id": "PF-fresh01-P05"}})
+    })
+    package = WorkPackage(
+        package_id="wp-p05-1",
+        node_id="P05",
+        spec_markdown="s",
+        artifacts=[ArtifactRef(rel_path="results/summary.json", sha256=SHA_B, kind="data")],
+    )
+    with pytest.raises(ReceiptFreshnessError, match="stale"):
+        _hoh_result_from_verify("P05", res, package, ws)
+
+
+def test_gate_path_replayed_execution_receipt_rejected(tmp_path):
+    """Replay über den Store: das Receipt wurde unter einem früheren Run
+    schon verbraucht — der Gate-Pfad weist es zurück."""
+    from paper_factory.dag.handlers import _hoh_result_from_verify
+
+    ws = Workspace(tmp_path / "target")
+    ws.create_run("run-A")
+    ws.record_receipt("r-1", "run-A", "P05", "hoh", tmp_path / "r.json", SHA_B)
+    receipt = _receipt()  # binds SHA_A, semantically fresh — but replayed
+    res = make_result(Verdict.PASS, sha=SHA_A, receipts=[receipt])
+    res = res.model_copy(update={
+        "backend": res.backend.model_copy(update={"detail": {"run_id": "run-B"}})
+    })
+    with pytest.raises(ReceiptFreshnessError, match="replay"):
+        _hoh_result_from_verify("P05", res, None, ws)
 
 
 # --------------------------------------------------------------------------- #

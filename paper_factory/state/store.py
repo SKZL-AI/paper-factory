@@ -220,3 +220,12 @@ class Workspace:
         with self.connect() as c:
             row = c.execute("SELECT run_id FROM runs ORDER BY created_at DESC LIMIT 1").fetchone()
         return row["run_id"] if row else None
+
+    def receipt_runs(self) -> dict[str, str]:
+        """receipt_id -> run_id over every recorded receipt row. This is the
+        store-backed evidence for the WP2 replay/wrong-run dimension of
+        receipt freshness: a receipt whose ID the store ties to a different
+        run is a replay, provable without trusting the receipt's own fields."""
+        with self.connect() as c:
+            rows = c.execute("SELECT receipt_id, run_id FROM receipts").fetchall()
+        return {r["receipt_id"]: r["run_id"] for r in rows}
