@@ -30,13 +30,15 @@ from .reproduction_backends import (
     script_capsule,
 )
 
-pytestmark = pytest.mark.parametrize("backend", BACKENDS, ids=[b.name for b in BACKENDS])
+parametrized = pytest.mark.parametrize("backend", BACKENDS,
+                                     ids=[b.name for b in BACKENDS])
 
 
 # --------------------------------------------------------------------------- #
 # 1. input binding
 # --------------------------------------------------------------------------- #
 
+@parametrized
 def test_input_binding_hash_mismatch_fails_before_execution(backend, tmp_path):
     """A declared ref whose content changed must abort BEFORE anything runs:
     CapsuleIntegrityError, no receipt, and (external) no run directory."""
@@ -56,6 +58,7 @@ def test_input_binding_hash_mismatch_fails_before_execution(backend, tmp_path):
 # 2./3. output binding + undeclared outputs
 # --------------------------------------------------------------------------- #
 
+@parametrized
 def test_output_binding_collects_declared_outputs(backend, tmp_path):
     ensure_available(backend)
     capsule = pilot_capsule()
@@ -71,6 +74,7 @@ def test_output_binding_collects_declared_outputs(backend, tmp_path):
     assert by_path == {f.rel_path: f.sha256 for f in ref.outputs}
 
 
+@parametrized
 def test_undeclared_output_fails_visible(backend, tmp_path):
     ensure_available(backend)
     root = tmp_path / "case"
@@ -89,6 +93,7 @@ def test_undeclared_output_fails_visible(backend, tmp_path):
 # 4. environment / backend identity
 # --------------------------------------------------------------------------- #
 
+@parametrized
 def test_receipt_carries_honest_backend_identity(backend, tmp_path):
     ensure_available(backend)
     receipt = backend.invoke(backend.factory(), pilot_capsule(),
@@ -107,6 +112,7 @@ def test_receipt_carries_honest_backend_identity(backend, tmp_path):
 # 5./6. failure + timeout
 # --------------------------------------------------------------------------- #
 
+@parametrized
 def test_failed_job_recorded_in_receipt_not_raised(backend, tmp_path):
     ensure_available(backend)
     root = tmp_path / "case"
@@ -124,6 +130,7 @@ def test_failed_job_recorded_in_receipt_not_raised(backend, tmp_path):
     assert len(receipt.stderr_sha256) == 64
 
 
+@parametrized
 def test_timeout_recorded_not_raised(backend, tmp_path):
     ensure_available(backend)
     root = tmp_path / "case"
@@ -144,6 +151,7 @@ def test_timeout_recorded_not_raised(backend, tmp_path):
 # 7. duplicate execution
 # --------------------------------------------------------------------------- #
 
+@parametrized
 def test_duplicate_execution_reproduced_exact(backend, tmp_path):
     ensure_available(backend)
     capsule = pilot_capsule()
@@ -161,6 +169,7 @@ def test_duplicate_execution_reproduced_exact(backend, tmp_path):
 # 8. partial outputs
 # --------------------------------------------------------------------------- #
 
+@parametrized
 def test_partial_outputs_recorded_and_differenced(backend, tmp_path,
                                                   monkeypatch):
     """A job that exits 0 but omits an expected output must never pass
@@ -216,6 +225,7 @@ def test_partial_outputs_recorded_and_differenced(backend, tmp_path,
 # 9. cleanup: no scratch leaks, caller root unpolluted
 # --------------------------------------------------------------------------- #
 
+@parametrized
 def test_cleanup_no_scratch_leak_with_private_run_dir(backend, tmp_path,
                                                       monkeypatch):
     ensure_available(backend)
@@ -230,6 +240,7 @@ def test_cleanup_no_scratch_leak_with_private_run_dir(backend, tmp_path,
     assert leftover == set(), f"leaked run directories: {leftover}"
 
 
+@parametrized
 def test_cleanup_caller_root_never_polluted(backend, tmp_path):
     """External backends stage: outputs and backend metadata must land in the
     run directory, never in the caller's capsule root. The local runner runs
@@ -253,6 +264,7 @@ def test_cleanup_caller_root_never_polluted(backend, tmp_path):
 # 10. nondeterminism declarations
 # --------------------------------------------------------------------------- #
 
+@parametrized
 def test_nondeterminism_declaration_classified_honestly(backend, tmp_path,
                                                         monkeypatch):
     """Same capsule, genuinely differing output: declared →
@@ -293,6 +305,7 @@ def test_nondeterminism_declaration_classified_honestly(backend, tmp_path,
 # 11. receipt generation
 # --------------------------------------------------------------------------- #
 
+@parametrized
 def test_receipt_mandatory_fields_and_digest(backend, tmp_path):
     ensure_available(backend)
     capsule = pilot_capsule()
@@ -314,6 +327,7 @@ def test_receipt_mandatory_fields_and_digest(backend, tmp_path):
 # 12. availability
 # --------------------------------------------------------------------------- #
 
+@parametrized
 def test_unavailable_fails_visible_when_binary_missing(backend, tmp_path,
                                                        monkeypatch):
     if not backend.has_external_binary:
@@ -324,3 +338,34 @@ def test_unavailable_fails_visible_when_binary_missing(backend, tmp_path,
     with pytest.raises(backend.unavailable_exc):
         backend.invoke(backend.factory(), pilot_capsule(),
                        pilot_root(tmp_path), tmp_path / "run", 60.0)
+
+
+# --------------------------------------------------------------------------- #
+# Three-way proof gate: the same capsule on every registered backend
+# --------------------------------------------------------------------------- #
+
+def test_three_way_reproduced_exact(tmp_path):
+    """v1.4 proof gate: identical capsule run via local + snakemake +
+    nextflow must be pairwise REPRODUCED_EXACT. Skips honestly while any
+    registered backend is unavailable."""
+    missing = [b.name for b in BACKENDS if not b.available]
+    if missing:
+        pytest.skip(f"backends unavailable: {missing}")
+
+    from itertools import combinations
+
+    capsule = pilot_capsule()
+    receipts = {}
+    for spec in BACKENDS:
+        receipts[spec.name] = spec.invoke(
+            spec.factory(), capsule, pilot_root(tmp_path, spec.name),
+            tmp_path / f"run-{spec.name}", timeout=180.0)
+        assert receipts[spec.name].status == "completed"
+
+    for a_name, b_name in combinations(sorted(receipts), 2):
+        result = compare_executions(receipts[a_name], receipts[b_name],
+                                    capsule)
+        assert result.classification is ReproClassification.REPRODUCED_EXACT, \
+            f"{a_name} vs {b_name}: {result}"
+        assert result.differing_outputs == ()
+        assert result.missing_outputs == ()

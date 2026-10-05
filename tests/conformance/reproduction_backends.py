@@ -49,14 +49,17 @@ from paper_factory.reproduction import (
     ExecutionReceipt,
     FileRef,
     LocalReproductionRunner,
+    NextflowBackend,
+    NextflowUnavailableError,
     NondeterminismDecl,
     ReproductionCapsule,
     SnakemakeBackend,
     SnakemakeUnavailableError,
+    nextflow_binary,
     sha256_file,
     snakemake_binary,
 )
-from paper_factory.reproduction import snakemake_backend
+from paper_factory.reproduction import nextflow_backend, snakemake_backend
 
 PILOT_FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "repro_pilot"
 
@@ -113,6 +116,19 @@ BACKENDS: list[BackendSpec] = [
         unavailable_exc=SnakemakeUnavailableError,
         leak_glob="pf-snakemake-*",
         metadata_dirs=(".snakemake",),
+    ),
+    BackendSpec(
+        name="nextflow",
+        factory=NextflowBackend,
+        available=nextflow_binary() is not None,
+        skip_reason="nextflow not installed (binary launcher)",
+        invoke=_external_invoke,
+        has_external_binary=True,
+        binary_module=nextflow_backend,
+        binary_attr="nextflow_binary",
+        unavailable_exc=NextflowUnavailableError,
+        leak_glob="pf-nextflow-*",
+        metadata_dirs=(".nextflow.log", "work"),
     ),
 ]
 
