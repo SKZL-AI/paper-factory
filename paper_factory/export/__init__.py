@@ -19,14 +19,18 @@ is pinned by defined exported invariants tested in tests/test_export_*.py
 export), not by re-importing into PF.
 """
 
-from . import rocrate
+from . import prov, rocrate
 from ._shared import ExportBundle, ExportError
+from .prov import build_prov_document, write_prov_document
 from .rocrate import build_rocrate, write_rocrate
 
 __all__ = [
     "ExportBundle",
     "ExportError",
+    "build_prov_document",
     "build_rocrate",
+    "prov",
     "rocrate",
+    "write_prov_document",
     "write_rocrate",
 ]
