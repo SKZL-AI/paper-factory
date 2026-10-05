@@ -10,6 +10,7 @@ from .contract import (
     VerificationFinding,
     VerificationResult,
     WorkPackage,
+    artifact_binding,
     normalize_statement,
     statement_digest,
 )
@@ -31,6 +32,7 @@ __all__ = [
     "VerificationFinding",
     "VerificationResult",
     "WorkPackage",
+    "artifact_binding",
     "available",
     "compare",
     "declare",

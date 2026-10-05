@@ -457,3 +457,67 @@ def test_shadow_receipt_path_sanitizes_run_id_traversal(tmp_path, monkeypatch):
     rows = ws.receipts_for("../evil", "P05", kind="shadow")
     assert len(rows) == 1
     assert Path(rows[0]["path"]).resolve().is_relative_to(shadow_dir)
+
+
+# --------------------------------------------------------------------------- #
+# MATCH im DAG-Pfad: when the node recorded receipts THIS run, the shadow
+# package carries them as artifacts and the native side binds them via the
+# same artifact_binding rule as the backend — a PASS with the identical
+# binding becomes MATCH (before this fix only SEMANTIC_MATCH was reachable).
+# --------------------------------------------------------------------------- #
+
+
+def _build_shadow_handler_with_recording_base(monkeypatch, record: bool):
+    def fake_base(ctx: NodeContext, node) -> NodeOutcome:
+        if record:
+            from paper_factory.core.util import sha256_file
+
+            receipt = ctx.workspace.receipts_dir / "hoh" / "PF-abc12345-P05" / "receipt1.json"
+            receipt.parent.mkdir(parents=True, exist_ok=True)
+            receipt.write_text('{"ok": true}\n', encoding="utf-8")
+            ctx.workspace.record_receipt(
+                receipt.name, ctx.run_id, "P05", "hoh", receipt, sha256_file(receipt)
+            )
+        return NodeOutcome(Verdict.PASS, {"base": "stub"})
+
+    monkeypatch.setattr(handlers_mod, "_BASE_HANDLERS", {"P05": fake_base})
+    return build_handlers([], ["P05"])["P05"]
+
+
+def test_shadow_with_node_receipt_reaches_match(tmp_path, monkeypatch):
+    from paper_factory.core.util import sha256_file
+    from paper_factory.verification.contract import artifact_binding
+
+    seen: dict[str, WorkPackage] = {}
+
+    def fake_verify(self, package: WorkPackage) -> VerificationResult:
+        seen["package"] = package
+        return make_result(Verdict.PASS, sha=artifact_binding(package.artifacts))
+
+    monkeypatch.setattr(VeriharnessAdapter, "verify", fake_verify)
+    handler = _build_shadow_handler_with_recording_base(monkeypatch, record=True)
+    ws = Workspace(tmp_path)
+    outcome = handler(_ctx(ws), NODE)
+    assert outcome.verdict == Verdict.PASS  # shadow never changes the verdict
+    # the shadow package carries the node receipt as artifact (ws-root-relative)
+    assert len(seen["package"].artifacts) == 1
+    art = seen["package"].artifacts[0]
+    assert art.rel_path == "receipts/hoh/PF-abc12345-P05/receipt1.json"
+    assert art.sha256 == sha256_file(ws.root / art.rel_path)
+    # same verdict + same binding on both sides -> MATCH, not just SEMANTIC_MATCH
+    assert outcome.detail["shadow_outcome"] == DifferentialOutcome.MATCH.value
+    receipt = json.loads(Path(outcome.detail["shadow_receipt"]).read_text(encoding="utf-8"))
+    assert receipt["outcome"] == "MATCH"
+    assert receipt["native_artifact_sha256"] == receipt["shadow_artifact_sha256"] == art.sha256
+
+
+def test_shadow_without_node_receipt_stays_semantic_match(tmp_path, monkeypatch):
+    def fake_verify(self, package: WorkPackage) -> VerificationResult:
+        assert package.artifacts == []
+        return make_result(Verdict.PASS)
+
+    monkeypatch.setattr(VeriharnessAdapter, "verify", fake_verify)
+    handler = _build_shadow_handler_with_recording_base(monkeypatch, record=False)
+    ws = Workspace(tmp_path)
+    outcome = handler(_ctx(ws), NODE)
+    assert outcome.detail["shadow_outcome"] == DifferentialOutcome.SEMANTIC_MATCH.value

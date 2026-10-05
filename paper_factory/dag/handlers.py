@@ -171,6 +171,30 @@ def _write_node_spec(workspace, node_id: str, node: Node | None) -> Path:
     return spec
 
 
+def _node_artifact_refs(ctx: NodeContext, node_id: str, limit: int = 20) -> list:
+    """ArtifactRefs from receipts the NODE recorded THIS run before the shadow
+    step. Ordering guarantee: the shadow receipt is written only after this
+    read, so it can never contaminate its own binding. rel_path is
+    workspace-root-relative, sha256 comes from the DB row. At most `limit`
+    receipts are bound — the binding is a representative artifact set, not a
+    full manifest (receipt-flood bound). Rows without sha256 or with paths
+    outside the workspace are skipped.
+    """
+    from ..verification.contract import ArtifactRef
+
+    ws = ctx.workspace
+    out = []
+    for row in ws.receipts_for(ctx.run_id, node_id)[:limit]:
+        if not row.get("sha256"):
+            continue
+        try:
+            rel = Path(row["path"]).resolve().relative_to(ws.root.resolve())
+        except ValueError:
+            continue
+        out.append(ArtifactRef(rel_path=str(rel), sha256=row["sha256"], kind="receipt"))
+    return out
+
+
 def _run_shadow_differential(
     ctx: NodeContext,
     node: Node | None,
@@ -178,6 +202,7 @@ def _run_shadow_differential(
     adapter,
     outcome: NodeOutcome,
     shadow_result=None,
+    artifacts=None,
 ) -> None:
     """Shadow mode (plan §3 Phase 5): compare the PF-native result with the
     HoH backend's verdict for the same package and record the difference.
@@ -189,11 +214,21 @@ def _run_shadow_differential(
     adapter.verify() call (node listed in hoh_nodes AND shadow_nodes — a
     single verify feeds both planes, never two full HoH runs). When None,
     run_shadow invokes the backend itself (shadow-only nodes, unchanged).
+
+    ``artifacts``: optional prebuilt ArtifactRefs for the shared/dual path so
+    the verify() package and the native side use the SAME binding set. When
+    None, the artifacts are read from this run's node receipts (recorded
+    before this shadow step — the shadow receipt cannot contaminate them).
     """
     from datetime import UTC, datetime
 
     from ..core.util import sha256_file, write_json
-    from ..verification.contract import BackendIdentity, VerificationResult, WorkPackage
+    from ..verification.contract import (
+        BackendIdentity,
+        VerificationResult,
+        WorkPackage,
+        artifact_binding,
+    )
     from ..verification.shadow import compare, run_shadow
 
     if ctx.offline:
@@ -205,20 +240,23 @@ def _run_shadow_differential(
         package_id=f"shadow-{node_id}-{ctx.run_id}",
         node_id=node_id,
         spec_markdown=spec.read_text(encoding="utf-8"),
+        artifacts=artifacts if artifacts is not None else _node_artifact_refs(ctx, node_id),
     )
     started_at = datetime.now(UTC)
 
     def native_fn(package: WorkPackage) -> VerificationResult:
         # The native side is whatever the deterministic/agent handler already
-        # produced; PF-native results carry no artifact binding here (honest
-        # None, not a fabricated hash).
+        # produced; it binds the receipts the node recorded THIS run (same
+        # artifact_binding rule as the backend side, so MATCH is provable
+        # when both sides agree). With no node receipts the binding stays
+        # honestly None (SEMANTIC_MATCH, not a fabricated hash).
         return VerificationResult(
             package_id=package.package_id,
             backend=BackendIdentity(
                 kind="pf_native", name=f"pf_native:{node_id}", version=_pf_version()
             ),
             verdict=outcome.verdict,
-            artifact_sha256=None,
+            artifact_sha256=artifact_binding(package.artifacts),
             started_at=started_at,
             finished_at=datetime.now(UTC),
         )
@@ -359,10 +397,12 @@ def build_handlers(
                         outcome.detail["hoh_reason"] = reason
                         return outcome
                     spec = _write_node_spec(ctx.workspace, node_id, node)
+                    artifacts = _node_artifact_refs(ctx, node_id)
                     package = WorkPackage(
                         package_id=f"shadow-{node_id}-{ctx.run_id}",
                         node_id=node_id,
                         spec_markdown=spec.read_text(encoding="utf-8"),
+                        artifacts=artifacts,
                     )
                     try:
                         shared = adapter.verify(package)
@@ -373,10 +413,11 @@ def build_handlers(
                         _run_shadow_differential(
                             ctx, node, node_id, adapter, outcome,
                             shadow_result=_unavailable_verify_result(adapter, package, exc),
+                            artifacts=artifacts,
                         )
                         raise
                     _run_shadow_differential(ctx, node, node_id, adapter, outcome,
-                                             shadow_result=shared)
+                                             shadow_result=shared, artifacts=artifacts)
                     _apply_hoh_gate(ctx, node_id, _hoh_result_from_verify(node_id, shared),
                                     outcome)
                     return outcome

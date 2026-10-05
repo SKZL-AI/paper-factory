@@ -31,7 +31,12 @@ from ...core.results import Verdict
 from ...core.util import sha256_file, utcnow, write_json
 from ...provenance.firewall import PolicyViolation
 from ...verification.capabilities import CapabilityStatus, declare
-from ...verification.contract import BackendIdentity, VerificationResult, WorkPackage
+from ...verification.contract import (
+    BackendIdentity,
+    VerificationResult,
+    WorkPackage,
+    artifact_binding,
+)
 from ...verification.registry import VerificationBackend
 
 RUN_PREFIX = "PF-"
@@ -135,12 +140,13 @@ class VeriharnessAdapter:
         out of the core contract fields — they live in BackendIdentity.detail
         and failure_reason, never as new contract fields.
 
-        Binding honesty: ``artifact_sha256`` is the CALLER-declared package
-        artifact hash — it binds the verdict to the work package, NOT to the
-        exact clone state HoH ran against. The clone identity (content-based
-        source fingerprint, see _source_fingerprint) is reported separately
-        in ``backend.detail["clone_fingerprint"]`` so both bindings are
-        visible and neither masquerades as the other.
+        Binding honesty: ``artifact_sha256`` binds the verdict to the work
+        package's artifacts via ``artifact_binding()`` (single artifact → its
+        sha256; several → manifest digest), NOT to the exact clone state HoH
+        ran against. The clone identity (content-based source fingerprint,
+        see _source_fingerprint) is reported separately in
+        ``backend.detail["clone_fingerprint"]`` so both bindings are visible
+        and neither masquerades as the other.
         """
         import uuid
 
@@ -180,7 +186,7 @@ class VeriharnessAdapter:
                 package_id=package.package_id,
                 backend=res_backend,
                 verdict=verdict,
-                artifact_sha256=package.artifacts[0].sha256 if package.artifacts else None,
+                artifact_sha256=artifact_binding(package.artifacts),
                 started_at=started_at,
                 finished_at=datetime.now(UTC),
                 failure_reason=failure_reason,

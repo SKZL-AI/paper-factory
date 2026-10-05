@@ -51,6 +51,25 @@ class ArtifactRef(Strict):
     kind: str
 
 
+def artifact_binding(artifacts: list[ArtifactRef]) -> str | None:
+    """Single source of truth for binding a result to a work package's artifacts.
+
+    - no artifacts → None (unbound; SEMANTIC_MATCH is then the honest
+      differential outcome)
+    - exactly one artifact → its sha256
+    - more than one → manifest digest: sha256 over the sorted, newline-
+      separated lines '<sha256>  <rel_path>' (two spaces). Deterministic and
+      independent of artifact order — both differential sides must derive the
+      binding through THIS function or MATCH is not provable.
+    """
+    if not artifacts:
+        return None
+    if len(artifacts) == 1:
+        return artifacts[0].sha256
+    lines = sorted(f"{a.sha256}  {a.rel_path}" for a in artifacts)
+    return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
+
+
 class EvidenceRef(Strict):
     evidence_id: str
     tier: EvidenceTier

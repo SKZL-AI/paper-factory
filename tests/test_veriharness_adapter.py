@@ -576,3 +576,29 @@ def test_run_phase_keyboard_interrupt_cleans_up_records_and_propagates(
     with open(adapter._serial_lock_path, "a+") as fh:
         fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+
+
+# --------------------------------------------------------------------------- #
+# artifact_binding rule: verify() binds multi-artifact packages via the
+# manifest digest (never silently element [0]).
+# --------------------------------------------------------------------------- #
+
+
+def test_verify_uses_manifest_digest_for_multiple_artifacts(env, stub_clone):
+    from paper_factory.verification.contract import artifact_binding
+
+    pkg = WorkPackage(
+        package_id="wp-p05-multi",
+        node_id="P05",
+        spec_markdown="# spec\n",
+        artifacts=[
+            ArtifactRef(rel_path="results/a.json", sha256="a" * 64, kind="data"),
+            ArtifactRef(rel_path="results/b.json", sha256="b" * 64, kind="data"),
+        ],
+    )
+    res = env.adapter.verify(pkg)
+    assert res.artifact_sha256 == artifact_binding(pkg.artifacts)
+    assert res.artifact_sha256 != "a" * 64, "multi-artifact binding must not be artifacts[0]"
+    # single-artifact behavior unchanged: the artifact's own sha256
+    single = env.adapter.verify(make_package())
+    assert single.artifact_sha256 == SHA

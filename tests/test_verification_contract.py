@@ -187,3 +187,43 @@ def test_declare_helper():
     assert decl.status is CapabilityStatus.REQUIRES_NETWORK
     assert decl.backend.name == "hoh"
     assert decl.detail == "no OpenAlex reachability"
+
+
+# --------------------------------------------------------------------------- #
+# artifact_binding(): the single binding rule both differential sides use
+# --------------------------------------------------------------------------- #
+
+
+def test_artifact_binding_empty_and_single():
+    from paper_factory.verification import artifact_binding
+
+    assert artifact_binding([]) is None
+    assert artifact_binding([artifact()]) == SHA
+
+
+def test_artifact_binding_manifest_digest_is_order_invariant():
+    from paper_factory.verification import artifact_binding
+
+    a1 = ArtifactRef(rel_path="a/one.json", sha256=SHA, kind="receipt")
+    a2 = ArtifactRef(rel_path="b/two.json", sha256=SHA_B, kind="receipt")
+    fp1 = artifact_binding([a1, a2])
+    fp2 = artifact_binding([a2, a1])
+    assert fp1 == fp2, "manifest digest must not depend on artifact order"
+    assert fp1 != SHA and fp1 != SHA_B, "multi-artifact binding is a manifest, not element [0]"
+    # exact documented format: sorted newline-separated '<sha256>  <rel_path>'
+    expected = hashlib.sha256(
+        f"{SHA}  a/one.json\n{SHA_B}  b/two.json".encode()
+    ).hexdigest()
+    assert fp1 == expected
+
+
+def test_artifact_binding_scales_beyond_two():
+    from paper_factory.verification import artifact_binding
+
+    arts = [
+        ArtifactRef(rel_path=f"r{i}.json", sha256=hashlib.sha256(str(i).encode()).hexdigest(),
+                    kind="receipt")
+        for i in range(5)
+    ]
+    assert artifact_binding(arts) == artifact_binding(list(reversed(arts)))
+    assert artifact_binding(arts) != artifact_binding(arts[:-1])
