@@ -41,9 +41,9 @@ from __future__ import annotations
 
 import shutil
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 from paper_factory.reproduction import (
     ExecutionReceipt,
@@ -51,15 +51,15 @@ from paper_factory.reproduction import (
     LocalReproductionRunner,
     NextflowBackend,
     NextflowUnavailableError,
-    NondeterminismDecl,
     ReproductionCapsule,
     SnakemakeBackend,
     SnakemakeUnavailableError,
+    nextflow_backend,
     nextflow_binary,
     sha256_file,
+    snakemake_backend,
     snakemake_binary,
 )
-from paper_factory.reproduction import nextflow_backend, snakemake_backend
 
 PILOT_FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "repro_pilot"
 
