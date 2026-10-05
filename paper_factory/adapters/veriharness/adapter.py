@@ -141,6 +141,7 @@ class VeriharnessAdapter:
         developer: str = "kimi",
         qa: str = "codex",
         iterations: int = 1,
+        use_herdr: bool = True,
     ) -> VerificationResult:
         """Generic façade: one HoH run per WorkPackage (module policy applies).
 
@@ -148,6 +149,15 @@ class VeriharnessAdapter:
         backend options (agent role assignment), NOT part of the core
         WorkPackage contract — they travel as optional keywords so the shim
         and direct callers can choose roles without extending the contract.
+
+        ``use_herdr=False`` switches `hoh run` to `--no-herdr` (Subprocess
+        dispatcher instead of Herdr panes). Live-field evidence (2026-10-05):
+        the Herdr dispatch path stalls systematically at the developer role
+        with new CLI-TUI versions (kimi Welcome-Screen >5s, codex empty pane
+        vs. herdr's 5s stall window). Trade-off, recorded honestly in
+        ``backend.detail["evidence_note"]``: no A01/A02/A12 acceptance
+        evidence (pane proof) is produced. A missing herdr runtime does NOT
+        block when use_herdr=False — hoh present is sufficient.
 
         HoH specifics (run_id, blocked_kind, stage/condition/rc summary) stay
         out of the core contract fields — they live in BackendIdentity.detail
@@ -176,6 +186,12 @@ class VeriharnessAdapter:
         ) -> VerificationResult:
             detail = dict(backend.detail)
             detail["run_id"] = run_id
+            if not use_herdr:
+                detail["herdr"] = False
+                detail["evidence_note"] = (
+                    "--no-herdr: keine A01/A02/A12-Akzeptanz-Evidenz "
+                    "(Subprocess-Dispatch statt Pane-Nachweis)"
+                )
             marker = self.runs_root / "clone-manifest.json"
             if marker.exists():
                 try:
@@ -210,7 +226,7 @@ class VeriharnessAdapter:
         if not diag["present"]:
             reason = "hoh executable not found"
             return result(Verdict.UNAVAILABLE, failure_reason=reason, hoh_detail={"reason": reason})
-        if not diag["herdr"]:
+        if not diag["herdr"] and use_herdr:
             reason = "DEGRADED_RUNTIME: herdr unavailable, HoH refused"
             return result(Verdict.DEGRADED, failure_reason=reason, hoh_detail={"reason": reason})
 
@@ -221,6 +237,7 @@ class VeriharnessAdapter:
             developer=developer,
             qa=qa,
             iterations=iterations,
+            use_herdr=use_herdr,
         )
         if hoh.verdict == Verdict.PASS:
             return result(Verdict.PASS, hoh=hoh)
@@ -424,6 +441,7 @@ class VeriharnessAdapter:
         developer: str = "kimi",
         qa: str = "codex",
         iterations: int = 1,
+        use_herdr: bool = True,
         dry_run: bool = False,
     ) -> HohResult:
         """Legacy façade for dag/handlers.py — one run flow, two façades.
@@ -457,6 +475,7 @@ class VeriharnessAdapter:
             developer=developer,
             qa=qa,
             iterations=iterations,
+            use_herdr=use_herdr,
         )
         hoh_detail = dict(res.backend.detail.get("hoh_detail") or {})
         executed = "run_rc" in hoh_detail
@@ -483,12 +502,19 @@ class VeriharnessAdapter:
         developer: str = "kimi",
         qa: str = "codex",
         iterations: int = 1,
+        use_herdr: bool = True,
     ) -> HohResult:
         """Shared HoH run flow behind both façades. Serialized per workspace.
 
         run_id scheme: PF-<rand8>-<node> — the random part sits BEFORE the
         truncation point of herdr's agent-name derivation (observed truncation
         ~24 chars: 'hoh-pf-p05-20260-planner'), so names stay unique per run.
+
+        use_herdr=False appends `--no-herdr` to `hoh run` (Subprocess
+        dispatcher instead of panes) and skips pane cleanup entirely — no
+        panes were spawned, so a cleanup receipt would fake evidence. The
+        acceptance-evidence trade-off (no A01/A02/A12 pane proof) is recorded
+        by the caller in backend.detail["evidence_note"].
         """
         import fcntl
 
@@ -513,7 +539,7 @@ class VeriharnessAdapter:
                     return HohResult(
                         run_id, Verdict.FAIL, None, None, None, detail={"start_failed": started}
                     )
-                rc, ran = self._call(
+                run_args = [
                     "run",
                     run_id,
                     "--iterations",
@@ -524,8 +550,10 @@ class VeriharnessAdapter:
                     developer,
                     "--qa",
                     qa,
-                    timeout=7200,
-                )
+                ]
+                if not use_herdr:
+                    run_args.append("--no-herdr")
+                rc, ran = self._call(*run_args, timeout=7200)
             except BaseException as exc:  # cleanup must also run for
                 # KeyboardInterrupt/SystemExit; the exception is ALWAYS re-raised.
                 # Orphan hardening (review B-1/B-2a): a failure between `start`
@@ -552,14 +580,16 @@ class VeriharnessAdapter:
                     },
                 )
                 self._collect_receipts(run_id)
-                self._cleanup_panes(run_id, state)
+                if use_herdr:
+                    self._cleanup_panes(run_id, state)
                 raise
             finally:
                 fcntl.flock(lock_fh.fileno(), fcntl.LOCK_UN)
 
         state = self._read_state(run_id)
         receipts = self._collect_receipts(run_id)
-        self._cleanup_panes(run_id, state)
+        if use_herdr:
+            self._cleanup_panes(run_id, state)  # no-op when no panes were spawned
         blocked_kind = state.get("blocked_kind")  # read directly, not the launcher verdict
         accepted = bool(state.get("last_accepted_candidate"))
         if blocked_kind:

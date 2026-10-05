@@ -284,3 +284,16 @@ bewusste Design-Entscheidungen, nicht stille Annahmen:
   `docs/V1_2_VERIFICATION_PLANE_PLAN.md` §5b (artefaktgebundener Shadow-Pfad,
   caller-deklarierte Bindung per Konstruktion, Resume-Sicherheit F-1). Dieser
   Eintrag bleibt aus Provenance-Gründen stehen; maßgeblich ist §5b.
+- **Herdr-Dispatch-Stall bei neuen CLI-TUI-Versionen (Live-Feldtest
+  2026-10-05).** Der Herdr-Pfad von HoH stallt bei der Developer-Rolle
+  systematisch (`agent_prompt_stalled`: herdr verlangt eine beobachtete
+  Zustandsänderung innerhalb 5000ms; kimi zeigt einen Welcome-Screen,
+  codex ein leeres Pane — beides unterschreitet das Fenster nicht).
+  Planner via Herdr funktioniert. Das 5s-Stall-Fenster ist herdr-seitig
+  hartkodiert und durch PF nicht konfigurierbar; Workaround im Adapter:
+  `use_herdr=False` → `hoh run --no-herdr` (Subprocess-Dispatcher statt
+  Panes) mit dokumentiertem Evidenz-Trade-off (keine A01/A02/A12-
+  Akzeptanz-Evidenz, Pane-Cleanup entfällt, `backend.detail["evidence_note"]`
+  vermerkt es ehrlich). Empfehlung an herdr/veriharness: Stall-Fenster
+  konfigurierbar machen. Belegt durch die Runs PF-73ed7828-P05,
+  PF-581db7b3-P05, PF-7aeb552c-P05 (2026-10-05).

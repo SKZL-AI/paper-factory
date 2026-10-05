@@ -644,4 +644,48 @@ def test_verify_passes_options_through(env, stub_clone, monkeypatch):
 def test_verify_role_defaults_unchanged(env, stub_clone, monkeypatch):
     captured = _spy_execute(monkeypatch, env.adapter)
     env.adapter.verify(make_package())
-    assert captured == {"planner": "claude", "developer": "kimi", "qa": "codex", "iterations": 1}
+    assert captured == {"planner": "claude", "developer": "kimi", "qa": "codex",
+                        "iterations": 1, "use_herdr": True}
+
+
+# --------------------------------------------------------------------------- #
+# Live-field-test finding (2026-10-05, runs PF-73ed7828/581db7b3/7aeb552c):
+# Herdr dispatch stalls at the developer role with new CLI-TUI versions
+# (5s stall window vs. kimi Welcome-Screen / codex empty pane). use_herdr=False
+# routes `hoh run` through --no-herdr (Subprocess dispatcher) with an honest
+# evidence note instead of a hard DEGRADED gate.
+# --------------------------------------------------------------------------- #
+
+
+def _hoh_run_argv(env) -> list:
+    return [c for c in env.calls if c[0].endswith("hoh") and len(c) > 4 and c[3] == "run"]
+
+
+def test_verify_no_herdr_appends_flag_and_skips_pane_cleanup(env, stub_clone, monkeypatch):
+    cleaned: list = []
+    monkeypatch.setattr(env.adapter, "_cleanup_panes", lambda run_id, state: cleaned.append(run_id))
+    res = env.adapter.verify(make_package(), use_herdr=False)
+    assert res.verdict == Verdict.PASS
+    runs = _hoh_run_argv(env)
+    assert len(runs) == 1
+    assert "--no-herdr" in runs[0]
+    assert cleaned == [], "--no-herdr spawns no panes; cleanup must not fake evidence"
+    assert res.backend.detail["herdr"] is False
+    assert "A01/A02/A12" in res.backend.detail["evidence_note"]
+
+
+def test_verify_no_herdr_runs_without_herdr_runtime(tmp_path, monkeypatch, stub_clone):
+    e = FakeEnv(tmp_path, monkeypatch, herdr=False)
+    res = e.adapter.verify(make_package(), use_herdr=False)
+    assert res.verdict == Verdict.PASS, "missing herdr must not block when use_herdr=False"
+    assert res.backend.detail["herdr"] is False
+    assert "Subprocess-Dispatch" in res.backend.detail["evidence_note"]
+    assert len(_hoh_run_argv(e)) == 1
+
+
+def test_verify_default_still_requires_herdr(tmp_path, monkeypatch, stub_clone):
+    """Backward compatibility: use_herdr=True (default) keeps the DEGRADED gate."""
+    e = FakeEnv(tmp_path, monkeypatch, herdr=False)
+    res = e.adapter.verify(make_package())
+    assert res.verdict == Verdict.DEGRADED
+    assert _hoh_run_argv(e) == []
