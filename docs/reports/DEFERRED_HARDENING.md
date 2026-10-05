@@ -260,6 +260,21 @@ bewusste Design-Entscheidungen, nicht stille Annahmen:
   die Verdrahtung ist für v1.3 oder späteren Bedarf vorgesehen. Disposition
   gemappeter Findings bleibt `None` (PF owned) — es gibt keinen falschen
   Grün-Pfad über externe Findings.
+  *Korrektur-Provenance (2026-10-05, v1.3 WP8, Branch `v1.3/wp8-findings-
+  wiring`): ersetzt durch die Produktions-Verdrahtung.* Eingangspunkt ist
+  der Dual-/Shadow-Pfad in `dag/handlers.py`
+  (`_ingest_verification_findings`): das shadow-seitige
+  `VerificationResult` aus der geteilten `adapter.verify()` füttert
+  `reviews.verification_ingest`, das einen `VF-<node>`-Review-Report
+  schreibt. Closure bleibt PF-owned: Blocking läuft über U5 wie jedes
+  CRITICAL/MAJOR-Finding, Schließung nur per PF-Disposition (durable
+  decision); das HoH-Gate bleibt strikt downgrade-only. Identität =
+  dieselbe `dedupe_key`-Logik wie native Findings (kind + claim_refs +
+  Binding + Statement-Hash); das Artifact-Binding wird als Provenienz in
+  `details.external` gestempelt, ist aber nie Teil der Identität.
+  Bewusste Lücke: der HoH-only-Pfad (`verify_work_package` → `HohResult`)
+  verliert Findings weiterhin (HohResult-Shape trägt sie nicht) — erst die
+  Dual-/Shadow-Konfiguration macht Provider-Findings produktiv sichtbar.
 - **MATCH im DAG-Pfad aktuell unerreichbar (A-7).** Die PF-native Seite bindet
   im Shadow-Pfad bewusst kein Artifact (honest `None`, keine fabrizierte
   Hash-Bindung); die HoH-Seite kann nur dann binden, wenn das WorkPackage
