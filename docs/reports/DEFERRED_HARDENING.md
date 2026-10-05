@@ -278,3 +278,9 @@ bewusste Design-Entscheidungen, nicht stille Annahmen:
   HoH-Receipt in der DB würde das Gate künstlich sättigen (Analogon zum
   F1-False-Close). Reine Sichtbarkeits-Inkonsistenz (Disk vs. DB), kein
   Handlungsbedarf.
+- **Korrektur-Provenance (2026-10-05): „MATCH im DAG-Pfad unerreichbar"
+  ist geschlossen.** Gesetzt in den Runde-1-Nachträgen (2026-10-04, galt für
+  den Stand vor aa4de1f), ersetzt durch den Eintrag in
+  `docs/V1_2_VERIFICATION_PLANE_PLAN.md` §5b (artefaktgebundener Shadow-Pfad,
+  caller-deklarierte Bindung per Konstruktion, Resume-Sicherheit F-1). Dieser
+  Eintrag bleibt aus Provenance-Gründen stehen; maßgeblich ist §5b.

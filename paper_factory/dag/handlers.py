@@ -173,18 +173,29 @@ def _write_node_spec(workspace, node_id: str, node: Node | None) -> Path:
 
 def _node_artifact_refs(ctx: NodeContext, node_id: str, limit: int = 20) -> list:
     """ArtifactRefs from receipts the NODE recorded THIS run before the shadow
-    step. Ordering guarantee: the shadow receipt is written only after this
-    read, so it can never contaminate its own binding. rel_path is
-    workspace-root-relative, sha256 comes from the DB row. At most `limit`
-    receipts are bound — the binding is a representative artifact set, not a
-    full manifest (receipt-flood bound). Rows without sha256 or with paths
-    outside the workspace are skipped.
+    step. The binding is the node's own OUTPUT artifacts — never verification
+    receipts: kinds "hoh" and "shadow" are excluded, so on RESUME (a FAILED
+    node re-executes under the same run_id) attempt 1's HoH/shadow receipts
+    cannot contaminate attempt 2's binding (review F-1; a re-recorded shadow
+    receipt would even carry a stale sha after os.replace). Ordering
+    guarantee: the current attempt's shadow receipt is written only after
+    this read, so it can never contaminate its own binding either. rel_path
+    is workspace-root-relative, sha256 comes from the DB row. At most
+    `limit` rows are bound AFTER kind/sha/path filtering — the binding is a
+    representative artifact set, not a full manifest (receipt-flood bound).
+    Rows without sha256 or with paths outside the workspace are skipped.
     """
     from ..verification.contract import ArtifactRef
 
     ws = ctx.workspace
+    excluded_kinds = {"hoh", "shadow"}
+    rows = [
+        r
+        for r in ws.receipts_for(ctx.run_id, node_id)
+        if r.get("kind") not in excluded_kinds
+    ]
     out = []
-    for row in ws.receipts_for(ctx.run_id, node_id)[:limit]:
+    for row in rows[:limit]:
         if not row.get("sha256"):
             continue
         try:

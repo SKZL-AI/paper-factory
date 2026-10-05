@@ -158,10 +158,18 @@ class Workspace:
 
     def record_receipt(self, receipt_id: str, run_id: str, node_id: str | None, kind: str,
                        path: Path, sha256: str | None) -> None:
+        """Record a receipt. Re-recording the same receipt_id updates the
+        payload but PRESERVES the original created_at — 'created_at' is the
+        first recording time, so deterministic orderings over it stay stable
+        across re-records (review F-2)."""
         with self.connect() as c:
             c.execute(
-                "INSERT OR REPLACE INTO receipts(receipt_id, run_id, node_id, kind, path, sha256, created_at)"
-                " VALUES (?,?,?,?,?,?,?)",
+                "INSERT INTO receipts(receipt_id, run_id, node_id, kind, path, sha256, created_at)"
+                " VALUES (?,?,?,?,?,?,?)"
+                " ON CONFLICT(receipt_id) DO UPDATE SET"
+                " run_id=excluded.run_id, node_id=excluded.node_id, kind=excluded.kind,"
+                " path=excluded.path, sha256=excluded.sha256,"
+                " created_at=receipts.created_at",
                 (receipt_id, run_id, node_id, kind, str(path), sha256, utcnow()),
             )
 
@@ -170,7 +178,11 @@ class Workspace:
     ) -> list[dict[str, Any]]:
         """Receipts for a run/node. ``kind=None`` keeps the historic
         kind-agnostic behavior; pass e.g. kind="hoh" to count only receipts
-        of one kind (shadow receipts must never satisfy the HoH gate)."""
+        of one kind (shadow receipts must never satisfy the HoH gate).
+
+        Deterministic order (created_at, receipt_id): without ORDER BY the
+        rowid order wanders across INSERT OR REPLACE re-records, which made
+        positional windows (e.g. [:20] binding caps) unstable."""
         sql = "SELECT * FROM receipts WHERE run_id=?"
         params: list[Any] = [run_id]
         if node_id:
@@ -179,6 +191,7 @@ class Workspace:
         if kind:
             sql += " AND kind=?"
             params.append(kind)
+        sql += " ORDER BY created_at, receipt_id"
         with self.connect() as c:
             rows = c.execute(sql, params).fetchall()
         return [dict(r) for r in rows]

@@ -227,3 +227,16 @@ def test_artifact_binding_scales_beyond_two():
     ]
     assert artifact_binding(arts) == artifact_binding(list(reversed(arts)))
     assert artifact_binding(arts) != artifact_binding(arts[:-1])
+
+
+def test_artifact_ref_rejects_control_chars_in_rel_path():
+    """A-9: control characters in rel_path would inject extra manifest lines
+    into the artifact_binding digest — fail-visible, never silently hashed."""
+    from pydantic import ValidationError
+
+    for bad in ("evil\nbb" + "c" * 64 + "  forged.json", "a\rb", "a\tb", "a\x00b"):
+        with pytest.raises(ValidationError):
+            ArtifactRef(rel_path=bad, sha256=SHA, kind="data")
+    # normal paths unaffected
+    art = artifact()
+    assert art.rel_path == "results/table1.csv"

@@ -12,7 +12,7 @@ import hashlib
 from datetime import UTC, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ..core.results import EvidenceTier, Severity, Verdict
 
@@ -49,6 +49,17 @@ class ArtifactRef(Strict):
     rel_path: str
     sha256: str = Field(pattern=_SHA256_PATTERN)
     kind: str
+
+    @field_validator("rel_path")
+    @classmethod
+    def _no_control_chars(cls, v: str) -> str:
+        """Fail-visible on control characters (\\n, \\r, \\t, \\0, ...): they
+        would inject extra manifest lines into the artifact_binding digest
+        (newline-separated '<sha256>  <rel_path>' format) — silently forging
+        or splitting digest lines is exactly what the binding must prevent."""
+        if any(ord(c) < 32 or ord(c) == 127 for c in v):
+            raise ValueError("rel_path must not contain control characters")
+        return v
 
 
 def artifact_binding(artifacts: list[ArtifactRef]) -> str | None:

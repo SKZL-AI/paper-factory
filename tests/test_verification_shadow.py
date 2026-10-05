@@ -472,11 +472,14 @@ def _build_shadow_handler_with_recording_base(monkeypatch, record: bool):
         if record:
             from paper_factory.core.util import sha256_file
 
-            receipt = ctx.workspace.receipts_dir / "hoh" / "PF-abc12345-P05" / "receipt1.json"
+            # a node OUTPUT receipt (kind="report") — the kind of receipt the
+            # artifact binding accepts; verification kinds (hoh/shadow) are
+            # excluded by _node_artifact_refs (review F-1)
+            receipt = ctx.workspace.receipts_dir / "reports" / "P05-report.json"
             receipt.parent.mkdir(parents=True, exist_ok=True)
             receipt.write_text('{"ok": true}\n', encoding="utf-8")
             ctx.workspace.record_receipt(
-                receipt.name, ctx.run_id, "P05", "hoh", receipt, sha256_file(receipt)
+                receipt.name, ctx.run_id, "P05", "report", receipt, sha256_file(receipt)
             )
         return NodeOutcome(Verdict.PASS, {"base": "stub"})
 
@@ -502,7 +505,7 @@ def test_shadow_with_node_receipt_reaches_match(tmp_path, monkeypatch):
     # the shadow package carries the node receipt as artifact (ws-root-relative)
     assert len(seen["package"].artifacts) == 1
     art = seen["package"].artifacts[0]
-    assert art.rel_path == "receipts/hoh/PF-abc12345-P05/receipt1.json"
+    assert art.rel_path == "receipts/reports/P05-report.json"
     assert art.sha256 == sha256_file(ws.root / art.rel_path)
     # same verdict + same binding on both sides -> MATCH, not just SEMANTIC_MATCH
     assert outcome.detail["shadow_outcome"] == DifferentialOutcome.MATCH.value
@@ -521,3 +524,106 @@ def test_shadow_without_node_receipt_stays_semantic_match(tmp_path, monkeypatch)
     ws = Workspace(tmp_path)
     outcome = handler(_ctx(ws), NODE)
     assert outcome.detail["shadow_outcome"] == DifferentialOutcome.SEMANTIC_MATCH.value
+
+
+# --------------------------------------------------------------------------- #
+# Fixloop aa4de1f (review F-1 MAJOR + F-2/A-8/A-9/F-3):
+# F-1: on RESUME (same run_id) attempt-1 verification receipts (kinds hoh/
+#      shadow) must never enter attempt-2's artifact binding.
+# F-2: receipts_for order is deterministic (created_at, receipt_id) and
+#      created_at survives re-records -> the [:20] binding window is stable.
+# F-3: rows without sha256 or with paths outside the workspace are skipped.
+# --------------------------------------------------------------------------- #
+
+
+def test_node_artifact_refs_exclude_verification_receipts_across_attempts(tmp_path):
+    from paper_factory.core.util import sha256_file
+    from paper_factory.dag.handlers import _node_artifact_refs
+
+    ws = Workspace(tmp_path)
+    ws.root.mkdir(parents=True, exist_ok=True)
+    ctx = _ctx(ws)
+
+    def record(receipt_id: str, kind: str, path: Path, sha: str | None) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("x", encoding="utf-8")
+        ws.record_receipt(receipt_id, ctx.run_id, "P05", kind, path, sha)
+
+    # attempt 1: node output receipt + verification receipts of this run
+    record("out.json", "report", ws.root / "reports" / "out.json", None)
+    ws.receipts_for(ctx.run_id, "P05")  # touch
+    out_path = ws.root / "reports" / "out.json"
+    out_path.write_text("attempt-1", encoding="utf-8")
+    ws.record_receipt("out.json", ctx.run_id, "P05", "report", out_path, sha256_file(out_path))
+    record(
+        "shadow.json", "shadow",
+        ws.receipts_dir / "shadow" / "P05-attempt1.json", "a" * 64,
+    )
+    record(
+        "hoh.json", "hoh",
+        ws.receipts_dir / "hoh" / "PF-x" / "receipt.json", "b" * 64,
+    )
+    # attempt 2 (resume under the SAME run_id): the output changed and the
+    # shadow receipt was os.replace-overwritten on disk (stale sha in DB)
+    out_path.write_text("attempt-2-content", encoding="utf-8")
+    ws.record_receipt("out.json", ctx.run_id, "P05", "report", out_path, sha256_file(out_path))
+
+    arts = _node_artifact_refs(ctx, "P05")
+    assert [a.rel_path for a in arts] == ["reports/out.json"], (
+        "binding must contain only node OUTPUT receipts — never hoh/shadow, "
+        "not even from the node's own earlier attempt"
+    )
+    assert arts[0].sha256 == sha256_file(out_path)  # current content, not a stale attempt-1 sha
+
+
+def test_receipts_for_window_stable_across_re_record(tmp_path):
+    from paper_factory.core.util import sha256_file
+    from paper_factory.dag.handlers import _node_artifact_refs
+
+    ws = Workspace(tmp_path)
+    ws.root.mkdir(parents=True, exist_ok=True)
+    ctx = _ctx(ws)
+    for i in range(25):
+        p = ws.root / f"out{i:02d}.json"
+        p.write_text(f"{i}", encoding="utf-8")
+        ws.record_receipt(p.name, ctx.run_id, "P05", "report", p, sha256_file(p))
+    before_ids = [r["receipt_id"] for r in ws.receipts_for(ctx.run_id, "P05")]
+    before_window = [a.rel_path for a in _node_artifact_refs(ctx, "P05")]
+    assert len(before_window) == 20  # the cap binds the FIRST 20 deterministically
+    # re-record an EARLY receipt (same content): rowid would wander with a
+    # plain INSERT OR REPLACE, the deterministic order must not
+    early = ws.root / "out00.json"
+    ws.record_receipt(early.name, ctx.run_id, "P05", "report", early, sha256_file(early))
+    assert [r["receipt_id"] for r in ws.receipts_for(ctx.run_id, "P05")] == before_ids
+    assert [a.rel_path for a in _node_artifact_refs(ctx, "P05")] == before_window
+
+
+def test_node_artifact_refs_skips_rows_without_sha_and_outside_paths(tmp_path):
+    from paper_factory.core.util import sha256_file
+    from paper_factory.dag.handlers import _node_artifact_refs
+
+    ws = Workspace(tmp_path)
+    ws.root.mkdir(parents=True, exist_ok=True)
+    ctx = _ctx(ws)
+    good = ws.root / "ok.json"
+    good.write_text("ok", encoding="utf-8")
+    ws.record_receipt("ok.json", ctx.run_id, "P05", "report", good, sha256_file(good))
+    # receipt without sha256 -> skipped
+    ws.record_receipt("nosha.json", ctx.run_id, "P05", "report", ws.root / "nosha.json", None)
+    # receipt path outside the workspace -> skipped (resolve-escape guard)
+    outside = tmp_path / "outside.json"
+    outside.write_text("x", encoding="utf-8")
+    ws.record_receipt("outside.json", ctx.run_id, "P05", "report", outside, sha256_file(outside))
+    arts = _node_artifact_refs(ctx, "P05")
+    assert [a.rel_path for a in arts] == ["ok.json"]
+
+
+def test_match_rationale_declares_binding_by_construction():
+    """A-8: MATCH must not read as an independent artifact audit — the binding
+    is caller-declared and identical by construction."""
+    receipt = compare(
+        native_result(Verdict.PASS, sha=SHA_A), make_result(Verdict.PASS, sha=SHA_A), node_id="P05"
+    )
+    assert receipt.outcome == DifferentialOutcome.MATCH
+    assert "identical by construction" in receipt.rationale
+    assert "did not independently re-hash" in receipt.rationale

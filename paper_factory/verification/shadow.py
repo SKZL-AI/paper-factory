@@ -109,7 +109,10 @@ def compare(
         return DifferentialReceipt(
             outcome=DifferentialOutcome.MATCH,
             rationale=(
-                f"identical verdicts and identical artifact binding ({native.artifact_sha256})"
+                f"identical verdicts and identical artifact binding ({native.artifact_sha256}); "
+                "the binding is the caller-declared package manifest and is identical by "
+                "construction — the backend did not independently re-hash the artifacts, "
+                "so this is agreement on a shared declaration, not an independent artifact audit"
             ),
             shadow_verdict=shadow.verdict,
             shadow_backend=shadow.backend,

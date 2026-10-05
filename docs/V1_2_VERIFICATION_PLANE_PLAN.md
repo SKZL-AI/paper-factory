@@ -203,3 +203,17 @@ nachgetragen, ohne den Originaltext umzuschreiben:
 - **HoH ∩ Shadow (F7, Captain-Entscheidung):** ein `adapter.verify()`-Aufruf
   pro Node speist beide Ebenen; Receipts bleiben getrennt als
   `kind="hoh"` + `kind="shadow"` recorded.
+
+## 5b. Fixloop-Nachtrag zu aa4de1f (2026-10-05, append — §5a unverändert)
+
+„MATCH im DAG-Pfad unerreichbar" ist durch aa4de1f + Fixloop geschlossen:
+der artefaktgebundene Shadow-Pfad bindet Node-Output-Receipts
+(`_node_artifact_refs`, kind-Ausschluss von hoh/shadow, deterministisches
+[:20]-Fenster), und `artifact_binding()` ist die beiderseits geteilte Regel.
+Ehrliche Einschränkung (Reviewer A-8): die Bindung ist caller-deklariert
+(Package-Manifest) und beiderseits per Konstruktion identisch — das Backend
+hasht Artefakte nicht unabhängig neu. MATCH ist damit „Übereinstimmung auf
+einer gemeinsamen Deklaration", kein unabhängiges Artefakt-Audit; die
+Rationale des DifferentialReceipt sagt das wörtlich. Resume-Sicherheit
+(Reviewer F-1): Verifikations-Receipts früherer Attempts (gleiche run_id)
+kontaminieren die Bindung nie.
