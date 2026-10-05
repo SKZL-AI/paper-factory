@@ -23,6 +23,7 @@ No real hoh/herdr/network/LLM anywhere.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -421,7 +422,13 @@ def test_gate_path_replay_detection_uses_store_namespace(tmp_path):
     copied.parent.mkdir(parents=True, exist_ok=True)
     copied.write_text("{}", encoding="utf-8")
     ws.record_receipt(store_key, "run-A", "P05", "hoh", copied, SHA_B)
-    body_receipt = _receipt(receipt_id="a-uuid-that-is-not-the-store-key")
+    # the receipt's content hash is the ACTUAL hash of the copied file
+    # (production invariant from _build_execution_receipts; WP-IV digest
+    # guard compares the two at gate time)
+    body_receipt = _receipt(
+        receipt_id="a-uuid-that-is-not-the-store-key",
+        sha256=hashlib.sha256(b"{}").hexdigest(),
+    )
     res = make_result(Verdict.PASS, sha=SHA_A, receipts=[body_receipt])
     res = res.model_copy(update={
         "backend": res.backend.model_copy(
@@ -451,7 +458,9 @@ def test_gate_path_freshness_check_runs_for_consistent_receipts(tmp_path,
     copied.write_text("{}", encoding="utf-8")
     ws.record_receipt(f"PF-new0001-P05/{receipt_file}", "run-A", "P05", "hoh",
                       copied, SHA_B)
-    good = _receipt()  # binds SHA_A — exactly what the package binds
+    good = _receipt(  # binds SHA_A — exactly what the package binds
+        sha256=hashlib.sha256(b"{}").hexdigest(),  # actual content hash of
+    )  # the copied file (production invariant, WP-IV digest guard)
     res = make_result(Verdict.PASS, sha=SHA_A, receipts=[good])
     res = res.model_copy(update={
         "backend": res.backend.model_copy(

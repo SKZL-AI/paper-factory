@@ -424,6 +424,22 @@ def _hoh_result_from_verify(node_id: str, res, package=None, workspace=None,
         {"receipt_file": Path(p).name, "copied_to": p, "sha256": sha256_file(Path(p))}
         for p in res.raw_receipt_refs
     ]
+    if len(receipts) == len(res.receipts):
+        # digest guard (WP-IV failure injection): a receipt file modified
+        # AFTER collection (collect-time sha on res.receipts[i]) but BEFORE
+        # this gate must not flow into the store record with a recomputed
+        # hash and no alarm — the two digests are compared and a mismatch
+        # fails the run visibly instead of registering tampered evidence.
+        from ..adapters.veriharness.adapter import ReceiptValidationError
+
+        for entry, gate_receipt in zip(receipts, res.receipts):
+            if entry["sha256"] != gate_receipt.sha256:
+                raise ReceiptValidationError(
+                    f"receipt {entry['receipt_file']}: content digest changed "
+                    "between collection and gate "
+                    f"(collect {gate_receipt.sha256}, now {entry['sha256']}); "
+                    "refusing to register possibly tampered evidence"
+                )
     return HohResult(
         run_id=res.backend.detail.get("run_id", ""),
         verdict=res.verdict,
