@@ -265,13 +265,13 @@ def test_stale_execution_receipt_still_loads_but_fails_freshness_at_consumption(
 
 
 def _receipt(**kw) -> ExecutionReceipt:
-    base = dict(
-        receipt_id="r-1",
-        backend=BackendIdentity(kind="veriharness", name="hoh", version="0.1.0"),
-        artifact_sha256=SHA_A,
-        sha256=SHA_B,
-        created_at=NOW,
-    )
+    base = {
+        "receipt_id": "r-1",
+        "backend": BackendIdentity(kind="veriharness", name="hoh", version="0.1.0"),
+        "artifact_sha256": SHA_A,
+        "sha256": SHA_B,
+        "created_at": NOW,
+    }
     base.update(kw)
     return ExecutionReceipt(**base)
 

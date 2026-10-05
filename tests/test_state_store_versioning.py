@@ -11,11 +11,10 @@ from pathlib import Path
 
 import pytest
 
-from paper_factory.state import store as store_mod
 from paper_factory.state.store import (
-    SCHEMA_VERSION,
-    SCHEMA,
     MIGRATIONS,
+    SCHEMA,
+    SCHEMA_VERSION,
     SchemaVersionError,
     Workspace,
 )
