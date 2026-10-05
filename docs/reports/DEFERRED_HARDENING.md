@@ -544,3 +544,16 @@ bleiben.
 - **MINOR (gefixt in diesem Commit):** Snakemake-Timeout-Drain vermerkte
   „output capture incomplete" nicht im Receipt — jetzt gleiche Konvention
   wie Nextflow.
+
+## v2.0 Acceptance Nachträge (2026-10-05, Dual-Review JA/JA)
+
+- **MINOR (akzeptiert, dokumentiert):** ExportBundle-Guard ist jetzt strikt
+  (completed-Receipt muss JEDE deklarierte expected_outputs-Pattern abdecken);
+  ehrliche Partial-Runs werfen ExportError statt halb-wahren Exports —
+  bewusste Policy, begründet in `_shared.py`.
+- **NIT:** Digest-Guard wird bei Längen-Mismatch receipts↔raw_receipt_refs
+  still übersprungen (für den In-Repo-Adapter konstruktiv invariant).
+- **NIT:** Export-Guard matcht mit fnmatch, Collection mit Path.glob
+  (fnmatch-`*` überquert `/`) — Guard permissiver als Collection.
+- **NIT:** Concurrency-Tests sind in-Prozess; cross-Prozess durch die
+  dokumentierte Single-Writer-Disziplin gedeckt.

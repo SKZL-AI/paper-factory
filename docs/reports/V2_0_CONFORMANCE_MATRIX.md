@@ -119,3 +119,9 @@ dokumentiertes Verhalten (Test verhindert stilles Wegwandern).
   alle mit dokumentiertem Grund, keines still.
 - Suite-Gesamt: 1071 Tests, davon 1067 erwartet grün / 4 ehrlich geskippt
   (2 Conformance-N/A-Zeilen native Backend, 2 binary-abhängig).
+
+> Correction addendum (2026-10-05, review A MINOR): after merging WP-I..III
+> the final v2.0 suite measures **1074 collected = 1070 passed + 4 skipped**
+> (the 3 packaging-asset tests arrived with the merge). The 1071/1067 figures
+> above are the pre-merge worktree measurement; kept for provenance, the
+> merged numbers are authoritative (README/CHANGELOG).

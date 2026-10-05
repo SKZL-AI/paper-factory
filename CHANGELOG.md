@@ -30,8 +30,8 @@ Contract Stabilization & Production Freeze:
   byte-identisch (SHA-256 vorher/nachher), Backups exakt die
   Pre-Migration-Bytes; verankert über synthetische v0-Fixtures in der Suite
 - 1070 Tests passing (+4 honest environment skips); dual adversarial
-  review A/B = [ERGÄNZEN — Review-Ergebnis wird nach dem Review
-  eingetragen]
+  review A/B = JA/JA (two focused findings closed: suite-count addendum
+  in the conformance matrix, export-guard strictness documented)
 
 ## [1.4.0] — 2026-10-05
 
