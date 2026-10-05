@@ -2,6 +2,14 @@
 
 Date: 2026-10-05
 
+> **Correction (2026-10-05, post-release reconciliation):** the original
+> version of this table (as tagged in v2.0.0) listed PROV-JSON as
+> "REC 2013-04-30". That was wrong: PROV-JSON is a W3C **Working Group
+> Note** (NOTE-prov-json-20130430); only PROV-O/PROV-DM/PROV-N/
+> PROV-CONSTRAINTS are Recommendations of that date. Corrected in-place
+> below; the tagged v2.0.0 copy is unchanged. The CWL row was sharpened
+> to state export-only explicitly (no semantic change).
+
 PF-internal provenance (receipts, claim–evidence graph, provenance firewall)
 is the canonical truth. All standards are **pure exporters**:
 
