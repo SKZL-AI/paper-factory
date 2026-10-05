@@ -29,13 +29,12 @@ network), consistent with tests/conformance.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import platform
 import sqlite3
 import sys
 import threading
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -50,6 +49,8 @@ from paper_factory.core.config import (
 from paper_factory.core.results import Verdict
 from paper_factory.dag.executor import NodeContext
 from paper_factory.dag.handlers import _hoh_result_from_verify, _node_artifact_refs
+from paper_factory.export._shared import ExportBundle, ExportError
+from paper_factory.export.cwl import build_cwl_tool
 from paper_factory.reproduction import (
     EnvironmentIdentity,
     LocalReproductionRunner,
@@ -57,11 +58,8 @@ from paper_factory.reproduction import (
     compare_executions,
     sha256_file,
 )
-from paper_factory.export._shared import ExportBundle, ExportError
-from paper_factory.export.cwl import build_cwl_tool
 from paper_factory.state.store import Workspace
 from paper_factory.verification.contract import (
-    ArtifactRef,
     BackendIdentity,
     ExecutionReceipt,
     VerificationResult,
@@ -79,8 +77,8 @@ def _gate_result(receipts: list[ExecutionReceipt], raw_refs: list[str],
                                 detail={"run_id": hoh_run}),
         verdict=Verdict.PASS,
         artifact_sha256=sha,
-        started_at=datetime(2026, 10, 5, 12, 0, 0),
-        finished_at=datetime(2026, 10, 5, 12, 1, 0),
+        started_at=datetime(2026, 10, 5, 12, 0, 0, tzinfo=UTC),
+        finished_at=datetime(2026, 10, 5, 12, 1, 0, tzinfo=UTC),
         receipts=receipts,
         raw_receipt_refs=raw_refs,
     )
@@ -98,8 +96,6 @@ def test_receipt_tampered_between_collect_and_gate_fails_visible(tmp_path):
     Der Digest-Guard in _hoh_result_from_verify vergleicht collect-Zeit- und
     Gate-Zeit-Hash und bricht laut ab — das manipulierte Evidence wird nicht
     unter einem frischen Hash im Store registriert."""
-    from datetime import UTC, datetime
-
     ws = Workspace(tmp_path / "target")
     ws.create_run("run-A")
     hoh_run = "PF-fi000001-P05"
@@ -143,8 +139,8 @@ def _capsule(root: Path, expected: list[str]) -> ReproductionCapsule:
     return ReproductionCapsule(
         capsule_id="fi-capsule-1",
         command=[sys.executable, "-c",
-                 "from pathlib import Path; "
-                 "Path('results/out.txt').write_text('hello\\n')"],
+                 ("from pathlib import Path; "
+                  "Path('results/out.txt').write_text('hello\\n')")],
         cwd=".",
         environment=EnvironmentIdentity(
             python_version=platform.python_version(),
