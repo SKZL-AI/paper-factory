@@ -84,3 +84,41 @@ subprocess dispatcher.
 - Herdr rule: herdr 0.8.0 built-in docs (binary strings, quoted above)
 - Dispatcher: VeriHarness `src/hoh/dispatchers.py` (`_new_tab_pane`,
   `_start_agent`, `dispatch`, `_wrapper_timeout`)
+
+---
+
+## Addendum 2026-10-05 — WP12 live field test (one attempt, claude roles, herdr path)
+
+Announced in §5; executed exactly once as part of the WP12 pilot matrix.
+
+**Pre-checks (no cost):** herdr 0.8.0 present, claude CLI 2.1.289 present.
+
+**Attempt:** run `PF-4ca0e67c-P05`, planner/developer/qa all claude,
+`use_herdr=True` (real herdr pane dispatch via the VeriHarness adapter;
+the script gained backward-compatible `--herdr` / `--roles` / `--evidence`
+flags for this — defaults unchanged). Evidence:
+`docs/reports/v1_3_integration_proof_herdr_20261005T124256Z.json`.
+
+**Result: the 5 s stall did NOT trigger for claude.** Tab/pane setup and
+prompt dispatch worked; the planner role completed (`agent_status: done`).
+The run then blocked in the developer pane: claude showed its
+folder-trust approval dialog ("Yes, I trust this folder"), which HoH
+deliberately does not answer automatically → `condition: BLOCKED`,
+stage DEVELOPING → VH verdict FAIL → differential **MISMATCH** (native
+side PASS). This is an honest field result, not a regression of the v1.2
+proof: the binding verification evidence remains the subprocess-path
+proof in `V1_2_REAL_VERIHARNESS_INTEGRATION_PROOF.md` (differential MATCH).
+
+**New finding (claude-specific, distinct from the stall):** claude's
+trust dialog blocks unattended herdr dispatches into not-yet-trusted
+folders. Options for a future attempt (none executed — quota discipline
+and the one-attempt rule): pre-trust the PF/HoH working folder in the
+claude configuration before dispatch, or an upstream HoH/VeriHarness
+mechanism to declare trusted workdirs. PF itself does not auto-confirm
+dialogs (§3 stands).
+
+**Cleanup:** the run's own herdr tabs were closed after the run
+(workspace w6F, tabs of this run plus one leftover developer tab from
+the morning's stall attempt). Foreign panes/workspaces untouched.
+The blocked HoH run was left blocked for a human (`hoh unblock
+PF-4ca0e67c-P05`) — no silent continuation.

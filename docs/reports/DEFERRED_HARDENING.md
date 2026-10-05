@@ -372,3 +372,15 @@ Restpunkte:
 - **NIT (B):** Tilde-maskierte Home-Pfade (`~/paper-factory/…`) in
   committeter Proof-Evidenz; vollständiges Entfernen der Pfad-Strings wäre
   strenger. Akzeptiert: kein absoluter Pfad, keine Secrets (grep-bewiesen).
+- **Herdr + claude: folder-trust dialog blocks unattended dispatch
+  (WP12 field finding 2026-10-05).** Live attempt `PF-4ca0e67c-P05`
+  (claude roles, herdr path): dispatch and planner worked — the 5 s stall
+  did NOT trigger for claude — but the developer pane blocked on claude's
+  "I trust this folder" approval dialog, which HoH does not auto-answer
+  (`condition: BLOCKED` → VH FAIL → differential MISMATCH, native PASS).
+  Distinct from the kimi/codex stall (WP1). Deferred options: pre-trust
+  the working folder in claude config before dispatch, or an upstream
+  trusted-workdir declaration in HoH/VeriHarness. Not a v1.3 blocker:
+  the binding verification evidence is the subprocess-path v1.2 proof.
+  Evidence: `docs/reports/v1_3_integration_proof_herdr_20261005T124256Z.json`,
+  addendum in `V1_3_WP1_HERDR_RUNTIME_HARDENING.md`.

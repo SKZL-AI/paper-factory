@@ -105,12 +105,16 @@ class _RolePresetBackend:
     The live field test (runs PF-73ed7828 / PF-581db7b3 / PF-7aeb552c) showed
     the developer role stalling in the herdr pane across CLI versions (kimi
     welcome screen, codex empty pane — herdr's 5 s state-change window ->
-    agent_prompt_stalled). This proof therefore runs with use_herdr=False
-    (subprocess dispatch) and planner/developer/qa all on codex (the claude
-    planner violated the DevelopmentPlan contract in attempt 4 — `description`
-    instead of `command` — so claude stays out of the roles here).
-    Trade-offs documented in the proof report: no A01/A02/A12 pane evidence,
-    developer == qa harness (no independence claim).
+    agent_prompt_stalled). The default invocation therefore keeps
+    use_herdr=False (subprocess dispatch) and planner/developer/qa all on
+    codex (the claude planner violated the DevelopmentPlan contract in
+    attempt 4 — `description` instead of `command`).
+
+    WP12 (v1.3 pilot matrix): the runtime flags `--herdr` / `--roles`
+    allow the one-shot field retry on the herdr path with claude roles
+    (claude historically worked via herdr). Trade-offs when running on the
+    subprocess path: no A01/A02/A12 pane evidence, developer == qa harness
+    (no independence claim).
     """
 
     def __init__(self, adapter: VeriharnessAdapter, **roles: object) -> None:
@@ -128,6 +132,25 @@ class _RolePresetBackend:
 
 
 def main() -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--herdr", action="store_true",
+                        help="WP12 field retry: dispatch through herdr panes "
+                             "instead of the subprocess fallback")
+    parser.add_argument("--roles", default="codex",
+                        choices=["codex", "claude"],
+                        help="CLI for planner/developer/qa (default codex; "
+                             "claude spends claude quota)")
+    parser.add_argument("--evidence", type=Path, default=EVIDENCE,
+                        help="evidence JSON path (WP12 herdr attempts must "
+                             "use their own dated file — never overwrite "
+                             "the v1.2 proof evidence)")
+    args = parser.parse_args()
+    use_herdr = args.herdr
+    role = args.roles
+    evidence_path = args.evidence
+
     started_wall = utcnow()
     evidence: dict = {
         "proof": "v1.2 REAL VeriHarness integration proof",
@@ -171,7 +194,7 @@ def main() -> int:
     evidence["doctor"] = diag
     if not (diag["present"] and diag["herdr"]):
         evidence["note"] = "DEGRADED_RUNTIME: hoh or herdr unavailable — no live proof possible"
-        EVIDENCE.write_text(
+        evidence_path.write_text(
         json.dumps(_scrub(evidence), indent=2, default=str), encoding="utf-8"
     )
         return 2
@@ -223,7 +246,7 @@ def main() -> int:
 
     try:
         backend = _RolePresetBackend(
-            adapter, planner="codex", developer="codex", qa="codex", use_herdr=False
+            adapter, planner=role, developer=role, qa=role, use_herdr=use_herdr
         )
         native, receipt = run_shadow(native_fn, backend, package)
         evidence["native"] = {
@@ -258,9 +281,11 @@ def main() -> int:
     evidence["runtime"]["wall_clock"] = f"{started_wall} -> {evidence['finished_at']}"
     evidence["runtime"]["network"] = "LLM CLI dispatches only (claude/codex subscriptions)"
     evidence["runtime"]["llm_usage"] = (
-        "planner=codex, developer=codex, qa=codex, iterations=1, --no-herdr "
-        "(subprocess dispatch; herdr pane stalls with new CLI TUIs — evidence "
-        "trade-off documented: no A01/A02/A12 pane evidence)"
+        f"planner={role}, developer={role}, qa={role}, iterations=1, "
+        + ("herdr pane dispatch (WP12 field retry)"
+           if use_herdr else
+           "--no-herdr (subprocess dispatch; herdr pane stalls with new CLI "
+           "TUIs — evidence trade-off documented: no A01/A02/A12 pane evidence)")
     )
     evidence["runtime"]["cost"] = "subscription quota, not measurable per-run"
 
@@ -272,7 +297,7 @@ def main() -> int:
         line.strip() for line in tabs.splitlines() if "PF-" in line
     ]
 
-    EVIDENCE.write_text(
+    evidence_path.write_text(
         json.dumps(_scrub(evidence), indent=2, default=str), encoding="utf-8"
     )
     print(json.dumps({
