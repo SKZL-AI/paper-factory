@@ -478,6 +478,12 @@ class VeriharnessAdapter:
             use_herdr=use_herdr,
         )
         hoh_detail = dict(res.backend.detail.get("hoh_detail") or {})
+        # backend-evidence fields that live outside hoh_detail must survive
+        # the mapping (review A-12): the gate path shows them on the node.
+        if res.backend.detail.get("evidence_note"):
+            hoh_detail["evidence_note"] = res.backend.detail["evidence_note"]
+        if res.backend.detail.get("herdr") is False:
+            hoh_detail["herdr"] = False
         executed = "run_rc" in hoh_detail
         receipts = [
             {"receipt_file": Path(p).name, "copied_to": p, "sha256": sha256_file(Path(p))}

@@ -297,3 +297,12 @@ bewusste Design-Entscheidungen, nicht stille Annahmen:
   vermerkt es ehrlich). Empfehlung an herdr/veriharness: Stall-Fenster
   konfigurierbar machen. Belegt durch die Runs PF-73ed7828-P05,
   PF-581db7b3-P05, PF-7aeb552c-P05 (2026-10-05).
+- **Gate-Asymmetrie herdr vs. --no-herdr (A-15, Proof-Review 2026-10-05).**
+  Der handlers-/DAG-Pfad (`dag/handlers.py`) verlangt aktuell ein
+  herdr-Runtime (`diag["herdr"]`) als Voraussetzung für HoH-Runs, auch wenn
+  der Adapter `use_herdr=False` könnte. `--no-herdr` ist damit nur über
+  Direkt-Caller erreichbar (Proof-Skript `scripts/run_integration_proof_v12.py`);
+  das DAG-Plumbing (Config-Option, die use_herdr durch `build_handlers`/
+  `wrapped` reicht) bleibt bei Bedarf — aktuell kein Consumer dafür im
+  Pipeline-Pfad, und ohne Pane-Nachweis sättigt ein --no-herdr-Run das
+  HoH-Receipt-Gate (U7) nur mit dokumentiertem Evidenz-Vorbehalt.

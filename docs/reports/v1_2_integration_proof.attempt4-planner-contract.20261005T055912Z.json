@@ -1,0 +1,121 @@
+{
+  "proof": "v1.2 REAL VeriHarness integration proof",
+  "started_at": "2026-10-05T05:56:05.312562Z",
+  "pf_head": "58b3a80",
+  "veriharness": {
+    "package": "hoh",
+    "version": "0.1.0",
+    "commit": "5d576bd"
+  },
+  "work_package": {
+    "package_id": "v12-integration-proof-P05",
+    "artifacts": [
+      {
+        "rel_path": "code/analyze.py",
+        "sha256": "3c3ad482e008eafdf698ba3e10351497d481e1eedd3c25bf2e7071a875a33228",
+        "kind": "source"
+      },
+      {
+        "rel_path": "results/summary.json",
+        "sha256": "ef8958ca206a23f2469d16c55c6346d1791bedf3f3c8057655f159670369d8f6",
+        "kind": "result"
+      }
+    ],
+    "binding": "705fb76e4310d21fddf208cf5a8ca939185d6adfd6c7e48df20c823ffcf9d801"
+  },
+  "native": {
+    "verdict": "PASS",
+    "artifact_sha256": "705fb76e4310d21fddf208cf5a8ca939185d6adfd6c7e48df20c823ffcf9d801",
+    "checks": {
+      "K1_analyze_exits_0": true,
+      "K2_summary_exists": true
+    }
+  },
+  "veriharness_result": {
+    "verdict": "FAIL",
+    "artifact_sha256": "705fb76e4310d21fddf208cf5a8ca939185d6adfd6c7e48df20c823ffcf9d801",
+    "backend": {
+      "kind": "veriharness",
+      "name": "hoh",
+      "version": "unknown",
+      "detail": {
+        "herdr": false,
+        "bwrap": true,
+        "run_id": "PF-c6fa5b94-P05",
+        "evidence_note": "--no-herdr: keine A01/A02/A12-Akzeptanz-Evidenz (Subprocess-Dispatch statt Pane-Nachweis)",
+        "clone_fingerprint": "472898816b7987209ae153942f096d501928f173bded22dbbf28a197fc906351",
+        "clone_fingerprint_source": "hoh-repo/clone-manifest.json (ensure_clone)",
+        "blocked_kind": null,
+        "hoh_detail": {
+          "run_rc": 1,
+          "run_summary": "NOTE: started without Herdr. No Herdr endpoint is created, so this run does NOT count as evidence for A01/A02/A12.\nIteration aborted and run blocked: planner violates the output contract even after the repair; the repair budget is exhausted: the plan does not satisfy the contract: 3 validation errors for DevelopmentPlan\nacceptance_checks.0.command\n  Field required [type=missing, input_value={'check_id': 'K1', 'descr... on the committed CSV.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nacceptance_checks.1.command\n  Field required [type=missing, input_value={'check_id': 'K2', 'descr...to the base candidate.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nacceptance_checks.2.command\n  Field required [type=missing, input_value={'check_id': 'K3', 'descr...ming or speed numbers.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing",
+          "stage": "PLANNING",
+          "condition": "BLOCKED"
+        }
+      }
+    },
+    "provider_status": null
+  },
+  "differential": {
+    "schema_version": 1,
+    "node_id": "P05",
+    "package_id": "v12-integration-proof-P05",
+    "native_verdict": "PASS",
+    "native_artifact_sha256": "705fb76e4310d21fddf208cf5a8ca939185d6adfd6c7e48df20c823ffcf9d801",
+    "native_backend": {
+      "kind": "pf_native",
+      "name": "pf_native:integration-proof",
+      "version": "1.2.0.dev0",
+      "detail": {
+        "checks": {
+          "K1_analyze_exits_0": true,
+          "K2_summary_exists": true
+        }
+      }
+    },
+    "shadow_verdict": "FAIL",
+    "shadow_artifact_sha256": "705fb76e4310d21fddf208cf5a8ca939185d6adfd6c7e48df20c823ffcf9d801",
+    "shadow_backend": {
+      "kind": "veriharness",
+      "name": "hoh",
+      "version": "unknown",
+      "detail": {
+        "herdr": false,
+        "bwrap": true,
+        "run_id": "PF-c6fa5b94-P05",
+        "evidence_note": "--no-herdr: keine A01/A02/A12-Akzeptanz-Evidenz (Subprocess-Dispatch statt Pane-Nachweis)",
+        "clone_fingerprint": "472898816b7987209ae153942f096d501928f173bded22dbbf28a197fc906351",
+        "clone_fingerprint_source": "hoh-repo/clone-manifest.json (ensure_clone)",
+        "blocked_kind": null,
+        "hoh_detail": {
+          "run_rc": 1,
+          "run_summary": "NOTE: started without Herdr. No Herdr endpoint is created, so this run does NOT count as evidence for A01/A02/A12.\nIteration aborted and run blocked: planner violates the output contract even after the repair; the repair budget is exhausted: the plan does not satisfy the contract: 3 validation errors for DevelopmentPlan\nacceptance_checks.0.command\n  Field required [type=missing, input_value={'check_id': 'K1', 'descr... on the committed CSV.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nacceptance_checks.1.command\n  Field required [type=missing, input_value={'check_id': 'K2', 'descr...to the base candidate.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nacceptance_checks.2.command\n  Field required [type=missing, input_value={'check_id': 'K3', 'descr...ming or speed numbers.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing",
+          "stage": "PLANNING",
+          "condition": "BLOCKED"
+        }
+      }
+    },
+    "provider_status": null,
+    "outcome": "MISMATCH",
+    "rationale": "native verdict PASS vs shadow verdict FAIL; not resolved automatically",
+    "created_at": "2026-10-05T05:57:40.741729Z"
+  },
+  "runtime": {
+    "wall_clock": "2026-10-05T05:56:05.312562Z -> 2026-10-05T05:57:40.741852Z",
+    "network": "LLM CLI dispatches only (claude/codex subscriptions)",
+    "llm_usage": "planner=claude, developer=codex, qa=codex, iterations=1, --no-herdr (subprocess dispatch; herdr pane stalls with new CLI TUIs — evidence trade-off documented: no A01/A02/A12 pane evidence)",
+    "cost": "subscription quota, not measurable per-run"
+  },
+  "cleanup": {
+    "herdr_tabs_after": []
+  },
+  "note": "",
+  "doctor": {
+    "executable": "~/paper-factory/.venv/bin/hoh",
+    "present": true,
+    "herdr": true,
+    "bwrap": true
+  },
+  "hoh_run_id": "PF-c6fa5b94-P05",
+  "finished_at": "2026-10-05T05:57:40.741852Z"
+}

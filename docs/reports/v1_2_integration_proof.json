@@ -1,0 +1,155 @@
+{
+  "proof": "v1.2 REAL VeriHarness integration proof",
+  "started_at": "2026-10-05T06:08:55.654929Z",
+  "pf_head": "58b3a80",
+  "veriharness": {
+    "package": "hoh",
+    "version": "0.1.0",
+    "commit": "5d576bd"
+  },
+  "work_package": {
+    "package_id": "v12-integration-proof-P05",
+    "artifacts": [
+      {
+        "rel_path": "code/analyze.py",
+        "sha256": "3c3ad482e008eafdf698ba3e10351497d481e1eedd3c25bf2e7071a875a33228",
+        "kind": "source"
+      },
+      {
+        "rel_path": "results/summary.json",
+        "sha256": "ef8958ca206a23f2469d16c55c6346d1791bedf3f3c8057655f159670369d8f6",
+        "kind": "result"
+      }
+    ],
+    "binding": "705fb76e4310d21fddf208cf5a8ca939185d6adfd6c7e48df20c823ffcf9d801"
+  },
+  "native": {
+    "verdict": "PASS",
+    "artifact_sha256": "705fb76e4310d21fddf208cf5a8ca939185d6adfd6c7e48df20c823ffcf9d801",
+    "checks": {
+      "K1_analyze_exits_0": true,
+      "K2_summary_exists": true
+    }
+  },
+  "veriharness_result": {
+    "verdict": "PASS",
+    "artifact_sha256": "705fb76e4310d21fddf208cf5a8ca939185d6adfd6c7e48df20c823ffcf9d801",
+    "backend": {
+      "kind": "veriharness",
+      "name": "hoh",
+      "version": "unknown",
+      "detail": {
+        "herdr": false,
+        "bwrap": true,
+        "run_id": "PF-938286ae-P05",
+        "evidence_note": "--no-herdr: keine A01/A02/A12-Akzeptanz-Evidenz (Subprocess-Dispatch statt Pane-Nachweis)",
+        "clone_fingerprint": "82a0ef62e2a4fb8349c4c81ece0a2c62af9792bd7599a38058540fb142874280",
+        "clone_fingerprint_source": "hoh-repo/clone-manifest.json (ensure_clone)",
+        "blocked_kind": null,
+        "hoh_detail": {
+          "run_rc": 0,
+          "run_summary": "Iteration 1: accepted -- all criteria demonstrated\n{\n  \"iterations_run\": 1,\n  \"closed_tabs\": [],\n  \"unconfirmed_open\": [],\n  \"cost\": \"No cost approval on file. HoH does not invent one -- the chargeable share stays declared as open: 3 role runs dispatched, actual token and money cost unknown. A provider request that has already been dispatched can still incur cost even after a local stop.\",\n  \"rotated\": {\n    \"states\": [],\n    \"arenas\": [\n      \".hoh-out-PF-938286ae-P05-i1-a1-K2-basis.log\",\n      \".hoh-out-PF-938286ae-P05-i1-a1-K1-basis.log\",\n      \".hoh-out-PF-938286ae-P05-i1-a1-K3-basis.log\",\n      \".hoh-out-PF-938286ae-P05-i1-a1-K4-basis.log\",\n      \".hoh-out-PF-938286ae-P05-i1-a1-K2.log\"\n    ]\n  },\n  \"stage\": \"CHECKPOINTED\",\n  \"condition\": \"ACTIVE\",\n  \"accepted_candidate\": \"PF-938286ae-P05-i1\",\n  \"endpoints\": {\n    \"planner\": \"subprocess:codex/rc=0\",\n    \"developer\": \"subprocess:codex/rc=0\",\n    \"qa\": \"subprocess:codex/rc=0\"\n  }\n}",
+          "stage": "CHECKPOINTED",
+          "condition": "ACTIVE"
+        }
+      }
+    },
+    "provider_status": null
+  },
+  "differential": {
+    "schema_version": 1,
+    "node_id": "P05",
+    "package_id": "v12-integration-proof-P05",
+    "native_verdict": "PASS",
+    "native_artifact_sha256": "705fb76e4310d21fddf208cf5a8ca939185d6adfd6c7e48df20c823ffcf9d801",
+    "native_backend": {
+      "kind": "pf_native",
+      "name": "pf_native:integration-proof",
+      "version": "1.2.0.dev0",
+      "detail": {
+        "checks": {
+          "K1_analyze_exits_0": true,
+          "K2_summary_exists": true
+        }
+      }
+    },
+    "shadow_verdict": "PASS",
+    "shadow_artifact_sha256": "705fb76e4310d21fddf208cf5a8ca939185d6adfd6c7e48df20c823ffcf9d801",
+    "shadow_backend": {
+      "kind": "veriharness",
+      "name": "hoh",
+      "version": "unknown",
+      "detail": {
+        "herdr": false,
+        "bwrap": true,
+        "run_id": "PF-938286ae-P05",
+        "evidence_note": "--no-herdr: keine A01/A02/A12-Akzeptanz-Evidenz (Subprocess-Dispatch statt Pane-Nachweis)",
+        "clone_fingerprint": "82a0ef62e2a4fb8349c4c81ece0a2c62af9792bd7599a38058540fb142874280",
+        "clone_fingerprint_source": "hoh-repo/clone-manifest.json (ensure_clone)",
+        "blocked_kind": null,
+        "hoh_detail": {
+          "run_rc": 0,
+          "run_summary": "Iteration 1: accepted -- all criteria demonstrated\n{\n  \"iterations_run\": 1,\n  \"closed_tabs\": [],\n  \"unconfirmed_open\": [],\n  \"cost\": \"No cost approval on file. HoH does not invent one -- the chargeable share stays declared as open: 3 role runs dispatched, actual token and money cost unknown. A provider request that has already been dispatched can still incur cost even after a local stop.\",\n  \"rotated\": {\n    \"states\": [],\n    \"arenas\": [\n      \".hoh-out-PF-938286ae-P05-i1-a1-K2-basis.log\",\n      \".hoh-out-PF-938286ae-P05-i1-a1-K1-basis.log\",\n      \".hoh-out-PF-938286ae-P05-i1-a1-K3-basis.log\",\n      \".hoh-out-PF-938286ae-P05-i1-a1-K4-basis.log\",\n      \".hoh-out-PF-938286ae-P05-i1-a1-K2.log\"\n    ]\n  },\n  \"stage\": \"CHECKPOINTED\",\n  \"condition\": \"ACTIVE\",\n  \"accepted_candidate\": \"PF-938286ae-P05-i1\",\n  \"endpoints\": {\n    \"planner\": \"subprocess:codex/rc=0\",\n    \"developer\": \"subprocess:codex/rc=0\",\n    \"qa\": \"subprocess:codex/rc=0\"\n  }\n}",
+          "stage": "CHECKPOINTED",
+          "condition": "ACTIVE"
+        }
+      }
+    },
+    "provider_status": null,
+    "outcome": "MATCH",
+    "rationale": "identical verdicts and identical artifact binding (705fb76e4310d21fddf208cf5a8ca939185d6adfd6c7e48df20c823ffcf9d801); the binding is the caller-declared package manifest and is identical by construction — the backend did not independently re-hash the artifacts, so this is agreement on a shared declaration, not an independent artifact audit",
+    "created_at": "2026-10-05T06:15:43.410551Z"
+  },
+  "runtime": {
+    "wall_clock": "2026-10-05T06:08:55.654929Z -> 2026-10-05T06:15:43.410658Z",
+    "network": "LLM CLI dispatches only (claude/codex subscriptions)",
+    "llm_usage": "planner=codex, developer=codex, qa=codex, iterations=1, --no-herdr (subprocess dispatch; herdr pane stalls with new CLI TUIs — evidence trade-off documented: no A01/A02/A12 pane evidence)",
+    "cost": "subscription quota, not measurable per-run"
+  },
+  "cleanup": {
+    "herdr_tabs_after": []
+  },
+  "note": "",
+  "doctor": {
+    "executable": "~/paper-factory/.venv/bin/hoh",
+    "present": true,
+    "herdr": true,
+    "bwrap": true
+  },
+  "hoh_run_id": "PF-938286ae-P05",
+  "finished_at": "2026-10-05T06:15:43.410658Z",
+  "receipts": [
+    {
+      "file": "PF-938286ae-P05-i1-a1-K1-basis.json",
+      "sha256": "d6f5b5a54567705540a48e423c1ad34a3d6e8b0330c53596ebcc7d7dc5bb6a31"
+    },
+    {
+      "file": "PF-938286ae-P05-i1-a1-K1.json",
+      "sha256": "1498ee09c10d2c65021c0e9dfe0502261498ffc1f1870888cdf8213d88d70c69"
+    },
+    {
+      "file": "PF-938286ae-P05-i1-a1-K2-basis.json",
+      "sha256": "4a45d7dc1705f5b6be0aeeace403006d3078ec008e5230f423251a538bb8c05c"
+    },
+    {
+      "file": "PF-938286ae-P05-i1-a1-K2.json",
+      "sha256": "6f8ccd793aabc27a5ac556bc6c0926ebfb0603deda9fb300f578762ccab2ec9b"
+    },
+    {
+      "file": "PF-938286ae-P05-i1-a1-K3-basis.json",
+      "sha256": "88caa1576b1057d48a602880cb6f8670aa71b1845c5af83e76216fce06728475"
+    },
+    {
+      "file": "PF-938286ae-P05-i1-a1-K3.json",
+      "sha256": "d9bf3d52656f4cb267a4d1675287713b5af2039539ca550c09044bd481ae596b"
+    },
+    {
+      "file": "PF-938286ae-P05-i1-a1-K4-basis.json",
+      "sha256": "c351bbfd2eb65c93eda4df96560e7470646273f46cbbb37ab126c5a8afeb0149"
+    },
+    {
+      "file": "PF-938286ae-P05-i1-a1-K4.json",
+      "sha256": "b0761b95cf8bd0cf1b6e66a97433782b61d474045f6d6633372753d3b065ef95"
+    }
+  ]
+}

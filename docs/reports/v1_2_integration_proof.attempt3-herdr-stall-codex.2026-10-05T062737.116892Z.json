@@ -1,0 +1,69 @@
+{
+  "proof": "v1.2 REAL VeriHarness integration proof",
+  "attempt": 3,
+  "reconstructed_from": ".archiv/integration-proof-v12.v1.2026-10-05T055605.316535Z",
+  "reconstructed_at": "2026-10-05T06:27:37.113744+00:00",
+  "original_evidence_overwritten": true,
+  "note": "REKONSTRUKTION: Das Original-attempt3-JSON wurde vom nächsten Proof-Lauf überschrieben, bevor es archiviert wurde. Diese Datei rekonstruiert die Evidenz aus dem archivierten Run-Tree (state.json + telemetry.jsonl). Nur aus dem Run-Tree belegbare Felder sind gefüllt; der native PF-Teil war bei allen Versuchen PASS, ist aus dem Run-Tree aber nicht belegbar -> null.",
+  "pf_head": null,
+  "veriharness": {
+    "package": "hoh",
+    "version": null,
+    "commit": null
+  },
+  "work_package": {
+    "package_id": null,
+    "artifacts": [
+      {
+        "rel_path": "code/analyze.py",
+        "sha256": "3c3ad482e008eafdf698ba3e10351497d481e1eedd3c25bf2e7071a875a33228",
+        "kind": "source"
+      },
+      {
+        "rel_path": "results/summary.json",
+        "sha256": "ef8958ca206a23f2469d16c55c6346d1791bedf3f3c8057655f159670369d8f6",
+        "kind": "result"
+      }
+    ],
+    "binding": "705fb76e4310d21fddf208cf5a8ca939185d6adfd6c7e48df20c823ffcf9d801",
+    "note": "Artifacts aus dem archivierten PF-owned Clone gehasht (Stand vor dem Run)"
+  },
+  "native": {
+    "verdict": null,
+    "artifact_sha256": null,
+    "checks": null,
+    "note": "native PF-Seite: bei allen Versuchen PASS, aus dem Run-Tree nicht belegbar"
+  },
+  "veriharness_result": {
+    "verdict": "FAIL",
+    "artifact_sha256": null,
+    "hoh_run_id": "PF-7aeb552c-P05",
+    "stage": "DEVELOPING",
+    "condition": "BLOCKED",
+    "blocked_kind": null,
+    "planner": {
+      "provider": "claude",
+      "dispatcher": "HerdrDispatcher",
+      "outcome": "ok",
+      "wallclock_seconds": 122.0
+    },
+    "developer": {
+      "provider": "codex",
+      "dispatcher": "HerdrDispatcher",
+      "outcome": "failed",
+      "failure_class": "UNKNOWN",
+      "wallclock_seconds": 11.0,
+      "detail": "developer dispatch failed: {\"error\":{\"code\":\"agent_prompt_stalled\",\"message\":\"agent prompt produced no observed state change within 5000 ms; status is idle and state_change_seq remained 3399\"},\"id\":\"cli:agent:prompt\"}\n--- Visible in pane ---\n(empty)\n-----------------------"
+    },
+    "evidence_note": "codex im herdr-Pane: leeres Pane ('--- Visible in pane --- (empty)'), herdr 5s-Stall-Fenster -> agent_prompt_stalled"
+  },
+  "differential": null,
+  "differential_note": "DifferentialReceipt des Versuchs ging mit dem Original-JSON verloren; Ausgang FAIL (HoH BLOCKED) vs native PASS -> MISMATCH, analog Versuch 2",
+  "hoh_run_id": "PF-7aeb552c-P05",
+  "runtime": {
+    "started_at": "2026-10-05T05:44:13Z",
+    "finished_at": "2026-10-05T05:46:26Z",
+    "llm_usage": "planner=claude, developer=codex, iterations=1, herdr-Pane-Dispatch"
+  },
+  "finished_at": "2026-10-05T05:46:26Z"
+}

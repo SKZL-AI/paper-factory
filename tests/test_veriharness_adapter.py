@@ -689,3 +689,20 @@ def test_verify_default_still_requires_herdr(tmp_path, monkeypatch, stub_clone):
     res = e.adapter.verify(make_package())
     assert res.verdict == Verdict.DEGRADED
     assert _hoh_run_argv(e) == []
+
+
+# --------------------------------------------------------------------------- #
+# A-12 (proof review): the --no-herdr evidence_note must survive the legacy
+# shim mapping into HohResult.detail — the DAG gate forwards it to the node.
+# --------------------------------------------------------------------------- #
+
+
+def test_shim_no_herdr_carries_evidence_note(env, stub_clone, tmp_path, monkeypatch):
+    spec = tmp_path / "spec.md"
+    spec.write_text("# spec\n", encoding="utf-8")
+    res = env.adapter.verify_work_package("P05", spec, use_herdr=False)
+    assert res.verdict == Verdict.PASS
+    assert "A01/A02/A12" in res.detail["evidence_note"], (
+        "shim must carry the backend evidence_note into HohResult.detail"
+    )
+    assert res.detail.get("herdr") is False

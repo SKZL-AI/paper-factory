@@ -324,6 +324,10 @@ def _apply_hoh_gate(ctx: NodeContext, node_id: str, result, outcome: NodeOutcome
     outcome.detail["hoh_verdict"] = result.verdict.value
     outcome.detail["hoh_receipts"] = len(result.receipts)
     outcome.detail["hoh_blocked_kind"] = result.blocked_kind
+    if isinstance(result.detail, dict) and result.detail.get("evidence_note"):
+        # e.g. the --no-herdr acceptance-evidence trade-off (review A-12):
+        # visible on the node detail, never silently dropped by the gate path
+        outcome.detail["hoh_evidence_note"] = result.detail["evidence_note"]
     for r in result.receipts:
         ctx.workspace.record_receipt(
             r["receipt_file"],

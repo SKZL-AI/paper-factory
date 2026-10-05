@@ -1,0 +1,119 @@
+{
+  "proof": "v1.2 REAL VeriHarness integration proof",
+  "started_at": "2026-10-05T04:20:25.716211Z",
+  "pf_head": "f07690a",
+  "veriharness": {
+    "package": "hoh",
+    "version": "0.1.0",
+    "commit": "5d576bd"
+  },
+  "work_package": {
+    "package_id": "v12-integration-proof-P05",
+    "artifacts": [
+      {
+        "rel_path": "code/analyze.py",
+        "sha256": "3c3ad482e008eafdf698ba3e10351497d481e1eedd3c25bf2e7071a875a33228",
+        "kind": "source"
+      },
+      {
+        "rel_path": "results/summary.json",
+        "sha256": "ef8958ca206a23f2469d16c55c6346d1791bedf3f3c8057655f159670369d8f6",
+        "kind": "result"
+      }
+    ],
+    "binding": "705fb76e4310d21fddf208cf5a8ca939185d6adfd6c7e48df20c823ffcf9d801"
+  },
+  "native": {
+    "verdict": "PASS",
+    "artifact_sha256": "705fb76e4310d21fddf208cf5a8ca939185d6adfd6c7e48df20c823ffcf9d801",
+    "checks": {
+      "K1_analyze_exits_0": true,
+      "K2_summary_exists": true
+    }
+  },
+  "veriharness_result": {
+    "verdict": "FAIL",
+    "artifact_sha256": "705fb76e4310d21fddf208cf5a8ca939185d6adfd6c7e48df20c823ffcf9d801",
+    "backend": {
+      "kind": "veriharness",
+      "name": "hoh",
+      "version": "unknown",
+      "detail": {
+        "herdr": true,
+        "bwrap": true,
+        "run_id": "PF-73ed7828-P05",
+        "clone_fingerprint": "73ffff407cb819823d42b2a86f2659c9f53b02dc79316e0228c2bb1c6fdc8c61",
+        "clone_fingerprint_source": "hoh-repo/clone-manifest.json (ensure_clone)",
+        "blocked_kind": null,
+        "hoh_detail": {
+          "run_rc": 1,
+          "run_summary": "Iteration aborted and run blocked: planner dispatch failed: {\"error\":{\"code\":\"agent_prompt_stalled\",\"message\":\"agent prompt produced no observed state change within 5000 ms; status is idle and state_change_seq remained 3335\"},\"id\":\"cli:agent:prompt\"}\n--- Visible in pane ---\non is spent. If you need the path as a string, write the literal\n    token {ARENA} -- the runner substitutes the real absolute path.\n  * The interpreter is a **bare system `python3`**. Do not assume `pytest`,\n    `ruff` or anything else from the project's development environment is\n    importable; `python3 -m unittest` is available everywhere. If a tool may be\n    missing, the criterion has to work without it.\n  * There is no network. A command that fetches something will fail.\n  * The command must not write into the directory under test. A check that\n    rewrites what it checks has invalidated its own result.\n  /answer-file\n  Write your JSON answer **as a file** to:\n    ~/paper-factory/pilots/integration-proof-v12/project/.paper-factory/hoh-ru\n  ns/PF-73ed7828-P05/answers/i1-a0-planner.json\n  Only the JSON object, nothing else -- no code fence, no surrounding text. Reply\n  in the chat with a single sentence saying that the file is written. The file is\n  authoritative; your chat text is not evaluated.\n────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ auto mode on (shift+tab to cycle)                       ctrl+g to edit in VS Code\n-----------------------",
+          "stage": "PLANNING",
+          "condition": "BLOCKED"
+        }
+      }
+    },
+    "provider_status": null
+  },
+  "differential": {
+    "schema_version": 1,
+    "node_id": "P05",
+    "package_id": "v12-integration-proof-P05",
+    "native_verdict": "PASS",
+    "native_artifact_sha256": "705fb76e4310d21fddf208cf5a8ca939185d6adfd6c7e48df20c823ffcf9d801",
+    "native_backend": {
+      "kind": "pf_native",
+      "name": "pf_native:integration-proof",
+      "version": "1.2.0.dev0",
+      "detail": {
+        "checks": {
+          "K1_analyze_exits_0": true,
+          "K2_summary_exists": true
+        }
+      }
+    },
+    "shadow_verdict": "FAIL",
+    "shadow_artifact_sha256": "705fb76e4310d21fddf208cf5a8ca939185d6adfd6c7e48df20c823ffcf9d801",
+    "shadow_backend": {
+      "kind": "veriharness",
+      "name": "hoh",
+      "version": "unknown",
+      "detail": {
+        "herdr": true,
+        "bwrap": true,
+        "run_id": "PF-73ed7828-P05",
+        "clone_fingerprint": "73ffff407cb819823d42b2a86f2659c9f53b02dc79316e0228c2bb1c6fdc8c61",
+        "clone_fingerprint_source": "hoh-repo/clone-manifest.json (ensure_clone)",
+        "blocked_kind": null,
+        "hoh_detail": {
+          "run_rc": 1,
+          "run_summary": "Iteration aborted and run blocked: planner dispatch failed: {\"error\":{\"code\":\"agent_prompt_stalled\",\"message\":\"agent prompt produced no observed state change within 5000 ms; status is idle and state_change_seq remained 3335\"},\"id\":\"cli:agent:prompt\"}\n--- Visible in pane ---\non is spent. If you need the path as a string, write the literal\n    token {ARENA} -- the runner substitutes the real absolute path.\n  * The interpreter is a **bare system `python3`**. Do not assume `pytest`,\n    `ruff` or anything else from the project's development environment is\n    importable; `python3 -m unittest` is available everywhere. If a tool may be\n    missing, the criterion has to work without it.\n  * There is no network. A command that fetches something will fail.\n  * The command must not write into the directory under test. A check that\n    rewrites what it checks has invalidated its own result.\n  /answer-file\n  Write your JSON answer **as a file** to:\n    ~/paper-factory/pilots/integration-proof-v12/project/.paper-factory/hoh-ru\n  ns/PF-73ed7828-P05/answers/i1-a0-planner.json\n  Only the JSON object, nothing else -- no code fence, no surrounding text. Reply\n  in the chat with a single sentence saying that the file is written. The file is\n  authoritative; your chat text is not evaluated.\n────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ auto mode on (shift+tab to cycle)                       ctrl+g to edit in VS Code\n-----------------------",
+          "stage": "PLANNING",
+          "condition": "BLOCKED"
+        }
+      }
+    },
+    "provider_status": null,
+    "outcome": "MISMATCH",
+    "rationale": "native verdict PASS vs shadow verdict FAIL; not resolved automatically",
+    "created_at": "2026-10-05T04:20:37.435803Z"
+  },
+  "runtime": {
+    "wall_clock": "2026-10-05T04:20:25.716211Z -> 2026-10-05T04:20:37.435892Z",
+    "network": "LLM CLI dispatches only (claude/kimi/codex subscriptions)",
+    "llm_usage": "planner=claude, developer=kimi, qa=codex, iterations=1",
+    "cost": "subscription quota, not measurable per-run"
+  },
+  "cleanup": {
+    "herdr_tabs_after": []
+  },
+  "note": "",
+  "doctor": {
+    "executable": "~/paper-factory/.venv/bin/hoh",
+    "present": true,
+    "herdr": true,
+    "bwrap": true
+  },
+  "hoh_run_id": "PF-73ed7828-P05",
+  "finished_at": "2026-10-05T04:20:37.435892Z"
+}

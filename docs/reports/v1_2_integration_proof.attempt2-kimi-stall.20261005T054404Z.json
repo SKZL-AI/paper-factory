@@ -1,0 +1,119 @@
+{
+  "proof": "v1.2 REAL VeriHarness integration proof",
+  "started_at": "2026-10-05T05:32:48.750567Z",
+  "pf_head": "f07690a",
+  "veriharness": {
+    "package": "hoh",
+    "version": "0.1.0",
+    "commit": "5d576bd"
+  },
+  "work_package": {
+    "package_id": "v12-integration-proof-P05",
+    "artifacts": [
+      {
+        "rel_path": "code/analyze.py",
+        "sha256": "3c3ad482e008eafdf698ba3e10351497d481e1eedd3c25bf2e7071a875a33228",
+        "kind": "source"
+      },
+      {
+        "rel_path": "results/summary.json",
+        "sha256": "ef8958ca206a23f2469d16c55c6346d1791bedf3f3c8057655f159670369d8f6",
+        "kind": "result"
+      }
+    ],
+    "binding": "705fb76e4310d21fddf208cf5a8ca939185d6adfd6c7e48df20c823ffcf9d801"
+  },
+  "native": {
+    "verdict": "PASS",
+    "artifact_sha256": "705fb76e4310d21fddf208cf5a8ca939185d6adfd6c7e48df20c823ffcf9d801",
+    "checks": {
+      "K1_analyze_exits_0": true,
+      "K2_summary_exists": true
+    }
+  },
+  "veriharness_result": {
+    "verdict": "FAIL",
+    "artifact_sha256": "705fb76e4310d21fddf208cf5a8ca939185d6adfd6c7e48df20c823ffcf9d801",
+    "backend": {
+      "kind": "veriharness",
+      "name": "hoh",
+      "version": "unknown",
+      "detail": {
+        "herdr": true,
+        "bwrap": true,
+        "run_id": "PF-581db7b3-P05",
+        "clone_fingerprint": "c7ca02824a412f72de56a2a5781c877869c57c7d47fcef972d1a94905380641b",
+        "clone_fingerprint_source": "hoh-repo/clone-manifest.json (ensure_clone)",
+        "blocked_kind": null,
+        "hoh_detail": {
+          "run_rc": 1,
+          "run_summary": "Iteration aborted and run blocked: developer dispatch failed: {\"error\":{\"code\":\"agent_prompt_stalled\",\"message\":\"agent prompt produced no observed state change within 5000 ms; status is idle and state_change_seq remained 3377\"},\"id\":\"cli:agent:prompt\"}\n--- Visible in pane ---\n✦ Kimi Code Desktop is here — Everything you love about Kimi Code, now on desktop\n   Run /desktop or visit https://www.kimi.com/code to install\n   No session yet — one will be created on your first message.\n ╭────────────────────────────────────────────────────────────────────────────────────╮\n │ >                                                                                  │\n ╰────────────────────────────────────────────────────────────────────────────────────╯\n K3 thinking: high  …/project/.paper-factory/hoh-repo  main [±]\n                                                                     context: 0% (0/1M)\n-----------------------",
+          "stage": "DEVELOPING",
+          "condition": "BLOCKED"
+        }
+      }
+    },
+    "provider_status": null
+  },
+  "differential": {
+    "schema_version": 1,
+    "node_id": "P05",
+    "package_id": "v12-integration-proof-P05",
+    "native_verdict": "PASS",
+    "native_artifact_sha256": "705fb76e4310d21fddf208cf5a8ca939185d6adfd6c7e48df20c823ffcf9d801",
+    "native_backend": {
+      "kind": "pf_native",
+      "name": "pf_native:integration-proof",
+      "version": "1.2.0.dev0",
+      "detail": {
+        "checks": {
+          "K1_analyze_exits_0": true,
+          "K2_summary_exists": true
+        }
+      }
+    },
+    "shadow_verdict": "FAIL",
+    "shadow_artifact_sha256": "705fb76e4310d21fddf208cf5a8ca939185d6adfd6c7e48df20c823ffcf9d801",
+    "shadow_backend": {
+      "kind": "veriharness",
+      "name": "hoh",
+      "version": "unknown",
+      "detail": {
+        "herdr": true,
+        "bwrap": true,
+        "run_id": "PF-581db7b3-P05",
+        "clone_fingerprint": "c7ca02824a412f72de56a2a5781c877869c57c7d47fcef972d1a94905380641b",
+        "clone_fingerprint_source": "hoh-repo/clone-manifest.json (ensure_clone)",
+        "blocked_kind": null,
+        "hoh_detail": {
+          "run_rc": 1,
+          "run_summary": "Iteration aborted and run blocked: developer dispatch failed: {\"error\":{\"code\":\"agent_prompt_stalled\",\"message\":\"agent prompt produced no observed state change within 5000 ms; status is idle and state_change_seq remained 3377\"},\"id\":\"cli:agent:prompt\"}\n--- Visible in pane ---\n✦ Kimi Code Desktop is here — Everything you love about Kimi Code, now on desktop\n   Run /desktop or visit https://www.kimi.com/code to install\n   No session yet — one will be created on your first message.\n ╭────────────────────────────────────────────────────────────────────────────────────╮\n │ >                                                                                  │\n ╰────────────────────────────────────────────────────────────────────────────────────╯\n K3 thinking: high  …/project/.paper-factory/hoh-repo  main [±]\n                                                                     context: 0% (0/1M)\n-----------------------",
+          "stage": "DEVELOPING",
+          "condition": "BLOCKED"
+        }
+      }
+    },
+    "provider_status": null,
+    "outcome": "MISMATCH",
+    "rationale": "native verdict PASS vs shadow verdict FAIL; not resolved automatically",
+    "created_at": "2026-10-05T05:35:11.220330Z"
+  },
+  "runtime": {
+    "wall_clock": "2026-10-05T05:32:48.750567Z -> 2026-10-05T05:35:11.220408Z",
+    "network": "LLM CLI dispatches only (claude/kimi/codex subscriptions)",
+    "llm_usage": "planner=claude, developer=kimi, qa=codex, iterations=1",
+    "cost": "subscription quota, not measurable per-run"
+  },
+  "cleanup": {
+    "herdr_tabs_after": []
+  },
+  "note": "",
+  "doctor": {
+    "executable": "~/paper-factory/.venv/bin/hoh",
+    "present": true,
+    "herdr": true,
+    "bwrap": true
+  },
+  "hoh_run_id": "PF-581db7b3-P05",
+  "finished_at": "2026-10-05T05:35:11.220408Z"
+}
