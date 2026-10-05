@@ -1,0 +1,30 @@
+{
+  "environment": {
+    "platform": "linux-x86_64",
+    "python": "3.13.5"
+  },
+  "exporters": {
+    "prov": "paper_factory/export/prov.py (W3C PROV-JSON)",
+    "ro_crate": "paper_factory/export/rocrate.py (RO-Crate 1.3 / Process Run Crate 0.6 profile)",
+    "workflow_card": "paper_factory/export/workflow_card.py (derived summary, never a gate input)"
+  },
+  "files": {
+    "prov.json": "ad05b9ec1fe07fe211cdee5ebdb6e2ee0eb2366851966df7d6be2fce1e33464c",
+    "ro-crate-metadata.json": "704137eea2b06f543b19b11ba8f86b0d96a66c088c00fc109ec11a1fd7f89ffc",
+    "workflow_card.json": "919084d52ef063351b67d3d4b18e7aebe0d79e196460c48ed7ee70bbb62ace69",
+    "workflow_card.md": "65b6f98d21eccc03b611de4f7509bcd4f8fbc20fd28d06e2b3eac07dcb1bf063"
+  },
+  "generated_at": "2026-10-05T12:40:18.530971+00:00",
+  "scope_note": "Interchange export applies to Pilot A only: the existing Pilot B workspaces (v1.2 pilots) declare no reproduction capsule, so there is no capsule/receipt bundle to export \u2014 a documented gap, not a PASS.",
+  "source": {
+    "capsule_digest": "6b1efffda4f6f85ffbfb09dfeb3677440d45972862012af0f51fab145251eee3",
+    "capsule_id": "v1-3-repro-synth-01",
+    "classification": "REPRODUCED_EXACT",
+    "pilot": "pilots/v1-3-repro-synth/project",
+    "receipts": [
+      "exec-3551584deb734cb8b9d5ffc80c35f1d1",
+      "exec-07763ce472ae4139bfa9ba112ac61dd5"
+    ],
+    "report": ".paper-factory/reports/reproducibility.json"
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "capsule_digest": "see capsule.json (computed property)",
+  "environment": {
+    "platform": "linux-x86_64",
+    "python": "3.13.5"
+  },
+  "generated_at": "2026-10-05T12:49:21.041779+00:00",
+  "injections": [
+    {
+      "expectation": "P10 FAIL, visible 'capsule invalid' reason, no execution",
+      "expected_outcome_observed": true,
+      "injection": "C1-broken-capsule",
+      "method": "capsule.json replaced with invalid JSON ({not json)",
+      "observed": {
+        "p10_reason": "reproduction capsule invalid: 1 validation error for ReproductionCapsule\n  Invalid JSON: key must be a string at line 1 column 2 [type=json_invalid, input_value='{not json', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid",
+        "p10_status": "FAIL",
+        "report_written": false
+      }
+    },
+    {
+      "expectation": "classification MISMATCH, P10 FAIL, differing outputs recorded",
+      "expected_outcome_observed": true,
+      "injection": "C2-output-tampering",
+      "method": "pilot_compute.py patched with a uuid nonce per execution (code hash in the capsule updated to match); run 1 and run 2 of the same declared capsule therefore diverge",
+      "observed": {
+        "classification": "MISMATCH",
+        "differing_outputs": [
+          "summary.json",
+          "table.txt"
+        ],
+        "p10_status": "FAIL",
+        "run_output_hashes": [
+          {
+            "summary.json": "fa90fd3917514f5dcac2f5c06f942a98c846baa884797df24abb9c705c5bc5cb",
+            "table.txt": "fd26a96b6a17e26cee4967dc2e92bb662a459832c5d3ec5d2940c8d37a646175"
+          },
+          {
+            "summary.json": "56a1ef72b75b8420e9c9f6ceaa20d9b21540c59c881f6421ac052867d63b6659",
+            "table.txt": "60a98abf4a59761f3b4ee08438e23250486467fc1f652791de7c91c280d40022"
+          }
+        ],
+        "runs_diverged": true
+      },
+      "patched_script_sha256": "b1ee15079cbf2e297d3c51dfcd3390ff0580d7f5f0fbe9e5c16b2dc37acccd0f"
+    },
+    {
+      "expectation": "SnakemakeUnavailableError (fail-visible, honest UNAVAILABLE \u2014 no fake receipt); positive control via the PF venv must run",
+      "expected_outcome_observed": true,
+      "injection": "C3-backend-unavailable",
+      "method": "SnakemakeBackend probed with PATH emptied, via a symlink to the PF venv interpreter placed in a fresh scratch bin dir that has no snakemake binary (both probe paths miss)",
+      "negative_interpreter": "venv python3 via fresh scratch-dir symlink, PATH=\"\"",
+      "observed": {
+        "negative_message_sha256": "8c4835d085805db82988ff7d92fded5d849bf3648cfe51f27d598901a5bb8098",
+        "negative_probe": {
+          "exception": "SnakemakeUnavailableError",
+          "outcome": "UNAVAILABLE",
+          "probe_binary": null
+        },
+        "positive_control": {
+          "outcome": "UNEXPECTED_RUN",
+          "probe_binary": "~/paper-factory/.venv/bin/snakemake",
+          "status": "completed"
+        }
+      }
+    }
+  ],
+  "pilot": "pilots/v1-3-repro-synth/project",
+  "summary": {
+    "all_expected": true,
+    "expected_outcome_observed": 3,
+    "injections": 3
+  }
+}

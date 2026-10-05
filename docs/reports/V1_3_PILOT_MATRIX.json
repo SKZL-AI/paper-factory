@@ -1,0 +1,119 @@
+{
+  "branch": "v1.3/reproducibility-interchange",
+  "defer": [
+    "herdr+claude trust dialog (DEFERRED_HARDENING.md)",
+    "exports for Pilot B (no capsule declared)",
+    "Nextflow/CWL/ReproZip (v1.4 decision gates, unchanged)"
+  ],
+  "environment": {
+    "platform": "linux-x86_64",
+    "python": "3.13.5"
+  },
+  "exports": {
+    "dir": "docs/reports/v1_3/exports/v1-3-repro-synth",
+    "files": {
+      "export_manifest.json": "cd256b39803727aac41a8f8a307f0d960d5ff7af286db083e072a777502f7f06",
+      "prov.json": "ad05b9ec1fe07fe211cdee5ebdb6e2ee0eb2366851966df7d6be2fce1e33464c",
+      "ro-crate-metadata.json": "704137eea2b06f543b19b11ba8f86b0d96a66c088c00fc109ec11a1fd7f89ffc",
+      "workflow_card.json": "919084d52ef063351b67d3d4b18e7aebe0d79e196460c48ed7ee70bbb62ace69",
+      "workflow_card.md": "65b6f98d21eccc03b611de4f7509bcd4f8fbc20fd28d06e2b3eac07dcb1bf063"
+    },
+    "scope_note": "Pilot B workspaces declare no capsule \u2014 no export bundle; documented gap"
+  },
+  "generated_at": "2026-10-05T12:48:26.329239+00:00",
+  "head": "d5145c5",
+  "herdr_field_test": {
+    "addendum": "docs/reports/V1_3_WP1_HERDR_RUNTIME_HARDENING.md",
+    "evidence": "docs/reports/v1_3_integration_proof_herdr_20261005T124256Z.json",
+    "result": "herdr dispatch worked (no stall), planner completed; developer pane blocked on claude folder-trust dialog -> BLOCKED -> VH FAIL -> differential MISMATCH (native PASS)",
+    "run_id": "PF-4ca0e67c-P05",
+    "status": "executed_once_honest_negative"
+  },
+  "pilots": {
+    "A_synthetic_repro": {
+      "capsule_digest": "6b1efffda4f6f85ffbfb09dfeb3677440d45972862012af0f51fab145251eee3",
+      "capsule_id": "v1-3-repro-synth-01",
+      "command": "python -m paper_factory.cli.main --root pilots/v1-3-repro-synth/project --config-dir tests/e2e-config complete --offline --run-id v13-synth-a",
+      "evidence": {
+        "reproducibility_report": "pilots/v1-3-repro-synth/project/.paper-factory/reports/reproducibility.json",
+        "reproducibility_report_sha256": "6fc07be20f476c77ebc4a60576f457719ee2628b3633ac3ccaf7b3bf211c1d6f",
+        "run_stdout_sha256": "ab2c11fc2611645e32bd267ce6d6bc36c3f3d38edb17c87965958201e43a870c"
+      },
+      "honest_context": "overall FAILED is downstream of P10: P09 DEGRADED (no data sources), P31 HUMAN_REQUIRED (paperpal bridge), P32 FAIL (bib_exists)",
+      "output_hashes": {
+        "summary.json": "8f76c7d9d07d070ba3aa3fffa058a4d65212fc9a97915596587531ce1d4ec5b2",
+        "table.txt": "01e71442cf89bf465d78c3c972f8c969825b2dd62db8546e5e7e972d98a483de"
+      },
+      "p10": {
+        "classification": "REPRODUCED_EXACT",
+        "status": "PASS"
+      },
+      "project": "pilots/v1-3-repro-synth/project (gitignored local evidence)",
+      "run_id": "v13-synth-a"
+    },
+    "B_regression_differential": {
+      "conclusion": "no regression in existing pilot behavior",
+      "method": "scripts/pilot_differential.py, read-only over stored v1.2 pilot state, new output in docs/reports/v1_3/",
+      "pilots": {
+        "pilot-03-massinv-paper1": {
+          "mismatches": 0,
+          "native_verdicts": {
+            "DEGRADED": 4,
+            "NOT_RUN": 1,
+            "PASS": 33
+          },
+          "nodes": 38,
+          "outcome_distribution": {
+            "PROVIDER_UNAVAILABLE": 38
+          },
+          "run": "complete-20261002T143931.928898Z",
+          "v1_2_identical": true
+        },
+        "real-pilot-01-rerun": {
+          "mismatches": 0,
+          "native_verdicts": {
+            "DEGRADED": 5,
+            "HUMAN_REQUIRED": 1,
+            "PASS": 31,
+            "SKIPPED_DEPENDENCY": 1
+          },
+          "nodes": 38,
+          "outcome_distribution": {
+            "PROVIDER_UNAVAILABLE": 38
+          },
+          "run": "complete-20260925T162928Z",
+          "v1_2_identical": true
+        }
+      }
+    },
+    "C_failure_injections": {
+      "all_expected_outcomes_observed": true,
+      "injections": [
+        {
+          "id": "C1",
+          "injection": "broken capsule (invalid JSON)",
+          "observed": "P10 FAIL, 'reproduction capsule invalid', no execution"
+        },
+        {
+          "id": "C2",
+          "injection": "output tampering (uuid nonce, capsule code hash updated)",
+          "observed": "classification MISMATCH, differing [summary.json, table.txt], P10 FAIL"
+        },
+        {
+          "id": "C3",
+          "injection": "snakemake backend unavailable (empty PATH, scratch-symlink interpreter)",
+          "observed": "SnakemakeUnavailableError (honest UNAVAILABLE), positive control completed"
+        }
+      ],
+      "report": "docs/reports/v1_3/V1_3_PILOT_INJECTIONS.json",
+      "report_sha256": "d563f999199b4a6b1482426723c172e050546e99830cb795dfae906ccd750297",
+      "script": "scripts/pilot_injections_v13.py"
+    }
+  },
+  "suite": {
+    "duration_s": 104,
+    "passed": 948,
+    "skipped": 2
+  },
+  "wp": "v1.3 WP12 Pilot Matrix"
+}

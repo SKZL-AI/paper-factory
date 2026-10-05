@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "kind": "paper_factory.workflow_card",
+  "derived": true,
+  "disclaimer": "DERIVED SUMMARY: built exclusively from canonical machine evidence (ReproductionCapsule + ExecutionReceipts). This card is never a source of truth and never a gate input — PF-internal provenance and receipts remain authoritative.",
+  "capsule": {
+    "capsule_id": "v1-3-repro-synth-01",
+    "capsule_digest": "6b1efffda4f6f85ffbfb09dfeb3677440d45972862012af0f51fab145251eee3",
+    "command": [
+      "python3",
+      "pilot_compute.py"
+    ],
+    "cwd": ".",
+    "producer": {
+      "kind": "pf_native",
+      "name": "paper-factory",
+      "version": "1.3.0-dev"
+    },
+    "provenance_refs": [
+      "pilots/v1-3-repro-synth/"
+    ]
+  },
+  "environment": {
+    "python_version": "3.13.5",
+    "platform": "linux-x86_64",
+    "tool_versions": {},
+    "dependency_lock_ref": null,
+    "container_image": null
+  },
+  "inputs": [
+    {
+      "rel_path": "input.csv",
+      "sha256": "a487603cefcf181583cb697952dcd3eaf71632ec2a31c9f541055e9904689a48"
+    }
+  ],
+  "configs": [],
+  "code": [
+    {
+      "rel_path": "pilot_compute.py",
+      "sha256": "e0b2b4b8838bcf298dfe6e578c7b7a3ac37496d77b267a272442539bec4e6b83"
+    }
+  ],
+  "parameters": [],
+  "expected_outputs": [
+    "summary.json",
+    "table.txt"
+  ],
+  "declared_nondeterminism": [],
+  "semantic_rules": [],
+  "runs": [
+    {
+      "execution_id": "exec-3551584deb734cb8b9d5ffc80c35f1d1",
+      "receipt_id": "rcpt-38751786b8df4abeb6da3ae0c827272e",
+      "status": "completed",
+      "exit_code": 0,
+      "backend": {
+        "kind": "pf_native",
+        "name": "local-reproduction-runner",
+        "version": "0.1.0"
+      },
+      "started_at": "2026-10-05T12:32:13.847129+00:00",
+      "finished_at": "2026-10-05T12:32:13.864354+00:00",
+      "duration_seconds": 0.017,
+      "failure_reason": null,
+      "outputs": [
+        {
+          "rel_path": "summary.json",
+          "sha256": "8f76c7d9d07d070ba3aa3fffa058a4d65212fc9a97915596587531ce1d4ec5b2"
+        },
+        {
+          "rel_path": "table.txt",
+          "sha256": "01e71442cf89bf465d78c3c972f8c969825b2dd62db8546e5e7e972d98a483de"
+        }
+      ],
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "execution_id": "exec-07763ce472ae4139bfa9ba112ac61dd5",
+      "receipt_id": "rcpt-dc416bffaeec4a9db508ea5fd533e437",
+      "status": "completed",
+      "exit_code": 0,
+      "backend": {
+        "kind": "pf_native",
+        "name": "local-reproduction-runner",
+        "version": "0.1.0"
+      },
+      "started_at": "2026-10-05T12:32:13.866110+00:00",
+      "finished_at": "2026-10-05T12:32:13.883916+00:00",
+      "duration_seconds": 0.018,
+      "failure_reason": null,
+      "outputs": [
+        {
+          "rel_path": "summary.json",
+          "sha256": "8f76c7d9d07d070ba3aa3fffa058a4d65212fc9a97915596587531ce1d4ec5b2"
+        },
+        {
+          "rel_path": "table.txt",
+          "sha256": "01e71442cf89bf465d78c3c972f8c969825b2dd62db8546e5e7e972d98a483de"
+        }
+      ],
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "reproduction": {
+    "executions": 2,
+    "comparison": null
+  },
+  "limitations": []
+}
