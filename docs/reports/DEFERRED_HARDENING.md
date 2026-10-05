@@ -306,3 +306,35 @@ bewusste Design-Entscheidungen, nicht stille Annahmen:
   `wrapped` reicht) bleibt bei Bedarf — aktuell kein Consumer dafür im
   Pipeline-Pfad, und ohne Pane-Nachweis sättigt ein --no-herdr-Run das
   HoH-Receipt-Gate (U7) nur mit dokumentiertem Evidenz-Vorbehalt.
+
+## v1.2 Integration-Proof — Review-Nachträge (2026-10-05, Dual-Review JA/JA)
+
+Reviewer A (Integrity/Contract) und B (Receipt/Provenance/Isolation) auf
+`1e68d74..4d4f9e9` + Proof-Evidenz: beide JA, CRITICAL/MAJOR = 0. Getrackte
+Restpunkte:
+
+- **MINOR: `_hoh_result_from_verify` droppt top-level `evidence_note`/`herdr`
+  (Reviewer A, latent).** `handlers.py:302` kopiert nur
+  `backend.detail["hoh_detail"]`; die top-level-Felder, die `verify()` bei
+  `use_herdr=False` setzt, gingen im Gate-Pfad verloren. Heute unerreichbar
+  (Dualpfad ruft `verify(package)` ohne Optionen; `use_herdr=False` ist im DAG
+  nicht verdrahtet, vgl. A-15 oben). Vor einem künftigen DAG-Plumbing von
+  `use_herdr=False` muss die Mapping-Asymmetrie geschlossen werden, sonst
+  würde der Evidenz-Vorbehalt still verschwinden (Verletzung des
+  „never silently dropped"-Kommentars, handlers.py:328-329).
+- **MINOR: `_collect_receipts` validiert Receipt-Interna nicht
+  (Reviewer B).** `adapter.py:668-681` schützt run_id-Provenance nur indirekt
+  über Verzeichnis-Scoping (`runs_root/<run_id>/receipts`); ein inhaltlich
+  fremdes Receipt im eigenen Verzeichnis würde kopiert und SHA-registriert.
+  Hardening: beim Kollektieren `receipt["run_id"] == run_id` fail-visible
+  prüfen. Kein akuter Vektor (Receipt-Verzeichnis ist run-scoped und
+  PF-owned), aber ein billiger zusätzlicher Guard.
+- **NIT (A):** `shadow.py:14-15` Outcome-Docstring beschreibt MATCH ohne den
+  By-Construction-Vorbehalt, den die Dualpfad-Rationale trägt (shadow.py:111-116).
+  Generisch korrekt; bei Doc-Berührung präzisieren.
+- **NIT (A):** `iterations`-Backend-Option ohne Wertvalidierung (0/negativ
+  läuft bis zur CLI); DAG-Pfad kann Rollen nicht konfigurieren (Defaults nur)
+  — Feature-Lücke, kein Defekt.
+- **NIT (B):** Tilde-maskierte Home-Pfade (`~/paper-factory/…`) in
+  committeter Proof-Evidenz; vollständiges Entfernen der Pfad-Strings wäre
+  strenger. Akzeptiert: kein absoluter Pfad, keine Secrets (grep-bewiesen).
