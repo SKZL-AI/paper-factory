@@ -17,6 +17,7 @@ dependencies = [
 db = ["duckdb>=0.10", "pandas>=2.0", "pyarrow>=14.0"]
 literature = ["paperqa"]
 gateway = ["litellm>=1.40"]
+snakemake = ["snakemake>=9.0"]
 dev = ["pytest>=8.0", "ruff>=0.5"]
 
 [project.scripts]
