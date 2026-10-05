@@ -69,7 +69,7 @@ flowchart TD
 
 Full detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-### Verification Plane (v1.2, this branch)
+### Verification Plane (v1.2)
 
 The verification kernel sits behind a **versioned contract**, not behind
 per-node ad-hoc calls:
@@ -142,7 +142,7 @@ Real pilot (a mass-invariance research paper, draft-assisted intake):
 - 245 unique writing-assistant suggestions processed capture-only, 100 %
   dispositioned: 75 applied under semantic guards, 124 rejected with
   evidence, 46 not applicable
-- **751 tests passing** (+2 environment skips for Windows-only Word paths)
+- **769 tests passing** (+2 environment skips for Windows-only Word paths)
 
 Reports: [docs/reports/](docs/reports/) · Freeze evidence:
 [V1_FREEZE_REPORT.md](V1_FREEZE_REPORT.md)
@@ -171,7 +171,7 @@ runtime; not on PyPI — the core works without it) and the `hoh` PyPI package
 ```bash
 git clone https://github.com/SKZL-AI/paper-factory && cd paper-factory
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
-.venv/bin/python -m pytest tests -q     # 751 tests (+2 environment skips)
+.venv/bin/python -m pytest tests -q     # 769 tests (+2 environment skips)
 ```
 
 The test suite never spends LLM quota: E2E configs disable HoH nodes, and

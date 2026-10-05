@@ -5,7 +5,7 @@ Erstellt: 2026-10-04 · Baseline: HEAD `e1ccaac` (v1.1.0), Suite 622 passed + 2 
 
 Dieser Plan evaluiert den externen v1.2-Vorschlag gegen den tatsächlich
 inventarisierten Code (2026-10-04, zwei unabhängige Read-only-Inventuren von
-`/home/sai/paper-factory` und `/home/sai/veriharness`). Jede Empfehlung ist als
+`~/paper-factory` und `~/veriharness`). Jede Empfehlung ist als
 **REUSE / ADAPT / GENERALIZE / DEFER / REJECT** eingestuft. Nichts wird
 implementiert, nur weil es in einem Bericht steht.
 
@@ -16,14 +16,14 @@ implementiert, nur weil es in einem Bericht steht.
 | CURRENT_HEAD | `e1ccaac` (Tag v1.1.0) | git |
 | CURRENT_VERSION | 1.1.0 → Branch trägt `1.2.0.dev0` (PEP-440-Dev, kein Release) | pyproject.toml |
 | CURRENT_TEST_RESULT | 622 passed, 2 skipped (46.8s) | pytest-Log |
-| CURRENT_VH_VERSION | hoh 0.1.0, `v0.1.0-18-g5d576bd`, main clean | /home/sai/veriharness |
+| CURRENT_VH_VERSION | hoh 0.1.0, `v0.1.0-18-g5d576bd`, main clean | ~/veriharness |
 | PF↔VH-Integration | `adapters/veriharness/adapter.py` (263 Z.), einziger Einhängepunkt: `dag/handlers.py:120-181` Wrapper | Inventur |
 | HoH-fähige Nodes | `VERIHARNESS_CAPABLE = {P04,P05,P07,P09,P10,P16,P17,P18,P20}` (handlers.py:117), Config `hoh_nodes`, Default `["P05"]` | handlers.py:117, core/config.py:60-68 |
 | VeriharnessAdapter Unit-Tests | **keine** (nur E2E-Receipt-Lesetest, gemockte allgemeine Adapter-Tests) | tests/ |
 | paperqa im Code | **nirgends importiert** — nur pyproject-Extra, unbenutzter `LiteratureCfg.paperqa2`-Schalter, Inventory-Probing | Inventur |
 | State-Schema | SQLite (`runs.sqlite`), **keine Schema-Versionierung** | state/store.py:16-51 |
 | Modellierungsstil | Pydantic v2 (Main-Dependency) für Config/Findings/Claims/Receipts | pyproject.toml:10 |
-| VH-Contracts | Pydantic v2, `schema_version = 1` an RunState/SpecAmendment/DispatchRecord/ProjectState; CLI-first (`hoh start`/`hoh run`) ist der supported Integrationspfad, `hoh/__init__.py` leer | /home/sai/veriharness Inventur |
+| VH-Contracts | Pydantic v2, `schema_version = 1` an RunState/SpecAmendment/DispatchRecord/ProjectState; CLI-first (`hoh start`/`hoh run`) ist der supported Integrationspfad, `hoh/__init__.py` leer | ~/veriharness Inventur |
 
 Doku-Drift-Befund: README nennt 574 Tests (Stand v1.0); aktuell 622.
 Wird in WP9 korrigiert.
