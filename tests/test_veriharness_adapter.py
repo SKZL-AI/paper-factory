@@ -438,6 +438,49 @@ def test_run_phase_timeout_cleans_up_records_failure_and_propagates(
         fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
 
 
+def test_run_phase_failure_provenance_error_does_not_mask_original_exception(
+    env, stub_clone, tmp_path, monkeypatch
+):
+    """WP2: wenn im Exception-Pfad ein fremdes Receipt liegt, muss die
+    Original-Exception (hier TimeoutExpired) weiter propagieren — der
+    ReceiptValidationError aus dem Best-Effort-Cleanup darf sie nicht
+    ersetzen. Der Rejection-Marker liegt trotzdem auf Disk (fail-visible)."""
+    import subprocess as sp
+
+    adapter = env.adapter
+    monkeypatch.setattr(adapter, "_cleanup_panes", lambda run_id, state: None)
+    real_call = adapter._call
+
+    def failing_call(*args, **kw):
+        if "run" in args:
+            raise sp.TimeoutExpired(cmd="hoh run", timeout=kw.get("timeout", 7200))
+        return real_call(*args, **kw)
+
+    monkeypatch.setattr(adapter, "_call", failing_call)
+    # run_id is generated inside verify(); plant the foreign receipt lazily by
+    # intercepting _read_state (called in the exception path after start)
+    planted: list[str] = []
+    real_read_state = adapter._read_state
+
+    def planting_read_state(run_id):
+        if not planted:
+            planted.append(run_id)
+            fdir = adapter.runs_root / run_id / "receipts"
+            fdir.mkdir(parents=True, exist_ok=True)
+            (fdir / "foreign.json").write_text(
+                json.dumps({"run_id": "PF-foreign99-P05"}), encoding="utf-8"
+            )
+        return real_read_state(run_id)
+
+    monkeypatch.setattr(adapter, "_read_state", planting_read_state)
+    with pytest.raises(sp.TimeoutExpired):  # original exception, not ReceiptValidationError
+        adapter.verify(make_package())
+    assert planted, "run must have reached the exception path"
+    marker = env.ws.receipts_dir / "hoh" / planted[0] / "receipt_provenance.json"
+    assert marker.exists(), "rejection evidence must be on disk even in the failure path"
+    assert "foreign.json" in marker.read_text(encoding="utf-8")
+
+
 # --------------------------------------------------------------------------- #
 # F4 (review B-3): clone fingerprint must be content-based (git HEAD +
 # status digest), not mtime/size — and verify() must expose the clone

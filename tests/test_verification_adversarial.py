@@ -33,7 +33,7 @@ import pytest
 from pydantic import ValidationError
 
 from paper_factory.adapters.veriharness import adapter as adapter_mod
-from paper_factory.adapters.veriharness.adapter import VeriharnessAdapter
+from paper_factory.adapters.veriharness.adapter import ReceiptValidationError, VeriharnessAdapter
 from paper_factory.core.results import Verdict
 from paper_factory.state.store import Workspace
 from paper_factory.verification import registry
@@ -556,6 +556,79 @@ def test_sqlite_receipt_insert_or_replace_is_idempotent(tmp_path):
     rows = ws.receipts_for("run-1")
     assert len(rows) == 1  # replace, not duplicate
     assert rows[0]["sha256"] == SHA_B
+
+
+# --------------------------------------------------------------------------- #
+# 15. receipt run_id provenance at collection time (WP2, review B MINOR)
+# --------------------------------------------------------------------------- #
+
+
+def _collect_env(tmp_path):
+    ws = Workspace(tmp_path / "target")
+    adapter = VeriharnessAdapter(ws, hoh_executable="/fake/bin/hoh")
+    run_id = "PF-adv00010-P05"
+    rdir = adapter.runs_root / run_id / "receipts"
+    rdir.mkdir(parents=True)
+    return adapter, ws, run_id, rdir
+
+
+def test_collect_receipts_foreign_run_id_is_rejected_and_never_registered(tmp_path):
+    """Ein inhaltlich fremdes Receipt im eigenen Verzeichnis wird weder kopiert
+    noch SHA-registriert — ReceiptValidationError, Marker-Datei mit Grund."""
+    adapter, ws, run_id, rdir = _collect_env(tmp_path)
+    (rdir / "own.json").write_text(json.dumps({"run_id": run_id, "ok": True}), encoding="utf-8")
+    (rdir / "foreign.json").write_text(
+        json.dumps({"run_id": "PF-other0001-P05", "ok": True}), encoding="utf-8"
+    )
+    with pytest.raises(ReceiptValidationError) as exc_info:
+        adapter._collect_receipts(run_id)
+    assert "foreign.json" in str(exc_info.value)
+    assert "PF-other0001-P05" in str(exc_info.value)
+    dest = ws.receipts_dir / "hoh" / run_id
+    assert (dest / "own.json").exists()  # legitimes Receipt bleibt registriert
+    assert not (dest / "foreign.json").exists()  # fremdes Receipt nie kopiert
+    marker = json.loads((dest / "receipt_provenance.json").read_text(encoding="utf-8"))
+    assert marker["verified"] == ["own.json"]
+    assert marker["rejected"][0]["receipt_file"] == "foreign.json"
+    assert "PF-other0001-P05" in marker["rejected"][0]["reason"]
+    assert marker["unverified_no_run_id"] == []
+
+
+def test_collect_receipts_without_run_id_is_marked_not_silently_accepted(tmp_path):
+    """Fehlende run_id (HoH-interne Receipts tragen keine) bleibt aus
+    Backward-Compatibility akzeptiert, aber sichtbar markiert — nie still."""
+    adapter, ws, run_id, rdir = _collect_env(tmp_path)
+    (rdir / "hoh-internal.json").write_text(json.dumps({"stage": "qa"}), encoding="utf-8")
+    out = adapter._collect_receipts(run_id)
+    assert out[0]["receipt_file"] == "hoh-internal.json"
+    assert out[0]["run_id_provenance"] == "unverified_no_run_id"
+    marker = json.loads(
+        (ws.receipts_dir / "hoh" / run_id / "receipt_provenance.json").read_text(encoding="utf-8")
+    )
+    assert marker["unverified_no_run_id"] == ["hoh-internal.json"]
+    assert marker["rejected"] == []
+
+
+def test_collect_receipts_matching_run_id_is_verified(tmp_path):
+    adapter, ws, run_id, rdir = _collect_env(tmp_path)
+    (rdir / "verified.json").write_text(json.dumps({"run_id": run_id}), encoding="utf-8")
+    out = adapter._collect_receipts(run_id)
+    assert out[0]["run_id_provenance"] == "verified"
+    # nothing anomalous to record: no marker file for an all-clean collection
+    assert not (ws.receipts_dir / "hoh" / run_id / "receipt_provenance.json").exists()
+
+
+@pytest.mark.parametrize("payload", [
+    "{ not json",                       # unparseable
+    json.dumps([1, 2, 3]),              # non-object JSON
+    json.dumps("just a string"),        # non-object JSON
+])
+def test_collect_receipts_malformed_payloads_are_rejected(tmp_path, payload):
+    adapter, ws, run_id, rdir = _collect_env(tmp_path)
+    (rdir / "mal.json").write_text(payload, encoding="utf-8")
+    with pytest.raises(ReceiptValidationError):
+        adapter._collect_receipts(run_id)
+    assert not (ws.receipts_dir / "hoh" / run_id / "mal.json").exists()
 
 
 # --------------------------------------------------------------------------- #

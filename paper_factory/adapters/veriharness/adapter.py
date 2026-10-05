@@ -42,6 +42,13 @@ from ...verification.registry import VerificationBackend
 RUN_PREFIX = "PF-"
 
 
+class ReceiptValidationError(ValueError):
+    """Fail-visible: a receipt whose content-provenance contradicts the run
+    directory it was collected from must never be SHA-registered silently
+    (WP2, review B MINOR 2026-10-05). This is evidence tampering or a broken
+    producer — the run must fail loudly, not carry the receipt into the gate."""
+
+
 @dataclass
 class HohResult:
     run_id: str
@@ -585,7 +592,13 @@ class VeriharnessAdapter:
                         "best-effort pane cleanup executed, exception propagated",
                     },
                 )
-                self._collect_receipts(run_id)
+                try:
+                    self._collect_receipts(run_id)
+                except ReceiptValidationError:
+                    # a provenance violation here must not mask the original
+                    # run failure; _collect_receipts already persisted the
+                    # rejection record (receipt_provenance.json) on disk
+                    pass
                 if use_herdr:
                     self._cleanup_panes(run_id, state)
                 raise
@@ -665,19 +678,88 @@ class VeriharnessAdapter:
                 },
             )
 
+    def _validate_receipt_provenance(self, run_id: str, path: Path) -> str:
+        """Content check behind the directory scoping of _collect_receipts
+        (WP2, review B): runs_root/<run_id>/receipts scopes the PATH, but a
+        foreign receipt placed inside that directory was until now copied and
+        SHA-registered silently. Parse the receipt and verify its own run_id.
+
+        Returns "verified" when receipt["run_id"] == run_id, "unverified_no_run_id"
+        when the receipt carries no run_id at all (HoH-internal receipts are
+        not required to have one — those are marked visibly, not rejected, so
+        existing v1.2 runs keep working; backward compat). Raises
+        ReceiptValidationError on any provable contradiction (foreign run_id,
+        unparseable JSON, non-object payload); the caller records the verdict
+        for every file before re-raising, so the rejection evidence is
+        complete, not partial."""
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ReceiptValidationError(
+                f"receipt {path.name} is not parseable JSON ({exc}); "
+                f"refusing silent registration into run {run_id}"
+            ) from exc
+        if not isinstance(data, dict):
+            raise ReceiptValidationError(
+                f"receipt {path.name} is a {type(data).__name__}, not an object; "
+                f"refusing silent registration into run {run_id}"
+            )
+        receipt_run_id = data.get("run_id")
+        if receipt_run_id is None:
+            return "unverified_no_run_id"
+        if receipt_run_id != run_id:
+            raise ReceiptValidationError(
+                f"receipt {path.name} belongs to run {receipt_run_id!r}, not "
+                f"{run_id!r}; refusing to register foreign evidence"
+            )
+        return "verified"
+
     def _collect_receipts(self, run_id: str) -> list[dict[str, Any]]:
         out = []
+        rejected: list[dict[str, Any]] = []
+        unprovenanced: list[str] = []
         rdir = self.runs_root / run_id / "receipts"
         dest_dir = self.ws.receipts_dir / "hoh" / run_id
         if rdir.is_dir():
             for f in sorted(rdir.glob("*.json")):
+                try:
+                    provenance = self._validate_receipt_provenance(run_id, f)
+                except ReceiptValidationError as exc:
+                    rejected.append({"receipt_file": f.name, "reason": str(exc)})
+                    continue  # a foreign/tampered receipt is never copied or SHA-registered
+                if provenance == "unverified_no_run_id":
+                    unprovenanced.append(f.name)
                 dest_dir.mkdir(parents=True, exist_ok=True)
                 dest = dest_dir / f.name
                 if not dest.exists():
                     shutil.copy2(f, dest)
                 out.append(
-                    {"receipt_file": f.name, "copied_to": str(dest), "sha256": sha256_file(dest)}
+                    {
+                        "receipt_file": f.name,
+                        "copied_to": str(dest),
+                        "sha256": sha256_file(dest),
+                        "run_id_provenance": provenance,
+                    }
                 )
+        if rejected or unprovenanced:
+            # visible marker: the provenance verdict for every file lands
+            # next to the copies, never only in memory
+            write_json(
+                dest_dir / "receipt_provenance.json",
+                {
+                    "run_id": run_id,
+                    "at": utcnow(),
+                    "verified": [e["receipt_file"] for e in out
+                                 if e["run_id_provenance"] == "verified"],
+                    "unverified_no_run_id": unprovenanced,
+                    "rejected": rejected,
+                },
+            )
+        if rejected:
+            raise ReceiptValidationError(
+                f"{len(rejected)} receipt(s) failed run_id provenance for run {run_id}: "
+                + "; ".join(f"{r['receipt_file']}: {r['reason']}" for r in rejected)
+            )
         return out
 
 
