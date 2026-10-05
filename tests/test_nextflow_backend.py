@@ -11,10 +11,13 @@ skipped honestly when nextflow is not installed (same convention as the
 environment-gated snakemake skips)."""
 from __future__ import annotations
 
+import os
 import re
 import shlex
 import shutil
+import signal
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -265,6 +268,102 @@ def test_default_run_dir_cleaned_even_on_undeclared_output(tmp_path,
         NextflowBackend().run(capsule, root)
     leftover = {p.name for p in leak_probe.glob("pf-nextflow-*")} - before
     assert leftover == set(), f"leaked run directories: {leftover}"
+
+
+# --------------------------------------------------------------------------- #
+# Timeout reaping (review MAJOR-2 B) — fake executor that orphans a task
+# --------------------------------------------------------------------------- #
+
+_ORPHAN_TEMPLATE = '''\
+#!/usr/bin/env python3
+"""Simulates the Nextflow local executor: starts a task process in its OWN
+session (survives the wrapper's process-group kill), inheriting the pipes,
+then hangs so the backend's timeout path triggers."""
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+args = sys.argv[1:]
+if "-version" in args or "--version" in args:
+    print("nextflow version 26.9.9", file=sys.stderr)
+    sys.exit(0)
+main_nf = Path(args[args.index("run") + 1])
+orphan = subprocess.Popen(
+    ["sleep", "300"], cwd={task_cwd},
+    stdout=sys.stdout, stderr=sys.stderr, start_new_session=True)
+(main_nf.parent / "orphan.pid").write_text(str(orphan.pid))
+time.sleep(600)
+'''
+
+
+def _orphan_nextflow(tmp_path, monkeypatch, task_cwd: str):
+    binary = tmp_path / "fake_nextflow.py"
+    binary.write_text(_ORPHAN_TEMPLATE.format(task_cwd=repr(task_cwd)),
+                      encoding="utf-8")
+    binary.chmod(0o755)
+    monkeypatch.setattr(nextflow_backend, "nextflow_binary",
+                        lambda: str(binary))
+
+
+def _wait_gone(pid: int, timeout: float = 5.0) -> bool:
+    """True once `pid` is fully gone (incl. the post-SIGKILL zombie window)."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return True
+        time.sleep(0.05)
+    return False
+
+
+def test_timeout_reaps_orphaned_task_process(tmp_path, monkeypatch):
+    """MAJOR-2 B: a task the executor started OUTSIDE the wrapper's process
+    group must not survive a timeout. The backend reaps every process
+    provably owned by the run dir (its cwd is inside run_path) instead of
+    leaking it, and the pipe drain does not hang on the inherited ends."""
+    run_dir = tmp_path / "audit"
+    _orphan_nextflow(tmp_path, monkeypatch, task_cwd=str(run_dir))
+    capsule, root = _script_capsule(tmp_path, "pass\n", outputs=["o.txt"])
+    started = time.monotonic()
+    receipt = NextflowBackend().run(capsule, root, timeout=1.0,
+                                    run_dir=run_dir)
+    elapsed = time.monotonic() - started
+    assert receipt.status == "timeout"
+    assert elapsed < 60, f"drain was not bounded ({elapsed:.1f}s)"
+    assert nextflow_backend.run_owned_pids(run_dir) == []
+    orphan_pid = int((run_dir / "orphan.pid").read_text().strip())
+    assert _wait_gone(orphan_pid), \
+        f"orphaned task process {orphan_pid} survived the timeout reaping"
+
+
+def test_timeout_bounded_when_pipe_holders_escape_reaping(tmp_path,
+                                                          monkeypatch):
+    """A pipe-holding grandchild that is NOT provably PF-owned (cwd outside
+    the run dir, no run-path argument) must NOT be reaped; the drain is
+    bounded and the receipt records the capture as incomplete instead of
+    hanging forever."""
+    monkeypatch.setattr(nextflow_backend, "_DRAIN_GRACE", 1.0)
+    run_dir = tmp_path / "audit"
+    _orphan_nextflow(tmp_path, monkeypatch, task_cwd="/")
+    capsule, root = _script_capsule(tmp_path, "pass\n", outputs=["o.txt"])
+    started = time.monotonic()
+    try:
+        receipt = NextflowBackend().run(capsule, root, timeout=1.0,
+                                        run_dir=run_dir)
+        elapsed = time.monotonic() - started
+        assert receipt.status == "timeout"
+        assert elapsed < 30, f"drain was not bounded ({elapsed:.1f}s)"
+        assert "incomplete" in receipt.failure_reason
+        orphan_pid = int((run_dir / "orphan.pid").read_text().strip())
+        os.kill(orphan_pid, 0)  # not ours -> untouched, still running
+    finally:
+        orphan_pid = int((run_dir / "orphan.pid").read_text().strip())
+        try:
+            os.kill(orphan_pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
 
 
 # --------------------------------------------------------------------------- #
