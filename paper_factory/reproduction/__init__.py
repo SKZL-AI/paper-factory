@@ -1,9 +1,10 @@
-"""Reproduction plane: versioned capsule contract (WP4) and native local
-runner (WP5; differential lands in WP6). PF owns these types; runners consume
-a ReproductionCapsule and produce an ExecutionReceipt. The capsule contract
-follows the verification plane's conventions (strict Pydantic,
-schema_version, fail-visible on unknown versions, control-char rejection in
-digest-relevant paths).
+"""Reproduction plane: versioned capsule contract (WP4), native local runner
+(WP5) and reproduction differential (WP6). PF owns these types; runners
+consume a ReproductionCapsule and produce an ExecutionReceipt; the
+differential classifies pairs of receipts. The capsule contract follows the
+verification plane's conventions (strict Pydantic, schema_version,
+fail-visible on unknown versions, control-char rejection in digest-relevant
+paths).
 """
 
 from .capsule import (
@@ -17,6 +18,11 @@ from .capsule import (
     SemanticRule,
     sha256_file,
     utcnow,
+)
+from .differential import (
+    ReproClassification,
+    ReproductionComparison,
+    compare_executions,
 )
 from .runner import (
     CapsuleIntegrityError,
@@ -33,9 +39,12 @@ __all__ = [
     "LocalReproductionRunner",
     "NondeterminismDecl",
     "ParameterDecl",
+    "ReproClassification",
     "ReproductionCapsule",
+    "ReproductionComparison",
     "SemanticRule",
     "UndeclaredOutputError",
+    "compare_executions",
     "sha256_file",
     "utcnow",
 ]
