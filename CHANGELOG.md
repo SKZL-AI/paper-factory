@@ -1,5 +1,22 @@
 # Changelog
 
+## [Unreleased] — 1.4 (Attestation & Interchange-Evaluation, WP-C..WP-F)
+
+- **CWL v1.2 export** (`paper_factory/export/cwl.py`, EXPORT ONLY): capsule →
+  CommandLineTool (argv, declared files + hashes as `pf:*` extension
+  metadata, parameters, globs, Docker hint). Decision + loss profile:
+  `docs/reports/V1_4_CWL_DECISION.md` — capsule remains canonical, no third
+  runtime backend
+- **Release Artifact Attestations** (`.github/workflows/release-attestation.yml`):
+  sdist+wheel build + `actions/attest@v4` on every `v*` tag, minimal
+  permissions; verification via `gh attestation verify`. Process:
+  `docs/RELEASING.md`. No SLSA-level claim; historical tags stay unsigned
+- **Build reproducibility, honestly measured** (`docs/RELEASING.md` §3): two
+  local builds are payload-identical but NOT bit-identical (zip/tar
+  timestamps) — no reproduced-build claim
+- **ReproZip decision gate**: DEFER (`docs/reports/V1_4_REPROZIP_DECISION.md`) —
+  no demonstrated system-capture gap in the real capsule pilots, no consumer
+
 ## [1.3.0] — 2026-10-05
 
 Reproducibility & Scientific Interchange:
