@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "release": "v2.0.0",
+  "frozen_at_utc": "2026-10-05T17:57:27Z",
+  "release_commit_pending": true,
+  "note": "commit hash is filled by the release commit itself; the manifest is committed before tagging, tag points at the commit containing it",
+  "tests": {
+    "passed": 1070,
+    "honest_skips": 4
+  },
+  "review": {
+    "A": "JA",
+    "B": "JA",
+    "open_critical": 0,
+    "open_major": 0
+  },
+  "contracts": {
+    "count": 10,
+    "schema_version": 1,
+    "inventory": "docs/CONTRACTS.md"
+  },
+  "p00_p37_owner": "paper-factory",
+  "u1_u16_owner": "paper-factory",
+  "closure_authoritative": "paper-factory",
+  "p37_executed": false,
+  "key_files": {
+    "pyproject.toml": "ad4d1972e425a737fb6aeeb7821f527c7a9683af25d519ba9e6e0575529cdf65",
+    "README.md": "63d5bec92c982578295326ba0e8b111b871b600ab0e0cfa55586591d449e68f0",
+    "CHANGELOG.md": "c637c48ebdd8ccce244f8fb4c77058239bb544410893822cee4e75d8f86f84f0",
+    "docs/CONTRACTS.md": "51e10fdb12a0bde2d9fd0d29471b2a6d6eacaca479747699f07c57399789c398",
+    "docs/ROADMAP.md": "2753fd9f72ce86c11f974b6ba85f36268e9232c67863771b3ac8ff4afd7193eb",
+    "docs/ARCHITECTURE.md": "8d635fde51661c05866f6c54ce99d159e1489c343f86b2fa8980d8439c8b5209",
+    "docs/RELEASING.md": "fdd3b3ef5fbbc051d586500597f3fe685b57b6b155b4d899facb1ae6474dc206"
+  },
+  "freeze_reports": {
+    "docs/reports/V2_0_ARCHITECTURE_REPORT.md": "8b52e49604df359c7dbc33fc6cc8bd65a5bed00f205d745730b0b50248a1f30b",
+    "docs/reports/V2_0_CONFORMANCE_MATRIX.md": "7ebf839f309eeb658ce9d95856d69be2e8f2ef4ced349b3f3cedaed9245c59a4",
+    "docs/reports/V2_0_PLATFORM_PACKAGING.md": "c0667bd46058433fd85c5bd2319b69c7378f7ad80428ef5ca61fcddbd2f07f84",
+    "docs/reports/V2_0_PROVENANCE_INTERCHANGE_REPORT.md": "ff77218dc20f8e2e405e77a81c5beb4e90db013b08a907c3114f18b308e9b481",
+    "docs/reports/V2_0_RELEASE_ATTESTATION_REPORT.md": "5dfeeef29196cab0ab4cd9266895b7d10e838b86a2b6f23622596e4091f3672e",
+    "docs/reports/V2_0_SCHEMA_DECISION.md": "d90627dc4d56262dc6e86f591d7c2d88d7296454ca2d780aa71a42fad54adf7e",
+    "docs/reports/V2_0_STATE_MIGRATION.md": "86e37d1a30683424ff59caf6882a76e402a2669ad9bc88fd85a1ea47972b98da",
+    "docs/reports/DEFERRED_HARDENING.md": "c41ae1fe9b1f2cafc5112c3020dd68b5f70ed71af729f78f6808ebec3ad0437a"
+  }
+}
