@@ -405,6 +405,91 @@ def test_gate_path_replayed_execution_receipt_rejected(tmp_path):
         _hoh_result_from_verify("P05", res, None, ws)
 
 
+def test_gate_path_replay_detection_uses_store_namespace(tmp_path):
+    """Produktions-Namespace (review B MAJOR-2): der Store recorded die
+    Receipt unter dem run-scoped Key '<hoh_run>/<datei>' (_apply_hoh_gate),
+    das Receipt traegt im Body eine UUID als receipt_id. Der Lookup muss
+    unter dem STORE-Key laufen — vor dem Fix war diese Dimension immer
+    inert (fail-open), weil UUID != Dateiname garantiert ist."""
+    from paper_factory.dag.handlers import _hoh_result_from_verify
+
+    ws = Workspace(tmp_path / "target")
+    ws.create_run("run-A")
+    receipt_file = "receipt1.json"
+    store_key = f"PF-old0001-P05/{receipt_file}"
+    copied = ws.receipts_dir / "hoh" / "PF-old0001-P05" / receipt_file
+    copied.parent.mkdir(parents=True, exist_ok=True)
+    copied.write_text("{}", encoding="utf-8")
+    ws.record_receipt(store_key, "run-A", "P05", "hoh", copied, SHA_B)
+    body_receipt = _receipt(receipt_id="a-uuid-that-is-not-the-store-key")
+    res = make_result(Verdict.PASS, sha=SHA_A, receipts=[body_receipt])
+    res = res.model_copy(update={
+        "backend": res.backend.model_copy(
+            update={"detail": {"run_id": "PF-old0001-P05"}}),
+        "raw_receipt_refs": [str(copied)],
+    })
+    # same DAG run that recorded it: legitimate resume — must pass ...
+    _hoh_result_from_verify("P05", res, None, ws, run_id="run-A")
+    # ... but consumed under a DIFFERENT DAG run: store-backed replay evidence
+    with pytest.raises(ReceiptFreshnessError, match="replay"):
+        _hoh_result_from_verify("P05", res, None, ws, run_id="run-B")
+
+
+def test_gate_path_freshness_check_runs_for_consistent_receipts(tmp_path,
+                                                               monkeypatch):
+    """Der frische Pfad ist kein stilles Durchrutschen: wenn die Receipts
+    konsistent sind, laeuft der Freshness-Check nachweislich (Spy zaehlt die
+    Ausfuehrungen pro Receipt) und der Gate-Mapping laeuft durch."""
+    from paper_factory.dag import handlers
+    from paper_factory.verification import contract as contract_mod
+
+    ws = Workspace(tmp_path / "target")
+    ws.create_run("run-A")
+    receipt_file = "receipt1.json"
+    copied = ws.receipts_dir / "hoh" / "PF-new0001-P05" / receipt_file
+    copied.parent.mkdir(parents=True, exist_ok=True)
+    copied.write_text("{}", encoding="utf-8")
+    ws.record_receipt(f"PF-new0001-P05/{receipt_file}", "run-A", "P05", "hoh",
+                      copied, SHA_B)
+    good = _receipt()  # binds SHA_A — exactly what the package binds
+    res = make_result(Verdict.PASS, sha=SHA_A, receipts=[good])
+    res = res.model_copy(update={
+        "backend": res.backend.model_copy(
+            update={"detail": {"run_id": "PF-new0001-P05"}}),
+        "raw_receipt_refs": [str(copied)],
+    })
+    package = WorkPackage(
+        package_id="wp-p05-1",
+        node_id="P05",
+        spec_markdown="s",
+        artifacts=[ArtifactRef(rel_path="results/summary.json",
+                               sha256=SHA_A, kind="data")],
+    )
+
+    calls: list[str] = []
+    original = contract_mod.ExecutionReceipt.check_freshness
+
+    def spy(self, expect=None, **kw):
+        calls.append(self.receipt_id)
+        return original(self, expect, **kw)
+
+    monkeypatch.setattr(contract_mod.ExecutionReceipt, "check_freshness", spy)
+    hoh = handlers._hoh_result_from_verify("P05", res, package, ws,
+                                           run_id="run-A")
+    assert calls == ["r-1"], f"freshness check did not run per receipt: {calls}"
+    assert hoh.run_id == "PF-new0001-P05"
+    assert hoh.receipts and hoh.receipts[0]["receipt_file"] == receipt_file
+
+
+def test_gate_path_unbound_receipt_cannot_satisfy_binding_expectation():
+    """Ein Receipt OHNE Artifact-Binding kann eine binding-spezifische
+    Erwartung nie erfuellen — fail-visible statt Vergleich gegen None."""
+    unbound = _receipt(artifact_sha256=None)
+    with pytest.raises(ReceiptFreshnessError, match="no artifact binding"):
+        unbound.check_freshness(
+            ReceiptExpectation(artifact_sha256=SHA_A, now=NOW))
+
+
 # --------------------------------------------------------------------------- #
 # 6+7. provider timeout / network loss → PROVIDER_UNAVAILABLE, native untouched
 # --------------------------------------------------------------------------- #

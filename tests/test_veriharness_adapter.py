@@ -27,6 +27,7 @@ from paper_factory.adapters.veriharness.adapter import (
     register_veriharness,
 )
 from paper_factory.core.results import Verdict
+from paper_factory.core.util import sha256_file
 from paper_factory.provenance.firewall import PolicyViolation
 from paper_factory.state.store import Workspace
 from paper_factory.verification import registry
@@ -332,6 +333,100 @@ def test_shim_degraded_runtime_mapping(tmp_path, monkeypatch, stub_clone):
     assert res.blocked_kind is None
     assert res.detail["reason"].startswith("DEGRADED_RUNTIME")
     assert res.receipts == []
+
+
+# --------------------------------------------------------------------------- #
+# WP2 gate wiring (review MAJOR-1, 2026-10-05): verify() fills
+# VerificationResult.receipts with real ExecutionReceipt objects
+# --------------------------------------------------------------------------- #
+
+
+def test_verify_fills_result_receipts_with_real_values(env, stub_clone):
+    """Das Freshness-Gate im DAG ist nur dann echt, wenn verify() die
+    Receipts befuellt — mit echten Werten, nicht mit Fueller-Defaults."""
+    from paper_factory.verification.contract import ExecutionReceipt
+
+    package = make_package()
+    res = env.adapter.verify(package)
+    assert len(res.receipts) == 1
+    receipt = res.receipts[0]
+    assert isinstance(receipt, ExecutionReceipt)
+    # receipt_id: Body hat keins -> der store-sichtbare Dateiname
+    assert receipt.receipt_id == "receipt1.json"
+    # Artifact-Binding: genau die Bindung, die der Run geprueft hat
+    assert receipt.artifact_sha256 == res.artifact_sha256
+    assert receipt.artifact_sha256 is not None  # package traegt ein Artefakt
+    # Backend-Identity: der echte Run-Backend, nicht None/gefaked
+    assert receipt.backend.kind == "veriharness"
+    assert receipt.backend.name == "hoh"
+    # sha256: Hash der kollektierten Receipt-Datei
+    copied = Path(res.raw_receipt_refs[0])
+    assert receipt.sha256 == sha256_file(copied)
+    # index-Alignment zwischen receipts und raw_receipt_refs (Store-Keys!)
+    assert len(res.receipts) == len(res.raw_receipt_refs)
+
+
+def test_verify_receipt_binding_is_none_for_unbound_package(env, stub_clone):
+    """Spec-only Package (Legacy): binding None — ehrliche Daten, kein
+    fabrizierter Hash."""
+    res = env.adapter.verify(make_package(with_artifact=False))
+    assert len(res.receipts) == 1
+    assert res.receipts[0].artifact_sha256 is None
+    assert res.artifact_sha256 is None
+
+
+def test_build_execution_receipts_uses_payload_values(env, tmp_path):
+    """created_at/receipt_id/run_id kommen aus dem Receipt-Payload."""
+    from datetime import UTC, datetime
+
+    dest = tmp_path / "rcpt.json"
+    dest.write_text(json.dumps({
+        "receipt_id": "rcpt-body-1",
+        "run_id": "PF-abc12345-P05",
+        "created_at": "2026-10-01T08:30:00Z",
+        "verdict": "pass",
+    }), encoding="utf-8")
+    entry = {"receipt_file": "rcpt.json", "copied_to": str(dest),
+             "sha256": sha256_file(dest), "run_id_provenance": "verified"}
+    backend = env.adapter.identity()
+    receipts = env.adapter._build_execution_receipts(
+        make_package(), backend, [entry])
+    assert len(receipts) == 1
+    r = receipts[0]
+    assert r.receipt_id == "rcpt-body-1"          # Body schlaegt Dateiname
+    assert r.run_id == "PF-abc12345-P05"
+    assert r.created_at == datetime(2026, 10, 1, 8, 30, tzinfo=UTC)
+    # Binding: das Work-Package-Artefakt des Runs (Ein-Artefakt -> dessen sha)
+    assert r.artifact_sha256 == SHA
+
+
+def test_build_execution_receipts_missing_created_at_uses_mtime(env, tmp_path):
+    """HoH-Receipts muessen keinen Timestamp tragen: mtime des kollektierten
+    Files ist der ehrliche Fallback — niemals stilles utcnow()."""
+    from datetime import UTC, datetime
+
+    dest = tmp_path / "rcpt.json"
+    dest.write_text('{"ok": true}', encoding="utf-8")
+    entry = {"receipt_file": "rcpt.json", "copied_to": str(dest),
+             "sha256": sha256_file(dest), "run_id_provenance": "verified"}
+    (receipt,) = env.adapter._build_execution_receipts(
+        make_package(), env.adapter.identity(), [entry])
+    mtime = datetime.fromtimestamp(dest.stat().st_mtime, UTC)
+    assert receipt.created_at == mtime
+
+
+def test_build_execution_receipts_unparseable_created_at_fails_visible(env,
+                                                                       tmp_path):
+    from paper_factory.adapters.veriharness.adapter import ReceiptValidationError
+
+    dest = tmp_path / "rcpt.json"
+    dest.write_text(json.dumps({"created_at": "not-a-timestamp"}),
+                    encoding="utf-8")
+    entry = {"receipt_file": "rcpt.json", "copied_to": str(dest),
+             "sha256": sha256_file(dest), "run_id_provenance": "verified"}
+    with pytest.raises(ReceiptValidationError, match="created_at"):
+        env.adapter._build_execution_receipts(
+            make_package(), env.adapter.identity(), [entry])
 
 
 # --------------------------------------------------------------------------- #
