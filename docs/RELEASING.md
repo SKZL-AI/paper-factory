@@ -94,9 +94,34 @@ Messnachweis.
 
 ## 4. Checkliste für das nächste Release (v1.4.0+)
 
-1. CHANGELOG-Eintrag, Suite grün (`python -m pytest tests -q`).
+1. `pyproject.toml`-`version` auf das Release setzen und mit dem
+   CHANGELOG-Eintrag abstimmen (Reviewer MAJOR-1 A, v1.4-Fixloop: der
+   CHANGELOG trug 1.4.0, `pyproject.toml` noch 1.3.0 — die gebauten
+   Artefakte nehmen diese Versionsnummer, ein Mismatch ist ein
+   Release-Gate-Befund). CHANGELOG-Eintrag und Suite grün
+   (`python -m pytest tests -q`).
 2. Tag setzen (`v<version>`) und pushen → `Release Attestation` läuft.
 3. Beide Artefakte mit `gh attestation verify` verifizieren (§1).
 4. Erst dann Release anlegen / Artefakte anhängen / PyPI.
 5. Kein SLSA-Claim in Release-Notes; Build-Provenance und Scientific
    Provenance getrennt ausweisen (§2).
+
+### 4a. Attestation-Workflow: eingegangene Restrisiken (dokumentiert)
+
+- **Actions sind Versions-gepinnt, nicht SHA-gepinnt**
+  (`actions/checkout@v4`, `actions/setup-python@v5`,
+  `actions/attest@v4`, `actions/upload-artifact@v4`). Ein kompromittiertes
+  oder umbesetztes Tag einer Action könnte den Build-Schritt korrumpieren,
+  ohne dass sich der Workflow-Text ändert. Bekanntes, akzeptiertes
+  Rest-Risiko für v1.4.0 (Review-Befund MINOR): Versions-Pins sind der
+  übliche Mittelweg zwischen `@main` und SHA-Pinning; die Upgrade-Disziplin
+  (Renovate/Dependabot-Strategie mit getesteten Bump-PRs) ist als
+  Follow-up geplant, bis dahin erfolgen Action-Upgrades manuell und nur
+  mit Blick auf den Workflow-Run-Verlauf.
+- **`workflow_dispatch`-Läufe sind Nicht-Release-Attestationen.** Der
+  Workflow ist auf Tag-Push (`v*`) ausgerichtet; der manuelle
+  `workflow_dispatch`-Pfad dient Kontrollläufen. Der Run-Name kennzeichnet
+  Dispatch-Läufe ausdrücklich als **NON-RELEASE** (sichtbar in der
+  GitHub-Run-Liste), und nur Tag-Trigger gehören zum Release-Verfahren
+  (§1). Beim Verifizieren (`gh attestation verify`) auf den Tag-Run
+  achten, nicht auf einen Dispatch-Kontrolllauf.

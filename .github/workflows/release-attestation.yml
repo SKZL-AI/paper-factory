@@ -16,6 +16,11 @@
 
 name: Release Attestation
 
+# Dispatch runs are control runs, not release attestations — the run name
+# says so explicitly (docs/RELEASING.md §4a); only v* tag pushes belong to
+# the release procedure.
+run-name: Release Attestation ${{ github.event_name == 'workflow_dispatch' && format('NON-RELEASE dispatch by {0}', github.actor) || github.ref_name }}
+
 on:
   push:
     tags:
