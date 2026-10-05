@@ -84,28 +84,43 @@ Herdr/CLI-TUI hardening (moved to v1.4, see above), the literature
 provider (still no real consumer), and Nextflow/CWL (conformance gate
 unchanged).
 
-## v1.4+ — Multi-backend & ecosystem (planned, gated)
+## v1.4 — Multi-backend & attestation (shipped)
 
-- Nextflow / CWL backends behind the stable capsule contract, with a
-  backend-conformance suite.
-- Broader provider/plugin SDK (multiple real consumers required before the
-  abstraction is justified).
-- ReproZip-class heavy capture capsules, only with a real interchange consumer.
-- Cryptographic attestation / external provenance anchors, once receipts are
-  consumed outside this repo. Verified available
-  (`docs/reports/DEEP_RESEARCH_DELTA_POST_V1_2.md` §3.6): GitHub Artifact
-  Attestations for public repositories (Free/Pro/Team plans), generated in
-  GitHub Actions via `actions/attest`, verified with `gh attestation verify`.
-  Honest scope: SLSA v1.2's verified property `SLSA_BUILD_REPRODUCED` is
-  issuable only with provenance from **two or more independently operated
-  build platforms** — a multi-platform build story we do not have today, so
-  v1.4 starts with single-platform artifact attestations and no
-  `SLSA_BUILD_REPRODUCED` claim. The published v1.2.0 tag is annotated but
-  unsigned and stays untouched (a documented fact, not retroactively
-  repaired).
+- Backend conformance suite (12 semantic cases × every reproduction backend).
+- Nextflow backend behind the capsule contract; real 3-way proof (local +
+  Snakemake + Nextflow → REPRODUCED_EXACT).
+- CWL v1.2 as interchange **export** (no third runtime engine).
+- GitHub Artifact Attestations for release artifacts (sdist/wheel attested on
+  every `v*` tag; first attested release: v1.4.0). No SLSA level claimed;
+  `SLSA_BUILD_REPRODUCED` needs ≥2 independently operated build platforms,
+  which we do not have. Historical unsigned tags stay untouched.
+- ReproZip: DEFER (`docs/reports/V1_4_REPROZIP_DECISION.md`).
+
+## v1.5 — Evidence Intelligence (evaluated, no release)
+
+All four gates decided without a release (`docs/reports/V1_5_DECISIONS.md`):
+PaperQA2 benefit benchmark DEFER (defined, needs authorized LLM budget),
+additional citation provider REJECT (no gap), provider SDK REJECT (<2 external
+providers; conformance suite covers internal backends), reviewer ensemble
+REUSED (dual-review value already measured in-repo; VeriHarness remains the
+ensemble path).
+
+## v2.0 — Contract stabilization (next)
+
+Contract inventory, schema v2 only on proven need, honest cross-platform
+matrix, full conformance + failure injection, historical state migration
+(v1.0–v1.4), docs sync, dual adversarial acceptance, freeze reports.
+
+## Post-v2 candidates (ungated backlog)
+
 - Herdr / CLI-TUI hardening — the 5 s dispatch-stall window (hard-coded
   upstream), the Claude folder-trust dialog finding, `--no-herdr` DAG
-  plumbing, receipt-internal validation (`docs/reports/DEFERRED_HARDENING.md`).
+  plumbing (`docs/reports/DEFERRED_HARDENING.md`).
+- PaperQA2 benefit benchmark (once an LLM budget is authorized).
+- Reproducible builds (payload-identical today; zip/tar timestamps prevent
+  bit-identity) and multi-platform reproduced-build evidence.
+- Cryptographic attestation of receipts beyond the GitHub build path, once
+  receipts are consumed outside this repo.
 
 ## The "do not rebuild" principle
 
