@@ -53,8 +53,10 @@ Design decisions (all fail-visible, none of them hidden):
 """
 from __future__ import annotations
 
+import os
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -177,7 +179,10 @@ class SnakemakeBackend(LocalReproductionRunner):
 
         ``run_dir``: caller-owned audit directory (never removed). When
         None, a private temp directory is created and cleaned up after the
-        receipt is built. NOTE (B-MINOR-4): the receipt's exit_code is the
+        receipt is built. A caller-provided ``run_dir`` must be fresh:
+        reusing an existing one raises FileExistsError at the staged copy
+        (deliberate — the audit trail must never be overwritten). NOTE
+        (B-MINOR-4): the receipt's exit_code is the
         snakemake WRAPPER's exit code, not the capsule command's own shell
         exit status — see the module docstring."""
         binary = snakemake_binary()
@@ -222,18 +227,43 @@ class SnakemakeBackend(LocalReproductionRunner):
         started = utcnow()
         cmd = [binary, "--cores", "1", "--snakefile", str(snakefile),
                "--directory", str(stage), "--forceall"]
+        # Own session so a timeout/KeyboardInterrupt can kill the whole
+        # process group (snakemake spawns job shells as children).
+        proc = subprocess.Popen(cmd, cwd=run_path, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, start_new_session=True)
         try:
-            proc = subprocess.run(cmd, cwd=run_path, capture_output=True,
-                                  timeout=timeout, check=False)
+            stdout, stderr = proc.communicate(timeout=timeout)
             status = "completed" if proc.returncode == 0 else "failed"
-            stdout, stderr, exit_code = proc.stdout, proc.stderr, proc.returncode
+            stdout, stderr = stdout or b"", stderr or b""
+            exit_code = proc.returncode
             failure_reason = None if proc.returncode == 0 else (
                 f"snakemake exited with code {proc.returncode}")
-        except subprocess.TimeoutExpired as exc:
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+            try:
+                stdout, stderr = proc.communicate(timeout=10.0)
+            except subprocess.TimeoutExpired:
+                proc.stdout.close()
+                proc.stderr.close()
+                stdout, stderr = b"", b""
+            stdout, stderr = stdout or b"", stderr or b""
             status, exit_code = "timeout", None
-            stdout = exc.stdout or b""
-            stderr = exc.stderr or b""
             failure_reason = f"timeout after {timeout}s"
+        except KeyboardInterrupt:
+            # NIT-2: without this, Ctrl-C left the wrapper group running.
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+            try:
+                proc.communicate(timeout=10.0)
+            except subprocess.TimeoutExpired:
+                proc.stdout.close()
+                proc.stderr.close()
+            raise
         finished = utcnow()
 
         outputs = self._collect_outputs(capsule, stage)

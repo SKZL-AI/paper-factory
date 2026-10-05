@@ -475,3 +475,58 @@ gefixt** wurde.
   passiert innerhalb), aber Report-Empfänger, die Differenz-Details
   nachvollziehen wollen, haben nur Hash + Klassifikation. Ein optionales
   Aufbewahren der abweichenden Outputs im Report ist v1.4+-Kandidat.
+
+## v1.4 Release-Gate Fixloop — getrackte Restpunkte (2026-10-05, Reviewer-Befunde)
+
+Kontext: Fixloop auf `v1.4/multibackend-attestation` (Commits 9049c79,
+f76d450, 3cd8e1c u. ff.). Hier wird dokumentiert, was bewusst **getrackt
+statt gefixt** wurde bzw. welche Restrisiken nach den Fixes bestehen
+bleiben.
+
+- **Groovy-Divergenz-Risiko Klasse „$"/`"""`" — Restrisiko nach Fix
+  (MAJOR-1 B).** `render_nextflow_script` escaped `$` → `\$` und
+  `\` → `\\` auf der Groovy-GString-Ebene (nach shlex.quote), und
+  argv-Elemente mit `"""` werden fail-visible per ValueError abgelehnt.
+  Verbleibende Restklasse: (a) ein künftiges Groovy-/Nextflow-Upgrade,
+  das die Escape-Semantik des `"""`-Blocks ändert, würde die Fidelity
+  korrumpieren, ohne dass PF-Code sich ändert — der generierte Block-Shape
+  ist durch Unit-Tests (test_main_nf_dollar_escaped, …) und den
+  Conformance-Fall `test_argv_metacharacters_arrive_verbatim` gepinnt,
+  der fängt so eine Divergenz als roten Test. (b) argv-Elemente mit `"""`
+  sind per Design nicht darstellbar (laut statt still). Die symmetrische
+  Snakemake-Klasse (`{`/`}`-Format-Substitution) ist in
+  `_snakefile_escape` gefixt und durch denselben Conformance-Fall gepinnt.
+- **`-resume`-Pinning (Nextflow).** Ein `-resume`-Flag würde Nextflows
+  Task-Cache öffnen: ein Receipt könnte eine Ausführung behaupten, die
+  aus Cache-Outputs bestand. Die Abwesenheit ist per Test gepinnt
+  (`test_wrapper_invocation_has_no_resume_flag`); ein künftiges Feature,
+  das `-resume` doch nutzt, braucht vorher einen Receipt-Nachweis, dass
+  die Tasks tatsächlich liefen (z. B. Task-Start-Zeitstempel im Receipt).
+- **`nextflow.config` aus dem Launch-Dir.** `nextflow run` liest eine
+  `nextflow.config` im Launch-Verzeichnis (hier: das PF-private run_dir,
+  also PF-kontrolliert). Ein caller-kontrollierter Pfad (z. B. via
+  `NXF_CONFIG_*`-Env oder Home-Dir-Config `~/.nextflow/config`) könnte
+  das Laufzeitverhalten beeinflussen, ohne im Receipt sichtbar zu sein.
+  Härtungsoption: Launch mit `-C <pf-owned-config>` bzw. Env-Sanitizing.
+  Heute akzeptiert: das run_dir ist PF-eigen und frisch erstellt.
+- **Proof-Workdir `pf-v14-proof-*` wird nicht aufgeräumt.** Die
+  Proof-/E2E-Skripte legen Arbeitsverzeichnisse an, die nach Run-Ende
+  stehen bleiben (Absicht: Audit-Trail). Akkumulation auf Dauer: GC-Policy
+  ist Folgearbeit; nichts wird still gelöscht (Hausregel).
+- **`capsule_digest` ist maschinenspezifisch.** Der Digest bindet
+  `command[0]`; die Tests/Fixtures tauschen den Interpreter gegen
+  `sys.executable` (z. B. `/home/sai/paper-factory/.venv/bin/python`).
+  Dieselbe Kapsel hat damit auf einer anderen Maschine einen anderen
+  Digest — gewollt (die argv sind Teil der Contract-Identität), aber im
+  Report-Kontext zu erwähnen, wenn Digests maschinenübergreifend
+  verglichen werden.
+- **CWL-Exporter-Restpunkte (WP-C).** (a) `$schemas` (SHOULD laut
+  CommonWL-Profil) fehlt. (b) Gleiche `rel_path` in input+config+code
+  erzeugt doppelte Staging-Einträge (Input-ID-Kollision wird
+  fail-visible, die Staging-Liste verdoppelt sich aber vorher). (c)
+  fnmatch-Muster (`nondeterministic_outputs`) werden als CWL-glob
+  exportiert, obwohl fnmatch ≠ CWL-glob-Semantik ist (Subset-Überein-
+  stimmung für die gängigen Fälle). (d) Neu aus dem MAJOR-1-B-Fix:
+  `\$(`-Escape — ein argv-Element, das selbst bereits `\$(` enthält,
+  kann doppelt escapen; Consumer-Round-Trip mit cwltool ist nicht
+  verdrahtet (kein Projekt-Dependency).

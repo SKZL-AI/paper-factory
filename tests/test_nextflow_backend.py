@@ -11,6 +11,7 @@ skipped honestly when nextflow is not installed (same convention as the
 environment-gated snakemake skips)."""
 from __future__ import annotations
 
+import json
 import os
 import re
 import shlex
@@ -304,6 +305,42 @@ def _orphan_nextflow(tmp_path, monkeypatch, task_cwd: str):
     binary.chmod(0o755)
     monkeypatch.setattr(nextflow_backend, "nextflow_binary",
                         lambda: str(binary))
+
+
+_RECORDING_FAKE = '''\
+#!/usr/bin/env python3
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+args = sys.argv[1:]
+if "-version" in args or "--version" in args:
+    print("nextflow version 26.9.9", file=sys.stderr)
+    sys.exit(0)
+main_nf = Path(args[args.index("run") + 1])
+(main_nf.parent / "wrapper-argv.json").write_text(json.dumps(args))
+text = main_nf.read_text(encoding="utf-8")
+block = text.split('"""')[1]
+sys.exit(subprocess.run(["bash", "-c", block]).returncode)
+'''
+
+
+def test_wrapper_invocation_has_no_resume_flag(tmp_path, monkeypatch):
+    """`-resume` would let Nextflow reuse cached task results, so a receipt
+    could claim an execution that never ran. Its absence is pinned here
+    (tracked in docs/reports/DEFERRED_HARDENING.md)."""
+    binary = tmp_path / "fake_nextflow.py"
+    binary.write_text(_RECORDING_FAKE, encoding="utf-8")
+    binary.chmod(0o755)
+    monkeypatch.setattr(nextflow_backend, "nextflow_binary",
+                        lambda: str(binary))
+    run_dir = tmp_path / "audit"
+    capsule, root = _script_capsule(tmp_path, "pass\n", outputs=["o.txt"])
+    receipt = NextflowBackend().run(capsule, root, run_dir=run_dir)
+    assert receipt.status == "completed"
+    argv = json.loads((run_dir / "wrapper-argv.json").read_text())
+    assert "-resume" not in argv
 
 
 def _wait_gone(pid: int, timeout: float = 5.0) -> bool:
