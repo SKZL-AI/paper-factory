@@ -6,11 +6,15 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from ..core.results import Verdict
+from ..core.results import Severity, Verdict
 from ..state.inventory import collect_inventory
 from .executor import Handler, NodeContext, NodeOutcome
 from .nodes import Node
+
+if TYPE_CHECKING:
+    from ..verification.contract import VerificationResult
 
 
 def _safe_receipt_part(s: str) -> str:
@@ -215,7 +219,7 @@ def _run_shadow_differential(
     outcome: NodeOutcome,
     shadow_result=None,
     artifacts=None,
-) -> None:
+) -> VerificationResult | None:
     """Shadow mode (plan §3 Phase 5): compare the PF-native result with the
     HoH backend's verdict for the same package and record the difference.
 
@@ -231,6 +235,10 @@ def _run_shadow_differential(
     the verify() package and the native side use the SAME binding set. When
     None, the artifacts are read from this run's node receipts (recorded
     before this shadow step — the shadow receipt cannot contaminate them).
+
+    Returns the shadow-side VerificationResult actually compared (None when
+    offline) so the caller can feed its provider findings into the review
+    plane (WP8) — findings must never silently disappear.
     """
     from datetime import UTC, datetime
 
@@ -241,12 +249,12 @@ def _run_shadow_differential(
         WorkPackage,
         artifact_binding,
     )
-    from ..verification.shadow import compare, run_shadow
+    from ..verification.shadow import compare
 
     if ctx.offline:
         outcome.detail["shadow"] = "NOT_RUN"
         outcome.detail["shadow_reason"] = "offline mode"
-        return
+        return None
     spec = _write_node_spec(ctx.workspace, node_id, node)
     package = WorkPackage(
         package_id=f"shadow-{node_id}-{ctx.run_id}",
@@ -274,7 +282,16 @@ def _run_shadow_differential(
         )
 
     if shadow_result is None:
-        _, receipt = run_shadow(native_fn, adapter, package)
+        # shadow-only node: same containment contract as run_shadow (backend
+        # exceptions become an UNAVAILABLE stand-in, never propagate), but
+        # the shadow-side result is KEPT — run_shadow's public 2-tuple
+        # contract cannot carry it, and its findings feed the review plane.
+        native = native_fn(package)
+        try:
+            shadow_result = adapter.verify(package)
+        except Exception as exc:  # noqa: BLE001 — provider failure stays contained
+            shadow_result = _unavailable_verify_result(adapter, package, exc)
+        receipt = compare(native, shadow_result, node_id=node_id)
     else:
         receipt = compare(native_fn(package), shadow_result, node_id=node_id)
     # Sanitized path components (F6) + atomic write via tmp + os.replace (F5):
@@ -290,6 +307,51 @@ def _run_shadow_differential(
     )
     outcome.detail["shadow_outcome"] = receipt.outcome.value
     outcome.detail["shadow_receipt"] = str(receipt_path)
+    return shadow_result
+
+
+def _known_claim_ids(ctx: NodeContext) -> set[str] | None:
+    """Claim ids of the current claim graph; None when no graph exists (the
+    unknown-claim check is then not applicable — not silently passed). A
+    corrupt graph is also None here: U1 fails loudly on it."""
+    from ..claims.graph import load_claims
+
+    path = ctx.workspace.claims_dir / "claims.yaml"
+    if not path.exists():
+        return None
+    try:
+        return {c.claim_id for c in load_claims(path).claims}
+    except Exception:  # noqa: BLE001 — U1 is the loud gate for a corrupt graph
+        return None
+
+
+def _ingest_verification_findings(ctx: NodeContext, node_id: str, result, outcome) -> None:
+    """WP8 production wiring: a VerificationResult's provider findings enter
+    the PF-owned review plane (reviews.verification_ingest) — visible on the
+    node detail and in the VF-<node> review artifact, never silently dropped.
+
+    PF stays closure owner: the node verdict is NEVER touched here (the HoH
+    gate keeps its downgrade-only semantics — a provider finding can never
+    set or upgrade a gate). Blocking happens through U5 like any review
+    finding; closure only through a PF disposition (durable decision).
+    """
+    from ..reviews.verification_ingest import ingest_verification_findings
+
+    findings = list(result.findings) if result is not None else []
+    outcome.detail["verification_findings"] = 0
+    if not findings:
+        return
+    report = ingest_verification_findings(
+        ctx.workspace.reviews_dir, node_id, result.backend, findings,
+        run_id=ctx.run_id, artifact_sha256=result.artifact_sha256,
+        known_claim_ids=_known_claim_ids(ctx),
+    )
+    outcome.detail["verification_findings"] = len(report.findings)
+    outcome.detail["verification_findings_blocking"] = sum(
+        1 for f in report.findings
+        if f.severity in (Severity.CRITICAL, Severity.MAJOR)
+    )
+    outcome.detail["verification_findings_review"] = report.review_id
 
 
 def _hoh_result_from_verify(node_id: str, res, package=None, workspace=None):
@@ -469,9 +531,11 @@ def build_handlers(
                                              shadow_result=shared, artifacts=artifacts)
                     _apply_hoh_gate(ctx, node_id, _hoh_result_from_verify(
                         node_id, shared, package, ctx.workspace), outcome)
+                    _ingest_verification_findings(ctx, node_id, shared, outcome)
                     return outcome
                 if shadow:
-                    _run_shadow_differential(ctx, node, node_id, adapter, outcome)
+                    shadow_res = _run_shadow_differential(ctx, node, node_id, adapter, outcome)
+                    _ingest_verification_findings(ctx, node_id, shadow_res, outcome)
                 if not hoh:
                     return outcome
                 diag = adapter.doctor()

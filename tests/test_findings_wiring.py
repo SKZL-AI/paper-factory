@@ -35,7 +35,7 @@ from paper_factory.core.config import (
     ProviderPolicyConfig,
     ProvidersConfig,
 )
-from paper_factory.core.results import Disposition, Severity
+from paper_factory.core.results import Disposition, Severity, Verdict
 from paper_factory.dag.executor import NodeContext
 from paper_factory.release import closure as closure_mod
 from paper_factory.reviews.decisions import record_decision
@@ -289,11 +289,13 @@ def test_known_claims_not_flagged(tmp_path):
 # --------------------------------------------------------------------------- #
 
 
-def _ctx(ws: Workspace) -> NodeContext:
+def _ctx(ws: Workspace, *, offline: bool = False) -> NodeContext:
+    """offline=False: the dual path must reach the (mocked) verify(); no
+    real HoH/LLM/network happens — verify and doctor are monkeypatched."""
     return NodeContext(workspace=ws, run_id="wp8-test",
                        config=PaperFactoryConfig(), providers=ProvidersConfig(),
                        policy=ProviderPolicyConfig(), marking=MarkingRegistry(),
-                       offline=True, strict=False)
+                       offline=offline, strict=False)
 
 
 def test_provider_major_finding_blocks_u5_until_pf_decides(tmp_path):
@@ -325,3 +327,152 @@ def test_no_decision_written_by_provider(tmp_path):
     ingest_verification_findings(ws.reviews_dir, "P05", BACKEND_HOH,
                                  [vfinding()], run_id="r")
     assert not (ws.reviews_dir / "decisions.jsonl").exists()
+
+
+# --------------------------------------------------------------------------- #
+# Handler wiring: the dual/shadow path is where a VerificationResult's
+# findings actually arrive (handlers.py) — they must enter the review plane
+# there, with the HoH gate semantics untouched (downgrade-only, never
+# upgrade; a provider finding never sets a gate verdict).
+# --------------------------------------------------------------------------- #
+
+from datetime import UTC, datetime
+
+from paper_factory.adapters.veriharness.adapter import VeriharnessAdapter
+from paper_factory.dag import handlers as handlers_mod
+from paper_factory.dag.executor import NodeOutcome
+from paper_factory.dag.handlers import build_handlers
+from paper_factory.dag.nodes import NODES
+from paper_factory.verification.contract import VerificationResult
+from paper_factory.verification.shadow import DifferentialOutcome
+
+NODE_P05 = next(n for n in NODES if n.id == "P05")
+NOW = datetime(2026, 10, 5, 9, 0, 0, tzinfo=UTC)
+LATER = datetime(2026, 10, 5, 9, 5, 0, tzinfo=UTC)
+
+
+def _verify_result(verdict, findings=(), sha=None):
+    return VerificationResult(
+        package_id="wp-p05-1",
+        backend=BACKEND_HOH,
+        verdict=verdict,
+        findings=list(findings),
+        artifact_sha256=sha,
+        started_at=NOW,
+        finished_at=LATER,
+    )
+
+
+def _patch_adapter(monkeypatch, result):
+    monkeypatch.setattr(VeriharnessAdapter, "verify", lambda self, package: result)
+    monkeypatch.setattr(VeriharnessAdapter, "doctor",
+                        lambda self: {"present": True, "herdr": True, "bwrap": True})
+
+
+def _build_handler(monkeypatch, hoh, shadow, base_verdict=Verdict.PASS):
+    def fake_base(ctx, node):
+        return NodeOutcome(base_verdict, {"base": "stub"})
+
+    monkeypatch.setattr(handlers_mod, "_BASE_HANDLERS", {"P05": fake_base})
+    return build_handlers(
+        ["P05"] if hoh else [],
+        ["P05"] if shadow else [],
+    )["P05"]
+
+
+def test_dual_path_ingests_findings_and_keeps_verdict(tmp_path, monkeypatch):
+    """Provider liefert MAJOR-Finding, PF-native ist PASS: Der Node-Verdict
+    bleibt PASS (das Finding setzt nie direkt ein Gate) — sichtbar wird es
+    ueber outcome.detail, den VF-P05-Review-Report und U5."""
+    vf = vfinding(severity=Severity.MAJOR, claim_refs=["C-01"])
+    _patch_adapter(monkeypatch, _verify_result(Verdict.PASS, [vf], sha=SHA_A))
+    handler = _build_handler(monkeypatch, hoh=True, shadow=True)
+    ws = Workspace(tmp_path)
+    outcome = handler(_ctx(ws), NODE_P05)
+    assert outcome.verdict == Verdict.PASS  # PF-entscheidet: kein direktes Gate
+    assert outcome.detail["verification_findings"] == 1
+    assert outcome.detail["verification_findings_blocking"] == 1
+    assert outcome.detail["verification_findings_review"] == verification_review_id("P05")
+    # gate semantics untouched
+    assert outcome.detail["hoh_verdict"] == "PASS"
+    # native side unbound (stub recorded no receipts) vs shadow bound: honest
+    assert outcome.detail["shadow_outcome"] == DifferentialOutcome.INCOMPARABLE.value
+    # the finding is in the review plane and blocks U5 until PF disposes
+    (loaded,) = _load_vf_findings(ws.reviews_dir)
+    assert loaded.details["external"]["artifact_sha256"] == SHA_A
+    state, note = closure_mod._u5(_ctx(ws))
+    assert state == "FAIL" and "unresolved CRITICAL/MAJOR" in note
+
+
+def test_dual_path_gate_downgrade_still_applies_with_findings(tmp_path, monkeypatch):
+    """HoH FAIL downgraded weiterhin (downgrade-only) — WP8 aendert die
+    Gate-Semantik nicht; die Findings werden trotzdem ingested."""
+    vf = vfinding("Backend reports diverging numbers.", severity=Severity.CRITICAL)
+    _patch_adapter(monkeypatch, _verify_result(Verdict.FAIL, [vf]))
+    handler = _build_handler(monkeypatch, hoh=True, shadow=True)
+    ws = Workspace(tmp_path)
+    outcome = handler(_ctx(ws), NODE_P05)
+    assert outcome.verdict == Verdict.FAIL
+    assert outcome.detail["note"] == "HoH verification failed"
+    assert outcome.detail["verification_findings"] == 1
+    assert (ws.reviews_dir / f"{verification_review_id('P05')}.json").exists()
+
+
+def test_shadow_only_path_ingests_findings(tmp_path, monkeypatch):
+    vf = vfinding(severity=Severity.MINOR)
+    _patch_adapter(monkeypatch, _verify_result(Verdict.PASS, [vf]))
+    handler = _build_handler(monkeypatch, hoh=False, shadow=True)
+    ws = Workspace(tmp_path)
+    outcome = handler(_ctx(ws), NODE_P05)
+    assert outcome.verdict == Verdict.PASS
+    assert outcome.detail["verification_findings"] == 1
+    assert outcome.detail["verification_findings_blocking"] == 0  # MINOR blocks nicht
+    (loaded,) = _load_vf_findings(ws.reviews_dir)
+    assert loaded.severity == Severity.MINOR
+
+
+def test_no_findings_records_zero_and_writes_no_review(tmp_path, monkeypatch):
+    _patch_adapter(monkeypatch, _verify_result(Verdict.PASS))
+    handler = _build_handler(monkeypatch, hoh=True, shadow=True)
+    ws = Workspace(tmp_path)
+    outcome = handler(_ctx(ws), NODE_P05)
+    assert outcome.verdict == Verdict.PASS
+    assert outcome.detail["verification_findings"] == 0
+    assert not (ws.reviews_dir / f"{verification_review_id('P05')}.json").exists()
+
+
+def test_known_claim_graph_flags_unknown_claim_ref(tmp_path, monkeypatch):
+    vf = vfinding(claim_refs=["C-01", "C-999"])
+    _patch_adapter(monkeypatch, _verify_result(Verdict.PASS, [vf]))
+    handler = _build_handler(monkeypatch, hoh=True, shadow=True)
+    ws = Workspace(tmp_path)
+    save_claims(ws.claims_dir / "claims.yaml",
+                ClaimGraph(claims=[Claim(claim_id="C-01", statement="s")]))
+    outcome = handler(_ctx(ws), NODE_P05)
+    assert outcome.detail["verification_findings"] == 1
+    (loaded,) = _load_vf_findings(ws.reviews_dir)
+    assert loaded.details["external"]["unknown_claim_refs"] == ["C-999"]
+    assert loaded.claim_refs == ["C-01", "C-999"]  # nie still gedroppt
+
+
+def test_findings_survive_resume_regeneration_with_decision(tmp_path, monkeypatch):
+    """End-to-End: dual path ingested ein Finding, PF entscheidet durable,
+    Re-Run (Regeneration) wipt die Entscheidung nicht."""
+    vf = vfinding(severity=Severity.MAJOR, claim_refs=["C-01"])
+    _patch_adapter(monkeypatch, _verify_result(Verdict.PASS, [vf], sha=SHA_A))
+    handler = _build_handler(monkeypatch, hoh=True, shadow=True)
+    ws = Workspace(tmp_path)
+    ctx = _ctx(ws)
+    handler(ctx, NODE_P05)
+    (loaded,) = _load_vf_findings(ws.reviews_dir)
+    assert closure_mod._u5(ctx)[0] == "FAIL"
+    record_decision(ws.reviews_dir, loaded, disposition=Disposition.AUTHOR_DECISION,
+                    reason="provider finding reviewed", decided_by="operator")
+    # naechster Run: selbes Provider-Finding, neues Artifact-Binding
+    _patch_adapter(monkeypatch, _verify_result(Verdict.PASS, [vf], sha=SHA_B))
+    handler(ctx, NODE_P05)
+    (reloaded,) = _load_vf_findings(ws.reviews_dir)
+    assert reloaded.details["external"]["artifact_sha256"] == SHA_B
+    assert reloaded.disposition == "AUTHOR_DECISION"  # durable, trotz Rebind
+    state, note = closure_mod._u5(ctx)
+    assert state == "PASS", note
