@@ -34,6 +34,14 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["paper_factory*"]
 
+[tool.setuptools.package-data]
+# Runtime assets read via Path(__file__).with_name(...) — without these the
+# installed wheel silently lacks them (Word driver: pfword.ps1 staging,
+# figure render: mplstyle). state/*.json snapshots stay repo-local on
+# purpose (dashboard/collect_state degrade gracefully without them).
+"paper_factory.figures" = ["*.mplstyle"]
+"paper_factory.paperpal.word" = ["*.ps1"]
+
 [project.urls]
 Repository = "https://github.com/SKZL-AI/paper-factory"
 Issues = "https://github.com/SKZL-AI/paper-factory/issues"
