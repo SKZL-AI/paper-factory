@@ -247,15 +247,22 @@ class SnakemakeBackend(LocalReproductionRunner):
                 os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
             except (ProcessLookupError, PermissionError):
                 pass
+            capture_incomplete = False
             try:
                 stdout, stderr = proc.communicate(timeout=10.0)
             except subprocess.TimeoutExpired:
+                # A non-PF pipe holder can outlive the group kill; we close
+                # the pipes rather than hang — recorded honestly (same
+                # convention as the Nextflow backend's bounded drain).
                 proc.stdout.close()
                 proc.stderr.close()
                 stdout, stderr = b"", b""
+                capture_incomplete = True
             stdout, stderr = stdout or b"", stderr or b""
             status, exit_code = "timeout", None
             failure_reason = f"timeout after {timeout}s"
+            if capture_incomplete:
+                failure_reason += " (output capture incomplete)"
         except KeyboardInterrupt:
             # NIT-2: without this, Ctrl-C left the wrapper group running.
             try:

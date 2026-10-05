@@ -530,3 +530,17 @@ bleiben.
   `\$(`-Escape — ein argv-Element, das selbst bereits `\$(` enthält,
   kann doppelt escapen; Consumer-Round-Trip mit cwltool ist nicht
   verdrahtet (kein Projekt-Dependency).
+
+## v1.4 Re-Review Nachträge (2026-10-05, Dual-Review JA/JA nach 2 Runden)
+
+- **NIT: `reap_run_processes` cmdline-Match** (Reviewer A/B, beide): der
+  /proc-Walk attribuiert auch Prozesse, die den run_dir-Pfad nur als
+  cmdline-Token referenzieren (z.B. `tail -f` auf eine gestagte Datei).
+  cwd-Match ist lückenlos fremdprozess-sicher, cmdline-Match nur fast.
+  Realitätsfern für PF-private Temp-Dirs; akzeptiert.
+- **NIT: maschinenspezifischer `capsule_digest`** (`sys.executable` im Digest):
+  dritte Maschinen können einen fremden Digest nicht nachrechnen — by design
+  (environment identity), für Cross-Machine-Attestation v2-Thema.
+- **MINOR (gefixt in diesem Commit):** Snakemake-Timeout-Drain vermerkte
+  „output capture incomplete" nicht im Receipt — jetzt gleiche Konvention
+  wie Nextflow.
