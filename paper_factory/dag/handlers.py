@@ -300,6 +300,15 @@ def _hoh_result_from_verify(node_id: str, res):
     from ..core.util import sha256_file
 
     hoh_detail = dict(res.backend.detail.get("hoh_detail") or {})
+    # backend-evidence fields that live OUTSIDE hoh_detail must survive this
+    # mapping too (review A MINOR, 2026-10-05): verify() sets them at
+    # backend.detail top level (e.g. the --no-herdr evidence_note trade-off);
+    # dropping them here would silently remove the evidence reservation from
+    # the gate path the moment use_herdr=False gets DAG plumbing.
+    if res.backend.detail.get("evidence_note"):
+        hoh_detail["evidence_note"] = res.backend.detail["evidence_note"]
+    if res.backend.detail.get("herdr") is False:
+        hoh_detail["herdr"] = False
     executed = "run_rc" in hoh_detail
     receipts = [
         {"receipt_file": Path(p).name, "copied_to": p, "sha256": sha256_file(Path(p))}
