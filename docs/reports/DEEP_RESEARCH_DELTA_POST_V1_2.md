@@ -79,6 +79,19 @@ reproduction identity). Round-trip tests; unknown schema versions fail visibly.
 - This matches PF's existing content-addressed evidence philosophy and does not make
   P10's historical DEGRADED state a fake PASS — it gives *new* projects a way to
   declare and prove reproducible commands.
+- *Korrektur-Provenance (2026-10-05, v1.3-Fixloop nach dem Dual-Review des
+  v1.3-Diffs): Präzisierung, nicht Widerruf.* „Does not make P10's historical
+  DEGRADED state a fake PASS" galt im Kontext des Übergangs (kein
+  Rückwirkendes Umwerten historischer DEGRADED-Befunde). Es darf aber nicht
+  so gelesen werden, als wäre *jeder* P10-PASS ein „Paper reproduziert".
+  Nach dem Fixloop ist P10-PASS definiert als: **die deklarierte Kapsel
+  reproduziert sich selbst** (Detail-Feld `scope: "declared capsule
+  reproduces itself"`, statistics/reproducibility.py) — verifiziert gegen
+  die deklarierten code/input-Refs mit sha256-Bindung; eine Kapsel ohne
+  code_refs UND input_refs ist Self-Attestation und wird DEGRADED statt
+  PASS. Die Bindung des P10-Ergebnisses an die Claims/Evidenz des Papers
+  (P04/P08) bleibt ausdrücklich ein v1.4+-Thema; P10-PASS allein ist nie
+  Claim-Beweis.
 
 ### 3.2 Snakemake as the first workflow consumer — v1.3, ADOPT (gated)
 

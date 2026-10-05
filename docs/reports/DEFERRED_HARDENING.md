@@ -384,3 +384,94 @@ Restpunkte:
   the binding verification evidence is the subprocess-path v1.2 proof.
   Evidence: `docs/reports/v1_3_integration_proof_herdr_20261005T124256Z.json`,
   addendum in `V1_3_WP1_HERDR_RUNTIME_HARDENING.md`.
+
+
+## v1.3 Release-Gate Fixloop — getrackte Restpunkte (2026-10-05, Dual-Review NEIN/NEIN)
+
+Kontext: Dual-Review des v1.3-Diffs (02f722d..a888bdc), zwei konvergierende
+MAJORs + MINORs. Behoben in den Commits 6ab880f (WP2-Gate-Verdrahtung +
+Store-Namespace), 1f2c9a3 (Reproduction-Härtung), b2d7f36 (P10), d90e704
+(Regressionstests). Hier wird dokumentiert, was bewusst **getrackt statt
+gefixt** wurde.
+
+- **Snakemake exit_code ist der Wrapper-Code (B-MINOR-4).** Dokumentiert in
+  `reproduction/snakemake_backend.py` (Modul- und Methodendocstring): der
+  Receipt-`exit_code` ist der Exit-Code des `snakemake`-Prozesses, nicht des
+  Capsule-Kommandos in snakemakes Shell. Eine vollständige Job-Exit-Code-
+  Durchreichung (z. B. Wrapper-Skript, das Kommando-Exit-Code in eine Datei
+  marshalt und das Snakefile danach scheitern lässt) ist möglich, ändert aber
+  das Receipt-Schema bzw. das Snakefile-Rendering — bewusst auf v1.4+
+  verschoben. Ehrliche Signale heute: Output-Content-Hashes + status +
+  failure_reason.
+- **run_id-lose Receipts sättigen U7-Präsenz (B-MINOR-6).** HoH-Receipts ohne
+  `run_id` werden als `unverified_no_run_id` sichtbar markiert
+  (`receipt_provenance.json`) und dennoch als `kind="hoh"` registriert —
+  korrekt nach der „Backward-Compat statt Rejection"-Entscheidung (WP2.1),
+  aber sie zählen für U7, ohne Run-Herkunft zu beweisen. Der
+  `receipt_provenance.json`-Marker blockiert nichts (Sichtbarkeit, kein Gate).
+  Verschärfungsoption für v1.4: U7 zählt nur noch provenance-verifizierte
+  Receipts — bricht v1.2-Runs, daher Versionsgrenze nötig.
+- **`__pycache__`-UndeclaredOutput-Falle (NIT).** Der lokale Runner
+  snapshotet das cwd-Subtree vorher/nachher; ein Capsule-Kommando, das lokale
+  Module importiert, erzeugt `__pycache__`-Einträge **im Scratch** → derzeit
+  UndeclaredOutputError, obwohl `__pycache__` ein Interpreter-Artefakt ist
+  (Analogon zum `.snakemake`-Pruning im Snakemake-Backend). Nicht ausgenommen,
+  weil die Ausnahme echte Writes in `__pycache__` (z. B. Zipimport-/Bytecode-
+  Manipulation als Seitenkanal) unsichtbar machen würde; die ehrliche
+  Workaround-Seite liegt beim Capsule-Autor (`PYTHONDONTWRITEBYTECODE=1` im
+  Kommando oder Muster deklarieren). Dokumentiert hier; eine
+  Interpreter-Artefakt-Liste analog `.snakemake` ist eine v1.4-Designfrage.
+- **Zwei `ExecutionReceipt`-Klassen (NIT).** `verification/contract.py`
+  (Verification-Plane, WP2-Gate) und `reproduction/capsule.py` (Capsule-
+  Differential) tragen denselben Klassennamen für verschiedene Konzepte.
+  Umbenennung (z. B. `VerificationReceipt` vs. `CapsuleExecutionReceipt`)
+  berührt Exporte, RO-Crate/PROV-Export und gespeicherte Pilot-Evidenz —
+  reine Klarstellungs-Renamings sind v1.4+-Material, solange die Module
+  getrennt importiert werden.
+- **Snakefile-fnmatch-Metazeichen (NIT).** `expected_outputs`-Muster werden
+  sowohl als glob (`root.glob`) als auch als fnmatch-Pattern interpretiert;
+  Metazeichen (`[`, `*`, `?`) in Dateinamen mit Literal-Bedeutung werden
+  doppeldeutig. Konvention bisher: Muster sind Globs, keine Escaping-Syntax.
+  Dokumentierte Grenze, kein Defekt.
+- **WP3-Backup-Name mit Sekundenauflösung (NIT).** Das Migrations-Backup
+  (`store.py`) enthält einen UTC-Zeitstempel bis auf Sekunden; zwei Migrationen
+  innerhalb einer Sekunde auf derselben DB überschreiben sich. Praktisch
+  irrelevant (Migrationen sind manuelle, seltene Ereignisse), zur Kenntnis
+  genommen.
+- **`proof_wp7 --out-dir` crasht bei fehlendem Parent (NIT).** Das Proof-
+  Skript schreibt Exporte ohne `mkdir(parents=True)`; ein nicht-existierendes
+  `--out-dir` endet in einem traceback statt einer sauberen Fehlermeldung.
+  Skript-Ergonomie, kein Pipeline-Pfad.
+- **`nondeterministic_outputs: "*"` als Rubber-Stamp (Reviewer A MINOR).**
+   Eine Kapsel, die pauschal alle Outputs als nondeterministisch deklariert,
+  akzeptiert jede Abweichung — der Autor kann sich faktisch selbst
+  freistempeln. Das ist eine bewusste Declarations-Policy (die Alternative,
+  PF-seitig über Verbotslisten zu urteilen, wäre Willkür), aber die Grenze
+  gehört dokumentiert: Nondeterminismus-Deklarationen sind **Autoren-
+  Aussagen ohne unabhängige Absicherung**; der Gegenpol sind die
+  Hash-Bindungen der code/input-Refs und das DEGRADED bei fehlenden
+  code/inputs. Ein Review-Hinweis auf Catch-all-Muster (Warnung im
+  Capsule-Lade-Pfad) ist v1.4+-Kandidat.
+- **VF-\<node\>.json-Persistenz-Asymmetrie (Reviewer A MINOR).** Ein
+  `VF-<node>`-Review-Artefakt, dessen Findings zwischen Runs verschwinden,
+  bleibt auf Disk bestehen und blockiert U5 weiter (das Artefakt existiert,
+  seine Findings werden beim nächsten Ingest neu bemessen — alte
+  CRITICAL/MAJOR-Einträge aus dem Artefakt können dabei als noch offen
+  gelesen werden, bis eine PF-Disposition sie schließt). Lösungspfad:
+  Ingest-Zähler/Versionierung im Artefakt oder GC-regel für veraltete
+  VF-Dateien. Bewusst nicht v1.3: U5-Blocking über Dispositionen ist die
+  dokumentierte Closure-Semantik; die Asymmetrie betrifft nur den
+  Artefakt-Lebenszyklus.
+- **HoH-Store-Keys: Altdaten bleiben inert (Fixloop-Nebenbefund, keine
+  Aufgabe).** Mit dem MAJOR-2-Fix werden `kind="hoh"`-Receipts unter
+  `"<hoh_run_id>/<datei>"` recorded; Zeilen aus älteren Runs (bare Dateiname
+  als Key) bleiben in der DB und werden vom Replay-Lookup nie getroffen — sie
+  schaden nicht (kein False-Replay), sie beweisen nur nichts. Eine
+  Migration der Keys ist möglich, aber risikoreicher als der Nutzen: die
+  Replay-Dimension greift ab jetzt für alle neu verbrauchten Receipts.
+- **P10-Content-Loader-Lebensdauer (Fixloop-Nebenbefund).** Die
+  float_tolerance-Loader lesen aus den Scratch-Kopien im Tempdir-Kontext —
+  nach dem Kontextende sind die Bytes weg; das ist korrekt (der Vergleich
+  passiert innerhalb), aber Report-Empfänger, die Differenz-Details
+  nachvollziehen wollen, haben nur Hash + Klassifikation. Ein optionales
+  Aufbewahren der abweichenden Outputs im Report ist v1.4+-Kandidat.
