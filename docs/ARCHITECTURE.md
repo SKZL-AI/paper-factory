@@ -22,6 +22,14 @@ Herdr runtime (sessions, panes, worktrees, restore)
 Evidence → Claims → Stats → Figures/Tables → Manuscript → Reviews → Release
 ```
 
+v1.3 adds the **Reproduction Plane** (capsule contract, differential,
+local/Snakemake runners, P10 gate) — owned by the PF core, same control-
+plane role — and a pure **export layer** (RO-Crate / W3C-PROV / Workflow
+Card) that projects canonical evidence without ever feeding gates. The
+role split is unchanged: **PF = Scientific Control Plane** (incl.
+reproduction and exports), **VeriHarness/HoH = Verification Plane**,
+**Herdr = Runtime Plane**.
+
 ## Where things live
 
 - **Deterministic core**: `core/` (config, results, util, issue ledger,
@@ -36,8 +44,17 @@ Evidence → Claims → Stats → Figures/Tables → Manuscript → Reviews → 
   `literature/` (discovery, DOI verification, novelty attack),
   `statistics/` (metrics, integrity audit, reproducibility, numbers audit),
   `figures/`, `tables/`, `manuscript/` (scaffold + deterministic compose),
-  `reviews/` (framework, runners, remediation), `paperpal/` (manual bridge),
+  `reviews/` (framework, runners, remediation, verification-finding
+  ingest), `paperpal/` (manual bridge),
   `venue/`, `release/` (secret scan, export, rebuild, closure U1–U16).
+- **Reproduction plane (v1.3)**: `reproduction/` — versioned, content-
+  addressed Reproduction Capsule, six-class Reproduction Differential,
+  native local runner, and the optional Snakemake backend (capability-
+  probed; `UNAVAILABLE` instead of a fake when absent).
+- **Export layer (v1.3)**: `export/` — pure exporters (RO-Crate 1.3 /
+  Process Run Crate 0.6, W3C-PROV, derived Workflow Card) over the
+  canonical model. Exports never feed gates; PF provenance stays
+  canonical.
 
 ## Hard boundaries (code-enforced)
 
@@ -86,11 +103,71 @@ Evidence → Claims → Stats → Figures/Tables → Manuscript → Reviews → 
 - **Closure gate U7** (`release/closure.py`) counts only `kind="hoh"`
   receipts for configured `hoh_nodes`; shadow receipts are observational
   and would false-close the gate if counted.
+- **v1.3 hardening** — semantic, gate-wired receipt freshness
+  (`contract.py::check_receipt_freshness`: a receipt is fresh iff its
+  bindings — run_id, store key, artifact hash — still hold at
+  consumption time, not by wall-clock age; a receipt that fails can
+  never satisfy a gate) and run_id provenance validation. Backend
+  findings on the hoh/shadow paths are ingested via
+  `reviews/verification_ingest.py` into PF-owned `VF-<node>` review
+  reports that block closure gate U5 like native CRITICAL/MAJOR
+  findings — disposition and closure stay with PF.
+
+## Reproduction Plane (v1.3)
+
+Owned by the PF control plane (the capsule contract is PF's own, not a
+backend concern); workflow engines enter only as capability-probed
+backends, the same adapter pattern as the provider router:
+
+- **Capsule contract** (`reproduction/capsule.py`): versioned
+  (`schema_version=1`), strict models — commands, environment identity,
+  declared code/input refs with SHA-256, expected outputs, parameters,
+  declared non-determinism, semantic match rules. Content-addressed
+  identity via `capsule_digest`; control-character and path-traversal
+  guards at parse time.
+- **Differential** (`reproduction/differential.py`): compares two
+  ExecutionReceipts into `ReproductionComparison` with one of six
+  classes — `REPRODUCED_EXACT`, `REPRODUCED_SEMANTIC`, `MISMATCH`,
+  `NONDETERMINISTIC_DECLARED`, `UNAVAILABLE`, `INCOMPARABLE`. Declared
+  non-determinism matches honestly; anything uncomparable is a visible
+  class, never a rounded-up PASS.
+- **Backends** (`reproduction/runner.py`, `reproduction/snakemake_backend.py`):
+  the native local runner enforces declared-input verification, output
+  collection, and undeclared-output detection (deletion/tamper is caught
+  by a pre/post subtree snapshot, not by trust). The Snakemake backend
+  subclasses the same runner, renders a Snakefile from the capsule and
+  runs it via a probed binary — an optional extra
+  (`pip install .[snakemake]`), fail-visible `UNAVAILABLE` when absent.
+- **P10 wiring** (`statistics/reproducibility.py` + the DAG): P10 loads a
+  declared capsule, runs it twice and gates on the differential. Honest
+  scope: this proves a *declared* capsule reproduces itself; it is not
+  system-level environment capture (ReproZip-class tooling stays a v1.4+
+  decision, gated on a real interchange consumer).
+
+## Export layer (v1.3)
+
+`export/` turns capsule + receipts into interchange documents. All three
+exporters are **pure projections** of canonical PF evidence
+(receipts, capsule, provenance) — never sources of truth:
+
+- `rocrate.py` — RO-Crate 1.3 metadata conforming to the *Process Run
+  Crate 0.6* profile (Workflow Run RO-Crate family).
+- `prov.py` — W3C-PROV document (`prov.json`).
+- `workflow_card.py` — derived, human- and LLM-readable card (JSON +
+  Markdown); explicitly never a gate input.
+
+`export/_shared.py::ExportBundle` validates the evidence before any
+exporter runs (receipts must belong to the capsule and match its
+`capsule_digest`); inconsistency raises `ExportError` — exports are
+all-or-nothing, never half-true.
 
 ## State model
 
-- SQLite (`<target>/.paper-factory/runs.sqlite`): runs, node states, receipts,
-  events. Mutable orchestration state.
+- SQLite (`<target>/.paper-factory/runs.sqlite`): runs, node states,
+  receipts, events. Mutable orchestration state, schema-versioned via
+  `PRAGMA user_version` (v1.3): a migration registry in `state/store.py`
+  brings fresh and legacy databases to `SCHEMA_VERSION`, and an unknown
+  newer schema fails visibly instead of silently downgrading.
 - Immutable artifacts: evidence ledger (JSONL), claims (YAML), review reports
   (JSON), manifests, release bundle with SHA256SUMS.
 - Resume: `paper-factory resume` re-executes only nodes not yet PASS/DEGRADED.

@@ -95,11 +95,72 @@ per-node ad-hoc calls:
 Status: **IMPLEMENTED** — versioned contract, backend registry, shadow /
 differential mode, VeriHarness adapter. **OPTIONAL / not integrated** —
 external verification providers (none ship yet; PaperQA is *not*
-integrated). **PLANNED (v1.3)** — Reproduction Capsule, W3C-PROV exporter,
-literature provider. Details:
+integrated). **SHIPPED (v1.3)** — Reproduction Capsule and W3C-PROV
+exporter, see the next section. Details:
 [docs/V1_2_VERIFICATION_PLANE_PLAN.md](docs/V1_2_VERIFICATION_PLANE_PLAN.md)
 (plan history, fixed) and
 [docs/VERIHARNESS_INTEGRATION.md](docs/VERIHARNESS_INTEGRATION.md).
+
+### Reproducibility & Interchange (v1.3)
+
+On top of the verification contract, v1.3 makes reproduction and
+interchange first-class — all PF-owned, none of it a replacement for the
+canonical provenance model:
+
+- **Reproduction Capsule** (`paper_factory/reproduction/`,
+  `schema_version=1`) — a versioned, contract-bound description of
+  commands, environment, inputs, outputs, hashes and exit codes, with
+  content-addressed capsule identity (`capsule_digest`).
+- **Reproduction Differential** — two executions of the same capsule are
+  compared into one of six classes: `REPRODUCED_EXACT`,
+  `REPRODUCED_SEMANTIC`, `MISMATCH`, `NONDETERMINISTIC_DECLARED`,
+  `UNAVAILABLE`, `INCOMPARABLE`. Declared non-determinism is honest
+  signal, never a silent pass.
+- **Runners** — a native local runner plus an **optional** Snakemake
+  backend (`pip install .[snakemake]`, never a hard dependency). Real
+  positive proof: identical output hashes across local runner, Snakemake
+  backend and the P10 DAG gate — `REPRODUCED_EXACT`
+  ([docs/reports/V1_3_PILOT_MATRIX.md](docs/reports/V1_3_PILOT_MATRIX.md),
+  [docs/reports/V1_3_WP7_SNAKEMAKE_PROOF.md](docs/reports/V1_3_WP7_SNAKEMAKE_PROOF.md)).
+- **P10 capsule integration** — P10 runs the declared capsule and gates on
+  the differential, with an honest scope: this proves that a *declared*
+  capsule reproduces itself (self-attestation boundary), not undeclared
+  system-level capture.
+- **Verification contract hardening** — semantic, gate-wired receipt
+  freshness (`check_receipt_freshness`: a receipt is fresh iff its
+  bindings still hold, not by wall-clock age) and run_id provenance
+  validation; **SQLite schema versioning** via `PRAGMA user_version` with
+  a migration registry in `state/store.py`.
+- **External findings wiring** — provider findings are normalized through
+  `verification.findings_map` and enter PF's own review/remediation
+  pipeline as `VF-<node>` review reports; they block closure invariant U5
+  exactly like native CRITICAL/MAJOR findings, while disposition and
+  closure ownership stay with PF (decisions.jsonl remains append-only and
+  PF-written).
+- **Interchange exports** (`paper_factory/export/`) — pure exporters over
+  the canonical model: **RO-Crate 1.3** conforming to the *Process Run
+  Crate 0.6* profile, **W3C-PROV**, and a derived **Workflow Card**
+  (machine- and human-readable summary). Exports are never gate inputs;
+  PF provenance stays canonical.
+
+Status: **IMPLEMENTED** — capsule, differential, local runner, P10
+integration, receipt freshness, run_id validation, SQLite migrations,
+findings wiring, RO-Crate/PROV/Card exporters; real pilot evidence in the
+reports linked above. **OPTIONAL** — the Snakemake backend (extra
+dependency, capability-probed with honest `UNAVAILABLE` when absent) and
+the literature provider (PaperQA stays *not* integrated; no real consumer
+exists). **PLANNED (v1.4)** — Nextflow/CWL backends behind the stable
+capsule contract, ReproZip-class capture, cryptographic attestation.
+
+**Known limitations (unchanged, tracked):** Herdr's 5 s dispatch-stall
+window is hard-coded upstream; the adapter workaround carries an honest
+evidence trade-off
+([docs/reports/V1_3_WP1_HERDR_RUNTIME_HARDENING.md](docs/reports/V1_3_WP1_HERDR_RUNTIME_HARDENING.md),
+[docs/reports/DEFERRED_HARDENING.md](docs/reports/DEFERRED_HARDENING.md)).
+The 2026-10-05 live field test also surfaced a Claude folder-trust dialog
+blocking the HoH developer pane (VH FAIL, not a v1.3 blocker). The v1.2
+subprocess-path integration proof remains the binding verification
+evidence.
 
 ## Hard rules the system enforces
 
@@ -142,10 +203,11 @@ Real pilot (a mass-invariance research paper, draft-assisted intake):
 - 245 unique writing-assistant suggestions processed capture-only, 100 %
   dispositioned: 75 applied under semantic guards, 124 rejected with
   evidence, 46 not applicable
-- **769 tests passing** (+2 environment skips for Windows-only Word paths)
+- **968 tests passing** (+2 environment skips for Windows-only Word paths)
 
-Reports: [docs/reports/](docs/reports/) · Freeze evidence:
-[V1_FREEZE_REPORT.md](V1_FREEZE_REPORT.md)
+Reports: [docs/reports/](docs/reports/) · v1.3 evidence:
+[docs/reports/V1_3_PILOT_MATRIX.md](docs/reports/V1_3_PILOT_MATRIX.md) ·
+Freeze evidence: [V1_FREEZE_REPORT.md](V1_FREEZE_REPORT.md)
 
 ## Documentation map
 
@@ -171,7 +233,7 @@ runtime; not on PyPI — the core works without it) and the `hoh` PyPI package
 ```bash
 git clone https://github.com/SKZL-AI/paper-factory && cd paper-factory
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
-.venv/bin/python -m pytest tests -q     # 769 tests (+2 environment skips)
+.venv/bin/python -m pytest tests -q     # 968 tests (+2 environment skips)
 ```
 
 The test suite never spends LLM quota: E2E configs disable HoH nodes, and
