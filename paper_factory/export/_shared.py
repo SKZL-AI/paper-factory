@@ -14,10 +14,15 @@ docstrings):
 - a completed receipt with empty outputs is rejected when the capsule
   declares expected outputs: the Process Run Crate profile expects
   `result` entities, and a "successful" run that produced no evidence is
-  exactly what must not pass silently.
+  exactly what must not pass silently. The same guard covers PARTIAL
+  coverage: a completed receipt whose output hashes match none of the
+  declared expected_outputs patterns is rejected too — a declared result
+  the run did not deliver (e.g. an expected_outputs tamper, WP-IV) must
+  not reach an export half-true.
 """
 from __future__ import annotations
 
+import fnmatch
 from dataclasses import dataclass
 
 from ..reproduction.capsule import ExecutionReceipt, FileRef, ReproductionCapsule
@@ -59,13 +64,19 @@ class ExportBundle:
                     f"receipt={receipt.capsule_digest}, "
                     f"capsule={self.capsule.capsule_digest} — not the same "
                     "declared computation")
-            if (receipt.status == "completed" and not receipt.outputs
-                    and expected):
-                raise ExportError(
-                    f"receipt {receipt.execution_id} is completed but carries "
-                    "no output hashes while the capsule declares "
-                    f"expected_outputs={expected} — refusing to export a run "
-                    "with no output evidence")
+            if receipt.status == "completed" and expected:
+                missing = [
+                    pat for pat in expected
+                    if not any(fnmatch.fnmatch(o.rel_path, pat)
+                               for o in receipt.outputs)
+                ]
+                if missing:
+                    raise ExportError(
+                        f"receipt {receipt.execution_id} is completed but its "
+                        f"output hashes cover none of the declared expected "
+                        f"outputs {missing} — refusing to export a run with "
+                        "no output evidence for a declared result (WP-IV "
+                        "failure injection: expected_outputs tamper)")
 
     # -- projections used by the format exporters -------------------------- #
 
