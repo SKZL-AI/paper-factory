@@ -11,14 +11,25 @@ Status: **PROJECT_COMPLETE** · Operating mode: **MAINTENANCE**
 | Release commit | `b3eaec340c3c446f3c61e109b25dc216dde7141d` |
 | Annotated tag object | `8ca87588b00f5cc5d3dc116231b8bac88ba6d170` (immutable, never moved) |
 | Post-release reconciliation | `461aec7` + `f5bd0f9` (freeze-binding receipt, PROV-JSON correction with correction-provenance) |
-| Final project HEAD | `f5bd0f94652c9c8f79c4abab6a4d57281bddadb6` (== `origin/main`) |
+| Code baseline head | `f5bd0f94652c9c8f79c4abab6a4d57281bddadb6` — last product/reconciliation state before the docs-only closure commit |
+| Closure commit | `b72d8adee80c20975d4cd850902be5949306cdcb` — commit that introduced this completion receipt |
 | GitHub Release | <https://github.com/SKZL-AI/paper-factory/releases/tag/v2.0.0> |
+
+> **Binding-semantics correction (2026-10-06):** the original version of this
+> receipt (committed in `b72d8ad`) labelled `f5bd0f9` as "Final project HEAD".
+> That was imprecise: an in-repo receipt cannot name the hash of the commit
+> that contains it without being self-referential. `f5bd0f9` is the code
+> baseline; `b72d8ad` is the closure commit. The **final Git state is bound
+> externally**, not in-repo: by the verified git-bundle snapshot
+> (`BACKUP_MANIFEST_2026-10-06_PROJECT_COMPLETE.md`, and its
+> `…_FINAL` successor for the semantics-correction commit). PROJECT_COMPLETE
+> was and remains valid; only the label was corrected.
 
 ## Evidence chain
 
 | Gate | Result |
 |---|---|
-| CI on final HEAD `f5bd0f9` | **success** (run `37367561591`; an earlier failure was a GitHub hosted-runner acquisition flake on the py3.12 job, resolved by rerun — no code change) |
+| CI | **success** on closure commit `b72d8ad` (run `37426424427`, py3.11 + py3.12) and on code baseline `f5bd0f9` (run `37367561591`; an earlier failure there was a GitHub hosted-runner acquisition flake on the py3.12 job, resolved by rerun — no code change) |
 | Test suite | 1070 passed + 4 honest skips (2 environment, 2 local-only conformance) |
 | Wheel attestation (`paper_factory-2.0.0-py3-none-any.whl`, sha256 `f8459fa4…04ec53b`) | **PASS** (`gh attestation verify`, sigstore bundle from `release-attestation.yml@refs/tags/v2.0.0`) |
 | sdist attestation (`paper_factory-2.0.0.tar.gz`, sha256 `430ccd5f…177049b2`) | **PASS** |

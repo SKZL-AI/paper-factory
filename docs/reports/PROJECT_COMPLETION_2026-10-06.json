@@ -13,7 +13,10 @@
     "github_release_url": "https://github.com/SKZL-AI/paper-factory/releases/tag/v2.0.0",
     "github_release_published": true
   },
-  "final_head": "f5bd0f94652c9c8f79c4abab6a4d57281bddadb6",
+  "code_baseline_head": "f5bd0f94652c9c8f79c4abab6a4d57281bddadb6",
+  "closure_commit": "b72d8adee80c20975d4cd850902be5949306cdcb",
+  "binding_semantics": "in-repo receipt is non-self-binding; final Git state is bound externally by verified git-bundle snapshots and backup manifests on /mnt/e/paper-factory/backups/",
+  "binding_correction_note": "field previously named final_head pointed at f5bd0f9; corrected 2026-10-06 to non-self-referential semantics. f5bd0f9 = code baseline, b72d8ad = original closure commit.",
   "post_release_reconciliation_commits": ["461aec7", "f5bd0f9"],
   "ci": {"final_head_conclusion": "success", "run_id": 37367561591},
   "tests": {"passed": 1070, "honest_skips": 4},
