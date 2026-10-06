@@ -9,6 +9,11 @@
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+**Status: v2.0.0 — Stable / Maintenance Mode**
+([Project Completion Report](docs/reports/PROJECT_COMPLETION_2026-10-06.md)).
+CWL is [export/interchange only](docs/reports/V1_4_CWL_DECISION.md) — no CWL
+execution backend.
+
 LLM agents write prose faster than they produce evidence. Paper Factory inverts
 that: a deterministic orchestration core drives a **P00–P37 research DAG** and
 refuses to close a paper until every scientific claim is bound to concrete,

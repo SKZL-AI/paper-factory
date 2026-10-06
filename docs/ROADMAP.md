@@ -3,6 +3,10 @@
 Status: canonical roadmap as of **v2.0.0** · Language: English · Audience: public repo
 (SKZL-AI/paper-factory)
 
+Project status: **PROJECT_COMPLETE / MAINTENANCE MODE** — this roadmap is
+frozen backlog, not an active plan
+(see `docs/reports/PROJECT_COMPLETION_2026-10-06.md`).
+
 This document is a **roadmap overlay**, not a plan from scratch. It classifies the
 recommendations of an earlier external deep-research report (a historical planning
 artifact, kept unchanged) against the current repository reality, and fixes what is

@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "kind": "project_completion_receipt",
+  "project": "paper-factory",
+  "created_utc": "2026-10-06",
+  "status": "PROJECT_COMPLETE",
+  "operating_mode": "MAINTENANCE",
+  "release": {
+    "version": "v2.0.0",
+    "release_commit": "b3eaec340c3c446f3c61e109b25dc216dde7141d",
+    "annotated_tag_object_sha1": "8ca87588b00f5cc5d3dc116231b8bac88ba6d170",
+    "tag_immutable": true,
+    "github_release_url": "https://github.com/SKZL-AI/paper-factory/releases/tag/v2.0.0",
+    "github_release_published": true
+  },
+  "final_head": "f5bd0f94652c9c8f79c4abab6a4d57281bddadb6",
+  "post_release_reconciliation_commits": ["461aec7", "f5bd0f9"],
+  "ci": {"final_head_conclusion": "success", "run_id": 37367561591},
+  "tests": {"passed": 1070, "honest_skips": 4},
+  "attestations": {
+    "wheel": {"file": "paper_factory-2.0.0-py3-none-any.whl", "sha256": "f8459fa40af2adb07d00549744680de44646a49d2d5402b7dbcc129ef04ec53b", "verified": true},
+    "sdist": {"file": "paper_factory-2.0.0.tar.gz", "sha256": "430ccd5f7cf5ea323ddf2210c947dd1ef0dcd7248add39533b405d7b177049b2", "verified": true}
+  },
+  "cwl": {"export": "IMPLEMENTED", "execution_backend": "NOT_BUILT_AND_NOT_CLAIMED"},
+  "scientific_control": {
+    "p00_p37_owner": "paper-factory",
+    "u1_u16_owner": "paper-factory",
+    "closure_authoritative": "paper-factory",
+    "p37_executed": false,
+    "external_paper_submission": false
+  },
+  "open_findings": {"critical": 0, "major": 0},
+  "deferred_register": "docs/reports/DEFERRED_HARDENING.md",
+  "backups": {
+    "full_tar": {"path": "/mnt/e/paper-factory/backups/2026-10-05T204218Z_f5bd0f9_full.tar", "sha256": "b04c937fc4bef0f7fa2e43d9714c0e0654887383eaddb8944c5e78b50bff1e00"},
+    "scratch_tar": {"path": "/mnt/e/paper-factory/backups/2026-10-05T204218Z_v2-conformance-scratch.tar", "sha256": "4b346bf888ee191a9bf86f06e9248910c5c05baef327fd8c2022987872e5c00a"}
+  },
+  "maintenance_policy": [
+    "genuine bug fixes",
+    "security / supply-chain fixes",
+    "compatibility fixes",
+    "evidenced scientific-integrity fixes",
+    "explicitly authorized new development cycles"
+  ]
+}
